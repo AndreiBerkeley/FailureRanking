@@ -28,6 +28,17 @@ official E001 taxonomy must be frozen on E001's own trace source under its
 own TIMELINE entry. Launch of the generate run gets a dated TIMELINE setup
 entry at launch time.
 
-**Result.** PENDING — awaiting Andrei's launch of the generate command.
+**Result.** Run 1 (launched 17:46, killed by Andrei ~18:10): completed the
+full draft phase (39 codes: 10 A, 14 B, 15 C; `taxonomy_regen_v0/
+taxonomy.draft.json` + step artifacts preserved for reference) and was
+terminated at the start of the agreement stage. No taxonomy was
+registered. `adamast generate` has no resume path (existence check raises
+`FileExistsError`), so the restart is from zero into a fresh output dir
+(`taxonomy_regen_v1/`). Policy added between runs (Andrei): the frozen
+taxonomy keeps **only trace-grounded codes** — codes without cited
+occurrences in the generation traces are dropped by a deterministic
+post-run filter (the CLI's `--coverage-floor` gates aggregate coverage in
+the agreement acceptance test, not per-code support, so it cannot express
+this rule).
 
-**Conclusion.** PENDING.
+**Conclusion.** PENDING — awaiting run 2.

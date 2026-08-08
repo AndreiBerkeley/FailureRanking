@@ -243,3 +243,17 @@ Instrument re-binding only — Ψ and Φ are unchanged by this entry.
 **Restriction.** Built from amendment-imported shakedown traces ⇒
 prototyping-grade; the official E001 taxonomy must be frozen on E001's
 own trace source under its own entry.
+
+---
+
+## 2026-08-07 18:12 — Setup entry addendum: run 1 aborted; trace-grounding freeze rule added
+
+Run 1 was killed by Andrei at the start of the agreement stage (draft
+phase complete and preserved; no taxonomy registered; `adamast generate`
+has no resume path, so restart is from zero into a fresh output dir).
+New freeze rule for the rerun, decided by Andrei: the frozen taxonomy
+keeps **only trace-grounded codes** — any code without cited occurrences
+in the 60 generation traces is dropped by a deterministic post-run
+filter before freeze. Consequence accepted: failure modes first appearing
+in scoring traces stay unmeasured (absorbed honestly by Q_Taxonomy's
+coverage term in Ψ).
