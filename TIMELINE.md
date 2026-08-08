@@ -218,3 +218,28 @@ this data is usable ONLY in `trials/` for prototyping Φ/Ψ machinery —
 never as claims-bearing evidence; official experiments still require
 fresh data under their own TIMELINE entries. Hard rule 3 stands: nothing
 in any scoring path reads `gold_do_not_pass_to_judge/`.
+
+---
+
+## 2026-08-07 17:46 — Setup entry: taxonomy regeneration run launched (AdaMAST protocol, prototyping-grade)
+
+**Launched by Andrei** from `trials/2026-08-07-adamast-taxonomy-regen/`:
+`adamast generate` — the agreement-gated AdaMAST protocol (default κ
+target and coverage floor, early stop) — over 60 converted legacy HoVer
+traces: 5 per candidate × 12 candidates, repeat 0, drawn only from
+held-out tasks **outside** the 50-task scored subset (freeze discipline:
+generation sees no trace Φ scores). Provider: Bedrock; model:
+`us.anthropic.claude-sonnet-4-5-20250929-v1:0` (pinned to the legacy
+judge model for comparability). Output:
+`trials/2026-08-07-adamast-taxonomy-regen/taxonomy_regen_v0/`.
+
+**Motivation.** The 2026-08-07 dissection of candidates 002/008/009: the
+shakedown v3 taxonomy's high-prevalence B codes are style/protocol
+violations structurally unable to affect HoVer's doc-retrieval gold
+(e.g. B.3 at 80% gold-pass on affected tasks), while the C-only Φ beat
+the full taxonomy on generalization (+0.29 vs +0.20 τ against gold-300).
+Instrument re-binding only — Ψ and Φ are unchanged by this entry.
+
+**Restriction.** Built from amendment-imported shakedown traces ⇒
+prototyping-grade; the official E001 taxonomy must be frozen on E001's
+own trace source under its own entry.
