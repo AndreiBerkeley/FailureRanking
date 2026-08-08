@@ -190,3 +190,31 @@ range remains a presentation choice.
 **Deliberately outside v0.1** (in addition to everything outside v0):
 causal relations between failure modes — the root/middle/leaf
 position-charging package parked 2026-08-07 in PARKING.md.
+
+---
+
+## 2026-08-07 17:03 — Setup entry: from-zero amendment — legacy HoVer shakedown artifacts imported as test data
+
+**Amendment, approved by Andrei.** The from-zero rule (CLAUDE.md) is
+amended: shakedown-era judge/recovery/scoring outputs from the pre-reset
+workspaces are imported as provenance-tracked test data for
+formula/integration prototyping only.
+
+**What was imported → `data/legacy-hover-shakedown/` (read-only after
+import, `chmod -R a-w`):**
+- `~/Desktop/GEPA_Experiments/grading/`: annotations_pilot (20 traces,
+  taxonomy v2), annotations_pilot_mast (2 traces, MAST),
+  annotations_v3 (596 traces, 12 candidates, taxonomy v3),
+  refinement_slice (incl. quarantined `gold_do_not_pass_to_judge/`),
+  evaluation_subset.json (50-task common subset, gold not consulted),
+  taxonomy/ (full version ladder + freeze records).
+- `~/Desktop/certification_analysis/`: README.md (defines the
+  effect-inclusive recovery semantics), examples/, and the
+  hover_gepa_baseline README (documents the 12-candidate GEPA pool) —
+  interpretive artifacts only; no code, caches, or venvs.
+
+Per-item provenance and caveats: `data/SOURCES.md`. Binding restriction:
+this data is usable ONLY in `trials/` for prototyping Φ/Ψ machinery —
+never as claims-bearing evidence; official experiments still require
+fresh data under their own TIMELINE entries. Hard rule 3 stands: nothing
+in any scoring path reads `gold_do_not_pass_to_judge/`.
