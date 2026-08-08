@@ -33,6 +33,26 @@ comparability. Output dir: `taxonomy_v0/`. Prototyping-grade per the
 2026-08-07 data amendment: the official E001 taxonomy must be frozen on
 E001's own trace source under its own TIMELINE entry.
 
-**Result.** PENDING.
+**Result.** Run completed by Andrei (2026-08-07 ~20:42, 5/5 agreement
+rounds, output `taxonomy_v0/`). **The protocol did not accept the
+taxonomy**: coverage 0.94 ≥ 0.70 passed, but macro Fleiss κ = 0.37 vs
+the 0.75 target → manifest status `review_required`. 32 codes were
+drafted; across all five agreement rounds (25 judged traces,
+4 annotators, reconciled assignments) **only 6 codes were ever
+assigned**: A.8 Downstream_Handoff_Failure (38), A.5 Output_Truncation
+(16), B.9 Coordinator_Premature_Hop_Termination (14), A.4 Task_Refusal
+(2), B.1 Coordinator_Unclear_Task_Specification (1),
+A.7 Upstream_Information_Loss (1). Five of those six are on the run's
+own low-agreement list — only A.5 is both used and consistently
+assigned. The draft artifacts carry no per-code trace-id citations, so
+reconciled agreement assignments are the only citable support; the
+pre-registered grounding filter therefore keeps 6/32 codes (3/32 at
+support ≥ 3).
 
-**Conclusion.** PENDING.
+**Conclusion.** The trace-grounding hypothesis was validated harder
+than expected: 26 of 32 generated codes are purely theoretical on these
+traces, and the annotators cannot consistently apply most of the rest —
+the protocol's own κ quantifies Q_Taxonomy for this benchmark/config as
+low. Freeze decision (Andrei's): accept the tiny grounded core as
+prototype v0, or rerun generation with adjusted config. Not yet frozen;
+nothing registered.
