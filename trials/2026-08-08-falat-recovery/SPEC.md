@@ -27,15 +27,24 @@ occurrence's effect reach the final output?", computed on the graph.
 1. **Spec-only prior + abstraction** — task spec and program definition
    only (never a reference answer): expected flow, role boundaries, and
    a step-indexed summary of the trace. One call.
-2. **Edge typing** — given the abstraction, the Stage-1 failure points,
-   and a terminal OUTPUT node: for each ordered pair (failure point i,
-   later failure point j) and each (failure point i, OUTPUT), assert at
-   most one label from
+2. **Occurrence enumeration + edge typing** — given the abstraction,
+   the Stage-1 findings, and a terminal OUTPUT node, in one call:
+   (a) **Enumerate occurrences**: for each Stage-1 finding (code +
+   evidence), list EVERY distinct occurrence of that failure in the
+   trace — one entry per occurrence, each with its own verbatim quote
+   and step anchor (a mode appearing 10 times yields 10 occurrence
+   nodes; decided 2026-08-08, Andrei — full-recovery semantics require
+   all instances). Quotes are verified against the trace by the runner;
+   unverifiable occurrences are counted and reported (Q_Recovery
+   signal). (b) **Type edges over occurrences**: for ordered occurrence
+   pairs and (occurrence, OUTPUT), assert at most one label from
    `follow_up | redundancy | no_influence | error_shift | correction |
    dead_end`, each with quoted trace evidence and the consuming step
-   index. Every failure point MUST be closed out: either a path of
+   index. Every occurrence MUST be closed out: either a path of
    influence toward OUTPUT, or an explicit correction / dead_end /
-   no_influence closure. One call, JSON out.
+   no_influence closure. JSON out.
+   Error surface note: missed occurrences bias recovery optimistic,
+   hallucinated ones pessimistic — both measured on the oracle slice.
 
 ## Deterministic recovery rules (recovery_graph.py)
 
