@@ -22,11 +22,15 @@ counterfactual ranking (needs the gold expected output o*; also the
 low-accuracy part). Replaced: "would correcting recover o*" → "does the
 occurrence's effect reach the final output?", computed on the graph.
 
-## LLM stages (2 calls/trace, Bedrock, same judge model)
+## LLM stages (1 shared call + 1 call/trace, Bedrock, same judge model)
 
-1. **Spec-only prior + abstraction** — task spec and program definition
-   only (never a reference answer): expected flow, role boundaries, and
-   a step-indexed summary of the trace. One call.
+1. **Spec-only prior** — task spec and program definition only (never a
+   reference answer): expected flow, role boundaries, failure risk
+   patterns. Computed ONCE per program and cached — our benchmark is a
+   fixed three-hop pipeline, so the prior is trace-invariant (cost
+   adaptation, 2026-08-08; FALAT's per-trajectory prior matters for
+   heterogeneous multi-agent settings, not here). The per-trace
+   abstraction folds into stage 2.
 2. **Occurrence enumeration + edge typing** — given the abstraction,
    the Stage-1 findings, and a terminal OUTPUT node, in one call:
    (a) **Enumerate occurrences**: for each Stage-1 finding (code +

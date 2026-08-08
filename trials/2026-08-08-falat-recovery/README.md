@@ -21,14 +21,28 @@ mapping, and the Q_Recovery error surface.
 σ = l/(r+l) (computed for diagnostics and the parked package; not
 consumed by Φ v0.1).
 
-**Result.** Deterministic core implemented and fully tested: 10/10 unit
-tests pass, covering chain persistence, correction-before vs
-correction-after consumption, dead-end neutralization,
-redundancy/no_influence non-propagation, error_shift propagation, the
-unlinked-occurrence policy flag, σ values on chains, the per-(task,mode)
-full-recovery mapping into the Φ harness format, and step-ordering
-validation. LLM stages not yet run — prompts and runner are the next
-work item; billed dry run planned on the 24-trace refinement slice
-(SPEC.md validation plan step 2).
+**Result — offline build complete, nothing billed yet.**
 
-**Conclusion.** PENDING — awaiting the edge-typing dry run.
+- **Deterministic core** (`recovery_graph.py`): 10/10 unit tests pass —
+  chain persistence, correction-before vs correction-after consumption,
+  dead-end neutralization, redundancy/no_influence non-propagation,
+  error_shift propagation, unlinked-occurrence policy, σ on chains,
+  step-ordering validation, and the per-(task,mode) AND mapping (a mode
+  is fully_recovered only if EVERY occurrence recovered).
+- **Traces converted** (`convert_pipeline_traces.py`, reusing the
+  generation trial's converter with explicit RETRIEVAL EVENT
+  rendering): `slice_traces/` 24 dry-run traces; `scored_traces/` 600
+  scored-subset executions (50 tasks × 12 candidates, repeat 0),
+  asserted counts, gold quarantine enforced in code. ~49KB/trace.
+- **Prompts** (`prompts/`): `prior.txt` (program-level expectation,
+  spec only — cached once, no reference answer) and `edges.txt`
+  (occurrence enumeration → typed edges, with the closure requirement).
+- **Runner** (`runner.py`): builds prompts, verifies every quote against
+  the numbered trace (exact then fuzzy ≥0.6), counts unlocated findings
+  and unverified occurrences as Q_Recovery diagnostics, invokes the
+  graph, and emits per-(task,mode) recovery for the Φ harness.
+  `--build-only` exercises the whole path with zero API calls; smoke
+  test confirms correct step anchoring.
+
+**Conclusion.** PENDING — awaiting the billed Stage-1 re-judge and the
+Stage-2 edge-typing runs (commands prepared for Andrei).
