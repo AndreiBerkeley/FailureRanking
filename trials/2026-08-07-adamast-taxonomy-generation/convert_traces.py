@@ -22,14 +22,30 @@ SUBSET = (Path.home() / "Desktop/FailureRank/data/legacy-hover-shakedown/"
 N_PER_CANDIDATE = 5
 
 
+def _retrieval_event(pred: dict, hop: int) -> dict:
+    docs = pred.get(f"hop{hop}_docs") or []
+    return {
+        "role": "user",
+        "content": (f"RETRIEVAL EVENT — hop {hop} of 3 executed. "
+                    f"{len(docs)} documents returned:\n"
+                    + "\n".join(str(t) for t in docs)),
+    }
+
+
 def convert(trace: dict) -> dict:
+    """Render the trace with each hop's retrieval as an EXPLICIT event
+    message, so judges can count retrieval executions directly instead of
+    inferring them from passage text embedded in later prompts (the
+    implicit rendering caused inconsistent hop counting — see README)."""
+    pred = trace.get("prediction", {})
     messages = [{
         "role": "user",
         "content": ("Task: three-hop HoVer retrieval over Wikipedia abstracts. "
                     "Perform exactly three retrievals and return everything "
                     f"retrieved.\nClaim to verify: {trace['input']['claim']}"),
-    }]
-    for call in trace["lm_calls"]:
+    }, _retrieval_event(pred, 1)]
+    # lm_calls order: summarize1, create_query_hop2, summarize2, create_query_hop3
+    for i, call in enumerate(trace["lm_calls"]):
         for m in call.get("messages") or []:
             messages.append({"role": m.get("role", "user"),
                              "content": str(m.get("content", ""))})
@@ -37,10 +53,13 @@ def convert(trace: dict) -> dict:
         text = "\n".join(str(o) for o in out) if isinstance(out, list) else str(
             out if out is not None else call.get("response", ""))
         messages.append({"role": "assistant", "content": text})
-    pred = trace.get("prediction", {})
+        if i == 1:
+            messages.append(_retrieval_event(pred, 2))
+        elif i == 3:
+            messages.append(_retrieval_event(pred, 3))
     messages.append({
         "role": "assistant",
-        "content": ("FINAL OUTPUT — retrieved documents:\n"
+        "content": ("FINAL OUTPUT — concatenation of all retrieved documents:\n"
                     + "\n".join(str(t) for t in pred.get("retrieved_docs", []))),
     })
     return {"trace_id": trace["trace_id"], "messages": messages,

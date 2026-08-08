@@ -218,3 +218,39 @@ this data is usable ONLY in `trials/` for prototyping Φ/Ψ machinery —
 never as claims-bearing evidence; official experiments still require
 fresh data under their own TIMELINE entries. Hard rule 3 stands: nothing
 in any scoring path reads `gold_do_not_pass_to_judge/`.
+
+---
+
+## 2026-08-08 11:42 — Setup entry: prototype taxonomy generated, grounded, re-partitioned, and frozen (17 codes)
+
+**Completed chain** (all runs launched by Andrei; full detail and the
+reproducible freeze script in
+`trials/2026-08-07-adamast-taxonomy-generation/`):
+
+1. **Generation** — `adamast generate` (agreement-gated) over 60
+   converted legacy HoVer traces (non-scored tasks only; freeze
+   discipline). Drafted 32 codes; protocol did not accept (Fleiss
+   κ = 0.37 vs 0.75 target; coverage 0.94 passed) → `review_required`.
+2. **Support judging** — the draft applied as a per-trace judge over
+   all 60 traces. Run 1 (default 6,000-char trace budget) exposed an
+   instrument artifact: pipeline-truncated traces coded as
+   Output_Truncation on 60/60. Run 2 at `--max-trace-chars 40000`
+   reversed it (60→1) and gave the clean support histogram: 16/32
+   codes fire; support ≥ 3 keeps 14. **Lesson recorded: never judge
+   these traces below ~40k chars.**
+3. **Freeze rules (Andrei):** trace-grounded codes only; drop
+   support < 3; re-partition the four over-broad top codes along
+   mechanism boundaries found in their 178 evidence snippets; keep the
+   solver-fault vs environment-fault split (B.2b vs rescoped A.11,
+   mutually exclusive by construction).
+4. **Frozen artifact:** `taxonomy_frozen_v1.json` — **K = 17**
+   (4 A, 10 B, 3 C), registered as
+   `tax-20260808T184241Z-8598f86e-11ef4f`. Converter now renders
+   explicit RETRIEVAL EVENT messages (hop-count artifact fixed); all
+   60 generation traces regenerated and revalidated.
+
+**Caveats:** sub-code support figures are provisional (evidence
+reassignment, no dedicated validation run — implicit validation at the
+subset re-judge); prototyping-grade per the 2026-08-07 amendment —
+E001's taxonomy freezes on E001's own traces. Ψ and Φ unchanged; K = 17
+flows into Φ's equal-weight default when scoring under this instrument.

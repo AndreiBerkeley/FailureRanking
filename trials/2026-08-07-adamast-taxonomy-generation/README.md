@@ -49,10 +49,34 @@ reconciled agreement assignments are the only citable support; the
 pre-registered grounding filter therefore keeps 6/32 codes (3/32 at
 support ≥ 3).
 
-**Conclusion.** The trace-grounding hypothesis was validated harder
-than expected: 26 of 32 generated codes are purely theoretical on these
-traces, and the annotators cannot consistently apply most of the rest —
-the protocol's own κ quantifies Q_Taxonomy for this benchmark/config as
-low. Freeze decision (Andrei's): accept the tiny grounded core as
-prototype v0, or rerun generation with adjusted config. Not yet frozen;
-nothing registered.
+**Result (continued — support judging and freeze, 2026-08-07/08).**
+Because the agreement rounds judged only 25 traces with reconciliation
+compression, the draft was run as a per-trace judge over all 60 traces
+(`--mode default`). Run 1 exposed an instrument artifact: the judge's
+default 6,000-char trace budget truncated every ~32k-char trace and
+inserted its own `[TRUNCATED]` marker, which it then coded as
+Output_Truncation on 60/60 traces. Run 2 (`--max-trace-chars 40000`,
+`support_judging_full`) reversed the artifact (A.5: 60→1) and showed
+**16/32 codes firing** (support ≥3: 14). Reading all 178 evidence
+snippets of the four over-broad top codes (B.2 50, B.9 50, B.5 40,
+A.11 38) revealed distinct mechanisms smeared together — including a
+query-stagnation pattern split across three codes, and a second
+converter artifact (retrievals rendered implicitly → inconsistent hop
+counting; converter fixed to emit explicit RETRIEVAL EVENT messages,
+all 60 traces regenerated and revalidated).
+
+**Conclusion — frozen taxonomy.** `build_frozen_taxonomy.py` (the
+reproducible freeze record) produced **`taxonomy_frozen_v1.json`,
+17 codes** (4 A, 10 B, 3 C): nine mid-tier codes kept unchanged; B.2 →
+B.2a Evidence_Present_But_Missed + B.2b Missing_Evidence_Not_Specified;
+B.2's verdict pattern merged with B.3 → Verdict_Despite_Insufficiency;
+B.5 → B.5a Query_Form_Mismatch + B.5b Query_Stagnation; B.9 → B.9a
+Retrieval_Loop_Terminated_Early (counts explicit RETRIEVAL EVENTs) +
+B.9b Terminal_Output_Without_Verification; A.11 rescoped as
+environment-attributable (named gap, well-formed queries, evidence
+still never arrived), mutually exclusive with B.2b by construction.
+Everything below support 3 dropped per Andrei's rule. Registered as
+`tax-20260808T184241Z-8598f86e-11ef4f`. Sub-code support is provisional
+(evidence reassignment, no fresh judging run — Andrei chose to settle);
+validated implicitly at the subset re-judge. Prototyping-grade
+throughout.
