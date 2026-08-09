@@ -44,5 +44,27 @@ consumed by Φ v0.1).
   `--build-only` exercises the whole path with zero API calls; smoke
   test confirms correct step anchoring.
 
-**Conclusion.** PENDING — awaiting the billed Stage-1 re-judge and the
-Stage-2 edge-typing runs (commands prepared for Andrei).
+**Stage-1 on the dry-run slice (24 traces, two runs).**
+- Run 1 (`slice_stage1.json`, K = 17) exposed two taxonomy defects; both
+  handled in the generation trial: the spec-conformant code dropped, and
+  the two evidence-gap codes rewritten as per-evidence-gap decision
+  tests. Codes renumbered flat.
+- Run 2 (`slice_stage1_v2.json`, K = 16) — healthy profile: 14/16 codes
+  fire, mean 3.8 findings/trace, no `none_apply`, and **no code
+  over-fires** (max B.14 Query_Stagnation at 15/24 = 63%, vs 22/24 for
+  the dropped code). B.15 and C.1 silent at this sample size.
+- **Q_Judge datum (Ψ):** B.11 and A.12 co-fire on 4/24 traces and all
+  four cite the *same* evidence gap, with B.11's own quoted evidence
+  contradicting B.11's decision test (A.12 correct in 4/4). Decision
+  (Andrei, 2026-08-08): **keep both codes, change nothing** — instrument
+  imperfections are to be measured and accounted for, not engineered
+  away. This 4/24 same-gap disagreement rate is the first recorded
+  Q_Judge measurement for this instrument binding; re-measured at the
+  600-trace re-judge.
+
+**Note for launching Stage 2:** `runner.py` needs `boto3`, which is
+present in the AdaMAST venv but not in the system python3 — invoke it
+with `~/.local/share/uv/tools/adamast/bin/python`.
+
+**Conclusion.** PENDING — awaiting the Stage-2 edge-typing dry run, then
+the full 600-trace Stage-1 + Stage-2 pass.
