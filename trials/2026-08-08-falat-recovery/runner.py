@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -64,10 +65,19 @@ def locate_quote(quote: str, trace: dict):
 
 # ---------------------------------------------------------------- model I/O
 
+def resolve_region(explicit: str | None) -> str:
+    """botocore only maps AWS_DEFAULT_REGION, so AWS_REGION must be read
+    explicitly (AdaMAST's own CLI does the same)."""
+    region = (explicit or os.environ.get("AWS_REGION")
+              or os.environ.get("AWS_DEFAULT_REGION"))
+    if not region:
+        raise SystemExit("no region: pass --aws-region or export AWS_REGION")
+    return region
+
+
 def bedrock_call(prompt: str, model: str, region: str | None, max_tokens: int):
     import boto3
-    kwargs = {"region_name": region} if region else {}
-    client = boto3.client("bedrock-runtime", **kwargs)
+    client = boto3.client("bedrock-runtime", region_name=resolve_region(region))
     resp = client.converse(
         modelId=model,
         messages=[{"role": "user", "content": [{"text": prompt}]}],
