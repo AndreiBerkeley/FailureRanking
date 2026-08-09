@@ -29,7 +29,7 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))
-from recovery_graph import analyze, task_mode_recovery  # noqa: E402
+from recovery_graph import analyze, task_mode_recovery, LABELS  # noqa: E402
 
 MODEL_DEFAULT = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 
@@ -120,23 +120,50 @@ def stage2_for_trace(trace, findings, prior_text, args, out_dir):
     if args.build_only:
         return {"trace_id": tid, "built": True, "diagnostics": diagnostics}
 
-    payload = parse_json(bedrock_call(prompt, args.model, args.aws_region,
-                                      args.max_output_tokens))
-    occurrences, occ_modes = [], {}
+    raw = bedrock_call(prompt, args.model, args.aws_region,
+                       args.max_output_tokens)
+    (out_dir / f"{tid}.raw.txt").write_text(raw)
+    payload = parse_json(raw)
+
+    occurrences, occ_modes, steps = [], {}, {}
     for o in payload.get("occurrences", []):
+        oid, code = o.get("id"), o.get("code")
+        if not oid or not code or oid in occ_modes:
+            diagnostics["malformed_occurrences"] = (
+                diagnostics.get("malformed_occurrences", 0) + 1)
+            continue
         step = locate_quote(o.get("quote", ""), trace)
         if step is None:
             diagnostics["unverified_occurrences"] += 1
-            step = int(o.get("step", 0)) or 1
-        occurrences.append({"id": o["id"], "step": step})
-        occ_modes[o["id"]] = o["code"]
-    edges = [{"src": e["src"],
-              "dst": "OUTPUT" if e.get("dst") in ("OUT", "OUTPUT") else e["dst"],
-              "label": e["label"],
-              "consume_step": e.get("consume_step")}
-             for e in payload.get("edges", [])
-             if e.get("src") in occ_modes
-             and (e.get("dst") in ("OUT", "OUTPUT") or e.get("dst") in occ_modes)]
+            try:
+                step = int(o.get("step") or 0) or 1
+            except (TypeError, ValueError):
+                step = 1
+        occurrences.append({"id": oid, "step": step})
+        occ_modes[oid] = code
+        steps[oid] = step
+
+    # Keep only well-formed edges; a bad edge is a diagnostic, never fatal.
+    edges = []
+    for e in payload.get("edges", []):
+        src = e.get("src")
+        dst = "OUTPUT" if e.get("dst") in ("OUT", "OUTPUT") else e.get("dst")
+        if (src not in occ_modes or e.get("label") not in LABELS
+                or (dst != "OUTPUT" and dst not in occ_modes)):
+            diagnostics["dropped_edges"] = diagnostics.get("dropped_edges", 0) + 1
+            continue
+        if dst != "OUTPUT" and steps[src] >= steps[dst]:
+            # model asserted a backward/self edge; graph requires forward time
+            diagnostics["backward_edges"] = (
+                diagnostics.get("backward_edges", 0) + 1)
+            continue
+        cs = e.get("consume_step")
+        try:
+            cs = int(cs) if cs is not None else None
+        except (TypeError, ValueError):
+            cs = None
+        edges.append({"src": src, "dst": dst, "label": e["label"],
+                      "consume_step": cs})
 
     results = analyze(occurrences, edges)
     modes = task_mode_recovery(occ_modes, results)
@@ -159,7 +186,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--model", default=MODEL_DEFAULT)
     ap.add_argument("--aws-region", default=None)
-    ap.add_argument("--max-output-tokens", type=int, default=4000)
+    ap.add_argument("--max-output-tokens", type=int, default=12000)
     ap.add_argument("--build-only", action="store_true")
     args = ap.parse_args()
 
@@ -182,21 +209,31 @@ def main():
                                   args.max_output_tokens)
         prior_path.write_text(prior_text)
 
-    records, skipped = [], 0
-    for f in sorted(Path(args.traces).glob("*.json")):
+    records, skipped, failures = [], 0, []
+    files = sorted(Path(args.traces).glob("*.json"))
+    for i, f in enumerate(files, start=1):
         trace = json.loads(f.read_text())
         findings = by_trace.get(trace["trace_id"])
         if findings is None:
             skipped += 1
             continue
-        records.append(stage2_for_trace(trace, findings, prior_text,
-                                        args, out_dir))
+        try:
+            records.append(stage2_for_trace(trace, findings, prior_text,
+                                            args, out_dir))
+            print(f"[{i}/{len(files)}] {trace['trace_id'][:12]} ok", flush=True)
+        except Exception as exc:  # one bad trace must not kill the run
+            failures.append({"trace_id": trace["trace_id"],
+                             "error": f"{type(exc).__name__}: {exc}"[:300]})
+            print(f"[{i}/{len(files)}] {trace['trace_id'][:12]} FAILED "
+                  f"{type(exc).__name__}: {exc}"[:200], flush=True)
 
     if not args.build_only:
         (out_dir / "recovery.json").write_text(json.dumps(
-            {"records": records, "skipped_no_stage1": skipped}, indent=1))
+            {"records": records, "skipped_no_stage1": skipped,
+             "failures": failures}, indent=1))
     print(f"{'built prompts for' if args.build_only else 'processed'} "
-          f"{len(records)} traces; skipped (no stage-1 entry): {skipped}")
+          f"{len(records)} traces; failed: {len(failures)}; "
+          f"skipped (no stage-1 entry): {skipped}")
 
 
 if __name__ == "__main__":
