@@ -41,17 +41,34 @@ def numbered_steps(trace: dict) -> list[str]:
             for i, m in enumerate(trace["messages"], start=1)]
 
 
-def locate_quote(quote: str, trace: dict):
-    """Return the 1-based step containing `quote` (exact, then fuzzy)."""
+def locate_quote(quote: str, trace: dict, claimed_step=None):
+    """Verify `quote` against the numbered trace and return (step, how).
+
+    Converted traces repeat earlier content inside later prompts, so a
+    plain first-match search can drag a genuinely later occurrence back
+    to an earlier step — inverting causal order and collapsing distinct
+    occurrences. So: trust the model's asserted step when the quote is
+    actually there; only search when it is not.
+
+    how ∈ {"at_claimed", "relocated", "fuzzy", "unverified"}.
+    """
     norm = " ".join(quote.split()).lower()
-    if not norm:
-        return None
     contents = [" ".join(m["content"].split()).lower()
                 for m in trace["messages"]]
+    if not norm:
+        return (claimed_step, "unverified")
+
+    try:
+        cs = int(claimed_step)
+    except (TypeError, ValueError):
+        cs = None
+    if cs is not None and 1 <= cs <= len(contents) and norm in contents[cs - 1]:
+        return (cs, "at_claimed")
+
     for i, c in enumerate(contents, start=1):
         if norm in c:
-            return i
-    # fuzzy fallback: best-matching step by longest common block coverage
+            return (i, "relocated")
+
     best, best_score = None, 0.0
     probe = norm[:300]
     for i, c in enumerate(contents, start=1):
@@ -60,7 +77,9 @@ def locate_quote(quote: str, trace: dict):
         score = m.size / max(1, len(probe))
         if score > best_score:
             best, best_score = i, score
-    return best if best_score >= 0.6 else None
+    if best_score >= 0.6:
+        return (best, "fuzzy")
+    return (None, "unverified")
 
 
 # ---------------------------------------------------------------- model I/O
@@ -103,7 +122,7 @@ def stage2_for_trace(trace, findings, prior_text, args, out_dir):
 
     findings_block = []
     for f in findings:
-        step = locate_quote(f.get("evidence", ""), trace)
+        step, _how = locate_quote(f.get("evidence", ""), trace)
         if step is None:
             diagnostics["unlocated_findings"] += 1
         findings_block.append(
@@ -132,7 +151,8 @@ def stage2_for_trace(trace, findings, prior_text, args, out_dir):
             diagnostics["malformed_occurrences"] = (
                 diagnostics.get("malformed_occurrences", 0) + 1)
             continue
-        step = locate_quote(o.get("quote", ""), trace)
+        step, how = locate_quote(o.get("quote", ""), trace, o.get("step"))
+        diagnostics[f"quote_{how}"] = diagnostics.get(f"quote_{how}", 0) + 1
         if step is None:
             diagnostics["unverified_occurrences"] += 1
             try:
