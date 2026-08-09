@@ -1,0 +1,384 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "1. Receive the claim to verify as input to the pipeline.",
+    "2. Retriever performs hop-1: executes BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim, returns a set of relevant document passages.",
+    "3. Solver produces summary 1: analyzes the hop-1 retrieved passages to identify what they establish about the claim and what information is still missing.",
+    "4. Coordinator generates query for hop-2: transforms solver summary 1 into a keyword-style retrieval query targeting the missing information.",
+    "5. Retriever performs hop-2: executes BM25 search using the coordinator's query, returns a second set of relevant document passages.",
+    "6. Solver produces summary 2: analyzes the hop-2 retrieved passages (in context of what was already found) to identify what they establish and what remains missing.",
+    "7. Coordinator generates query for hop-3: transforms solver summary 2 into a keyword-style retrieval query targeting any remaining information gaps.",
+    "8. Retriever performs hop-3: executes BM25 search using the coordinator's query, returns a third set of relevant document passages.",
+    "9. Final output is produced: concatenation of all documents retrieved across hop-1, hop-2, and hop-3, with no verdict or additional analysis."
+  ],
+  "role_boundaries": {
+    "retriever": "Should execute BM25 searches over Wikipedia abstracts using keyword-style queries provided to it; return relevant passages. Should not interpret the claim semantically, generate its own queries autonomously, summarize content, reason about what is missing, or make verification judgments.",
+    "solver": "Should analyze retrieved passages to summarize what they establish about the claim and explicitly identify what information is still missing or needed. Should not perform retrieval, generate retrieval queries directly, make final verification verdicts, or operate on anything other than the passages provided to it.",
+    "coordinator": "Should transform solver summaries into keyword-style retrieval queries suitable for BM25 search, targeting the missing information identified by the solver. Should not perform retrieval itself, analyze passage content, make judgments about the claim, or generate queries independently of solver summaries."
+  },
+  "risk_patterns": [
+    "Retriever might receive a query that is too vague or too specific, causing irrelevant or no results to be returned.",
+    "Solver might fail to identify missing information, leading to redundant subsequent retrievals.",
+    "Coordinator might generate a query that does not effectively translate the solver's natural language summary into BM25-friendly keywords.",
+    "Retriever might return empty or low-quality results at any hop, propagating insufficient information forward.",
+    "Solver might over-interpret or hallucinate information not present in the retrieved passages.",
+    "Coordinator might lose focus on the original claim and drift toward tangential topics across hops.",
+    "The pipeline might exhaust its three hops without retrieving sufficient information to verify the claim.",
+    "Role confusion might occur where one component attempts to perform another's function, breaking the intended workflow.",
+    "The final concatenated output might contain duplicate or contradictory passages without reconciliation.",
+    "Early hops might retrieve documents that make later hops unnecessary, but the pipeline must still execute all three hops regardless."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Plans to begin a shutdown procedure of the Bilibino Nuclear Power Plant  plant in 2019 have been announced, and  it will be replaced by the floating nuclear power station named after a Russian polymath, scientist, and writer, who discovered the atmosphere of the planet Venus.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Bilibino Nuclear Power Plant | The Bilibino Nuclear Power Plant (Russian: Билибинская АЭС [   ]) is a power plant in Bilibino, Chukotka Autonomous Okrug, Russia.  The plant is equipped with four EGP-6 reactors.  The plant is the smallest and the northernmost operating nuclear power plant in the world.  Plans to begin a shutdown procedure of the plant in 2019 have been announced, and it will be replaced by the floating nuclear power station "Akademik Lomonosov".
+Diablo Canyon Power Plant | The Diablo Canyon Power Plant is an electricity-generating nuclear power plant near Avila Beach in San Luis Obispo County, California.  After the permanent shutdown of the San Onofre Nuclear Generating Station in 2013 it is the only nuclear plant operational in the state.  The plant has two Westinghouse-designed 4-loop pressurized-water nuclear reactors operated by Pacific Gas & Electric.
+Ignalina Nuclear Power Plant | The Ignalina Nuclear Power Plant (Lithuanian: "Ignalinos Atominė Elektrinė, IAE" , Russian: Игналинская атомная электростанция, "Ignalinskaya atomnaya elektrostantsiya" ) is a closed two-unit RBMK-1500 nuclear power station in Visaginas municipality, Lithuania.  It was named after the nearby city of Ignalina.  Due to the plant's similarities to the failed Chernobyl Nuclear Power Plant in both reactor design and lack of a robust containment building, Lithuania agreed to close the plant as part of its accession agreement to the European Union.  Unit 1 was closed in December 2004.  The remaining Unit 2 which counted for 25% of Lithuania's electricity generating capacity and supplied about 70% of Lithuania's electrical demand, was closed on December 31, 2009.  Proposals have been made to construct a new nuclear power plant at the same site.
+List of nuclear whistleblowers | There have been a number of nuclear whistleblowers, often nuclear engineers, who have identified safety concerns about nuclear power and nuclear weapons production.  In 1976 Gregory Minor, Richard Hubbard and Dale Bridenbaugh "blew the whistle" on safety problems at nuclear power plants in the United States.  George Galatis was a senior nuclear engineer who reported safety problems at the Millstone 1 Nuclear Power Plant, relating to reactor refueling procedures, in 1996.  Other nuclear power whistleblowers include Arnold Gundersen and David Lochbaum.
+Sendai Nuclear Power Plant | The Sendai Nuclear Power Plant (川内原子力発電所 , Sendai Genshiryoku Hatsudensho , Sendai NPP) is a nuclear power plant located in the city of Satsumasendai in Kagoshima Prefecture.  The two 846 MW net reactors are owned and operated by the Kyūshū Electric Power Company.  The plant, like all other nuclear power plants in Japan, did not generate electricity after the nationwide shutdown in the wake of the Fukushima Daiichi nuclear disaster in 2011, but was restarted on August 11, 2015, and began providing power to nearby towns again.  Sendai is the first of Japan's nuclear power plants to be restarted.
+Marble Hill Nuclear Power Plant | Marble Hill Nuclear Power Station was an unfinished nuclear power plant in Saluda Township, Jefferson County, near Hanover, Indiana, USA.  In 1984, the Public Service Company of Indiana announced it was abandoning the half-finished nuclear power plant, on which $2.5 billion had already been spent.
+Sinop Nuclear Power Plant | The Sinop Nuclear Power Plant (Turkish: "Sinop Nükleer Enerji Santrali" ) is a planned nuclear plant located at Sinop in northern Turkey.  It will be the country's second nuclear power plant after the projected Akkuyu Nuclear Power Plant.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+[STEP 4] (user) [[ ## claim ## ]]
+Plans to begin a shutdown procedure of the Bilibino Nuclear Power Plant  plant in 2019 have been announced, and  it will be replaced by the floating nuclear power station named after a Russian polymath, scientist, and writer, who discovered the atmosphere of the planet Venus.
+
+[[ ## passages ## ]]
+[1] «Bilibino Nuclear Power Plant | The Bilibino Nuclear Power Plant (Russian: Билибинская АЭС [   ]) is a power plant in Bilibino, Chukotka Autonomous Okrug, Russia.  The plant is equipped with four EGP-6 reactors.  The plant is the smallest and the northernmost operating nuclear power plant in the world.  Plans to begin a shutdown procedure of the plant in 2019 have been announced, and it will be replaced by the floating nuclear power station "Akademik Lomonosov".»
+[2] «Diablo Canyon Power Plant | The Diablo Canyon Power Plant is an electricity-generating nuclear power plant near Avila Beach in San Luis Obispo County, California.  After the permanent shutdown of the San Onofre Nuclear Generating Station in 2013 it is the only nuclear plant operational in the state.  The plant has two Westinghouse-designed 4-loop pressurized-water nuclear reactors operated by Pacific Gas & Electric.»
+[3] «Ignalina Nuclear Power Plant | The Ignalina Nuclear Power Plant (Lithuanian: "Ignalinos Atominė Elektrinė, IAE" , Russian: Игналинская атомная электростанция, "Ignalinskaya atomnaya elektrostantsiya" ) is a closed two-unit RBMK-1500 nuclear power station in Visaginas municipality, Lithuania.  It was named after the nearby city of Ignalina.  Due to the plant's similarities to the failed Chernobyl Nuclear Power Plant in both reactor design and lack of a robust containment building, Lithuania agreed to close the plant as part of its accession agreement to the European Union.  Unit 1 was closed in December 2004.  The remaining Unit 2 which counted for 25% of Lithuania's electricity generating capacity and supplied about 70% of Lithuania's electrical demand, was closed on December 31, 2009.  Proposals have been made to construct a new nuclear power plant at the same site.»
+[4] «List of nuclear whistleblowers | There have been a number of nuclear whistleblowers, often nuclear engineers, who have identified safety concerns about nuclear power and nuclear weapons production.  In 1976 Gregory Minor, Richard Hubbard and Dale Bridenbaugh "blew the whistle" on safety problems at nuclear power plants in the United States.  George Galatis was a senior nuclear engineer who reported safety problems at the Millstone 1 Nuclear Power Plant, relating to reactor refueling procedures, in 1996.  Other nuclear power whistleblowers include Arnold Gundersen and David Lochbaum.»
+[5] «Sendai Nuclear Power Plant | The Sendai Nuclear Power Plant (川内原子力発電所 , Sendai Genshiryoku Hatsudensho , Sendai NPP) is a nuclear power plant located in the city of Satsumasendai in Kagoshima Prefecture.  The two 846 MW net reactors are owned and operated by the Kyūshū Electric Power Company.  The plant, like all other nuclear power plants in Japan, did not generate electricity after the nationwide shutdown in the wake of the Fukushima Daiichi nuclear disaster in 2011, but was restarted on August 11, 2015, and began providing power to nearby towns again.  Sendai is the first of Japan's nuclear power plants to be restarted.»
+[6] «Marble Hill Nuclear Power Plant | Marble Hill Nuclear Power Station was an unfinished nuclear power plant in Saluda Township, Jefferson County, near Hanover, Indiana, USA.  In 1984, the Public Service Company of Indiana announced it was abandoning the half-finished nuclear power plant, on which $2.5 billion had already been spent.»
+[7] «Sinop Nuclear Power Plant | The Sinop Nuclear Power Plant (Turkish: "Sinop Nükleer Enerji Santrali" ) is a planned nuclear plant located at Sinop in northern Turkey.  It will be the country's second nuclear power plant after the projected Akkuyu Nuclear Power Plant.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me break down the claim into its components:
+
+1. Plans to begin shutdown of Bilibino Nuclear Power Plant in 2019 - VERIFIED in passage [1]
+2. It will be replaced by a floating nuclear power station - VERIFIED in passage [1], named "Akademik Lomonosov"
+3. The floating station is named after a Russian polymath, scientist, and writer - REQUIRES VERIFICATION
+4. This person discovered the atmosphere of Venus - REQUIRES VERIFICATION
+
+Passage [1] confirms the first two parts of the claim explicitly. However, it only provides the name "Akademik Lomonosov" without any biographical information about who this person was.
+
+To complete verification of the claim, I need to verify:
+- That "Akademik Lomonosov" refers to a specific historical figure (not just a name)
+- That this person was a Russian polymath, scientist, and writer
+- That this person discovered the atmosphere of Venus
+
+These biographical and historical facts about Lomonosov are not present in any of the provided passages. Passages [2] through [7] discuss various other nuclear power plants but contain no relevant information about Lomonosov or Venus's atmosphere.
+
+[[ ## summary ## ]]
+The claim can be partially verified but lacks critical supporting evidence. Passage [1] confirms that plans to shutdown the Bilibino Nuclear Power Plant in 2019 were announced and that it will be replaced by a floating nuclear power station named "Akademik Lomonosov." However, the passages provide insufficient information to verify the biographical claims about who "Akademik Lomonosov" was named after.
+
+To complete verification, the following evidence would be needed:
+- A biographical passage about Mikhail Lomonosov (or whoever the station is named after) confirming he was a Russian polymath, scientist, and writer
+- Historical information confirming this person's discovery of Venus's atmosphere
+
+Without these passages, it is impossible to verify whether the floating nuclear power station is indeed named after someone with the claimed characteristics of being a Russian polymath, scientist, writer who discovered Venus's atmosphere.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Plans to begin a shutdown procedure of the Bilibino Nuclear Power Plant  plant in 2019 have been announced, and  it will be replaced by the floating nuclear power station named after a Russian polymath, scientist, and writer, who discovered the atmosphere of the planet Venus.
+
+[[ ## summary_1 ## ]]
+The claim can be partially verified but lacks critical supporting evidence. Passage [1] confirms that plans to shutdown the Bilibino Nuclear Power Plant in 2019 were announced and that it will be replaced by a floating nuclear power station named "Akademik Lomonosov." However, the passages provide insufficient information to verify the biographical claims about who "Akademik Lomonosov" was named after.
+
+To complete verification, the following evidence would be needed:
+- A biographical passage about Mikhail Lomonosov (or whoever the station is named after) confirming he was a Russian polymath, scientist, and writer
+- Historical information confirming this person's discovery of Venus's atmosphere
+
+Without these passages, it is impossible to verify whether the floating nuclear power station is indeed named after someone with the claimed characteristics of being a Russian polymath, scientist, writer who discovered Venus's atmosphere.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim makes specific biographical assertions about Mikhail Lomonosov (implied by the reference to "Akademik Lomonosov"). While the factual details about the Bilibino shutdown and the floating nuclear power station's name can be verified from existing passages, the biographical claims require targeted verification. Specifically, we need to confirm: (1) that Lomonosov was a Russian polymath, scientist, and writer, and (2) that he discovered the atmosphere of Venus. These are testable historical facts that should be independently verified against reliable biographical sources.
+
+[[ ## query ## ]]
+Did Mikhail Lomonosov discover the atmosphere of Venus, and was he a Russian polymath, scientist, and writer?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Mikhail Lomonosov | Mikhail Vasilyevich Lomonosov ( ; Russian: Михаи́л (Михáйло) Васи́льевич Ломоно́сов ; ] ; November 19 [O.S. November 8] 1711 – April 15 [O.S. April 4] 1765 ) was a Russian polymath, scientist and writer, who made important contributions to literature, education, and science.  Among his discoveries were the atmosphere of Venus and the Law of Mass Conservation in chemical reactions. His spheres of science were natural science, chemistry, physics, mineralogy, history, art, philology, optical devices and others.  Lomonosov was also a poet and influenced the formation of the modern Russian literary language.
+Lomonosov Gold Medal | The Lomonosov Gold Medal, named after Russian scientist and polymath Mikhail Lomonosov, is awarded each year since 1959 for outstanding achievements in the natural sciences and the humanities by the USSR Academy of Sciences and later the Russian Academy of Sciences (RAS).  Since 1967, two medals are awarded annually: one to a Russian and one to a foreign scientist.  It is the Academy's highest accolade.
+Lomonosovsky District | Lomonosovsky District is the name of several administrative and municipal districts in Russia.  The districts are generally named for Mikhail Lomonosov, a Russian polymath.
+Lomonosov Mountains | The Lomonosov Mountains ( ) are a somewhat isolated chain of mountains extending 18 nmi northeast–southwest, located 20 nmi east of the Wohlthat Mountains in Queen Maud Land, Antarctica.  They were discovered and first plotted from air photos by the Third German Antarctic Expedition, 1938–39, and were mapped from air photos and surveys by the Sixth Norwegian Antarctic Expedition, 1958–59.  The mountains were remapped by the Soviet Antarctic Expedition, 1960–61, and named after Russian scientist Mikhail Lomonosov.
+Science and technology in Russia | Science and technology in Russia developed rapidly since the Age of Enlightenment, when Peter the Great founded the Russian Academy of Sciences and Saint Petersburg State University and polymath Mikhail Lomonosov founded the Moscow State University, establishing a strong native tradition in learning and innovation.
+Mikhail Shcherbatov | Prince Mikhailo Mikhailovich Shcherbatov (Russian: Михаи́л Миха́йлович Щерба́тов , July 22, 1733 – December 12, 1790) was a leading ideologue and exponent of the Russian Enlightenment, on the par with Mikhail Lomonosov and Nikolay Novikov.  His view of human nature and social progress is kindred to Swift's pessimism.  He was known as a statesman, historian, writer and philosopher, and was one of the most visible representatives of the nascent Russian conservatism during the second half of the 18th century.
+Akademik Lomonosov | Akademik Lomonosov is a non-self-propelled vessel to be operated as the first Russian floating nuclear power station.  The ship was named after Academician Mikhail Lomonosov.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Plans to begin a shutdown procedure of the Bilibino Nuclear Power Plant  plant in 2019 have been announced, and  it will be replaced by the floating nuclear power station named after a Russian polymath, scientist, and writer, who discovered the atmosphere of the planet Venus.
+
+[[ ## context ## ]]
+The claim can be partially verified but lacks critical supporting evidence. Passage [1] confirms that plans to shutdown the Bilibino Nuclear Power Plant in 2019 were announced and that it will be replaced by a floating nuclear power station named "Akademik Lomonosov." However, the passages provide insufficient information to verify the biographical claims about who "Akademik Lomonosov" was named after.
+
+To complete verification, the following evidence would be needed:
+- A biographical passage about Mikhail Lomonosov (or whoever the station is named after) confirming he was a Russian polymath, scientist, and writer
+- Historical information confirming this person's discovery of Venus's atmosphere
+
+Without these passages, it is impossible to verify whether the floating nuclear power station is indeed named after someone with the claimed characteristics of being a Russian polymath, scientist, writer who discovered Venus's atmosphere.
+
+[[ ## passages ## ]]
+[1] «Mikhail Lomonosov | Mikhail Vasilyevich Lomonosov ( ; Russian: Михаи́л (Михáйло) Васи́льевич Ломоно́сов ; ] ; November 19 [O.S. November 8] 1711 – April 15 [O.S. April 4] 1765 ) was a Russian polymath, scientist and writer, who made important contributions to literature, education, and science.  Among his discoveries were the atmosphere of Venus and the Law of Mass Conservation in chemical reactions. His spheres of science were natural science, chemistry, physics, mineralogy, history, art, philology, optical devices and others.  Lomonosov was also a poet and influenced the formation of the modern Russian literary language.»
+[2] «Lomonosov Gold Medal | The Lomonosov Gold Medal, named after Russian scientist and polymath Mikhail Lomonosov, is awarded each year since 1959 for outstanding achievements in the natural sciences and the humanities by the USSR Academy of Sciences and later the Russian Academy of Sciences (RAS).  Since 1967, two medals are awarded annually: one to a Russian and one to a foreign scientist.  It is the Academy's highest accolade.»
+[3] «Lomonosovsky District | Lomonosovsky District is the name of several administrative and municipal districts in Russia.  The districts are generally named for Mikhail Lomonosov, a Russian polymath.»
+[4] «Lomonosov Mountains | The Lomonosov Mountains ( ) are a somewhat isolated chain of mountains extending 18 nmi northeast–southwest, located 20 nmi east of the Wohlthat Mountains in Queen Maud Land, Antarctica.  They were discovered and first plotted from air photos by the Third German Antarctic Expedition, 1938–39, and were mapped from air photos and surveys by the Sixth Norwegian Antarctic Expedition, 1958–59.  The mountains were remapped by the Soviet Antarctic Expedition, 1960–61, and named after Russian scientist Mikhail Lomonosov.»
+[5] «Science and technology in Russia | Science and technology in Russia developed rapidly since the Age of Enlightenment, when Peter the Great founded the Russian Academy of Sciences and Saint Petersburg State University and polymath Mikhail Lomonosov founded the Moscow State University, establishing a strong native tradition in learning and innovation.»
+[6] «Mikhail Shcherbatov | Prince Mikhailo Mikhailovich Shcherbatov (Russian: Михаи́л Миха́йлович Щерба́тов , July 22, 1733 – December 12, 1790) was a leading ideologue and exponent of the Russian Enlightenment, on the par with Mikhail Lomonosov and Nikolay Novikov.  His view of human nature and social progress is kindred to Swift's pessimism.  He was known as a statesman, historian, writer and philosopher, and was one of the most visible representatives of the nascent Russian conservatism during the second half of the 18th century.»
+[7] «Akademik Lomonosov | Akademik Lomonosov is a non-self-propelled vessel to be operated as the first Russian floating nuclear power station.  The ship was named after Academician Mikhail Lomonosov.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim makes several specific assertions that can now be verified against the provided passages:
+
+1. **Bilibino Nuclear Power Plant shutdown in 2019**: The passages provided do not contain information about the Bilibino Nuclear Power Plant or its shutdown plans. This element cannot be verified from the given passages.
+
+2. **Replacement by floating nuclear power station**: Passage [7] confirms that "Akademik Lomonosov is a non-self-propelled vessel to be operated as the first Russian floating nuclear power station."
+
+3. **Named after a Russian polymath, scientist, and writer**: Passage [7] states the ship was "named after Academician Mikhail Lomonosov." Passage [1] confirms Mikhail Lomonosov was indeed "a Russian polymath, scientist and writer."
+
+4. **Discovered the atmosphere of Venus**: Passage [1] explicitly states that among Lomonosov's discoveries "were the atmosphere of Venus and the Law of Mass Conservation in chemical reactions."
+
+All biographical claims about the person the station is named after are now fully supported by the passages. The only unverified element is the specific claim about the Bilibino plant shutdown in 2019, which is not addressed in any of the provided passages.
+
+[[ ## summary ## ]]
+The claim is substantially verified. Passages confirm that the floating nuclear power station "Akademik Lomonosov" is named after Mikhail Lomonosov, who was indeed a Russian polymath, scientist, and writer who discovered the atmosphere of Venus. However, the passages do not contain information about the Bilibino Nuclear Power Plant's shutdown plans in 2019, so that specific element cannot be verified from the provided sources.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Plans to begin a shutdown procedure of the Bilibino Nuclear Power Plant  plant in 2019 have been announced, and  it will be replaced by the floating nuclear power station named after a Russian polymath, scientist, and writer, who discovered the atmosphere of the planet Venus.
+
+[[ ## summary_1 ## ]]
+The claim can be partially verified but lacks critical supporting evidence. Passage [1] confirms that plans to shutdown the Bilibino Nuclear Power Plant in 2019 were announced and that it will be replaced by a floating nuclear power station named "Akademik Lomonosov." However, the passages provide insufficient information to verify the biographical claims about who "Akademik Lomonosov" was named after.
+
+To complete verification, the following evidence would be needed:
+- A biographical passage about Mikhail Lomonosov (or whoever the station is named after) confirming he was a Russian polymath, scientist, and writer
+- Historical information confirming this person's discovery of Venus's atmosphere
+
+Without these passages, it is impossible to verify whether the floating nuclear power station is indeed named after someone with the claimed characteristics of being a Russian polymath, scientist, writer who discovered Venus's atmosphere.
+
+[[ ## summary_2 ## ]]
+The claim is substantially verified. Passages confirm that the floating nuclear power station "Akademik Lomonosov" is named after Mikhail Lomonosov, who was indeed a Russian polymath, scientist, and writer who discovered the atmosphere of Venus. However, the passages do not contain information about the Bilibino Nuclear Power Plant's shutdown plans in 2019, so that specific element cannot be verified from the provided sources.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries present conflicting assessments of the claim's verifiability. Summary_1 states that biographical information about Lomonosov cannot be verified from the passages provided, while Summary_2 asserts that passages do confirm Lomonosov was a Russian polymath, scientist, and writer who discovered Venus's atmosphere. This discrepancy suggests that the passages available to Summary_2 contained biographical information about Mikhail Lomonosov that was not available to Summary_1. To resolve this conflict and determine the actual state of evidence, a targeted query is needed to verify the specific biographical claims about who Lomonosov was and his contributions to science.
+
+[[ ## query ## ]]
+Was Mikhail Lomonosov a Russian polymath, scientist, and writer? Did Mikhail Lomonosov discover or contribute to the discovery of Venus's atmosphere?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Mikhail Lomonosov | Mikhail Vasilyevich Lomonosov ( ; Russian: Михаи́л (Михáйло) Васи́льевич Ломоно́сов ; ] ; November 19 [O.S. November 8] 1711 – April 15 [O.S. April 4] 1765 ) was a Russian polymath, scientist and writer, who made important contributions to literature, education, and science.  Among his discoveries were the atmosphere of Venus and the Law of Mass Conservation in chemical reactions. His spheres of science were natural science, chemistry, physics, mineralogy, history, art, philology, optical devices and others.  Lomonosov was also a poet and influenced the formation of the modern Russian literary language.
+Lomonosov Gold Medal | The Lomonosov Gold Medal, named after Russian scientist and polymath Mikhail Lomonosov, is awarded each year since 1959 for outstanding achievements in the natural sciences and the humanities by the USSR Academy of Sciences and later the Russian Academy of Sciences (RAS).  Since 1967, two medals are awarded annually: one to a Russian and one to a foreign scientist.  It is the Academy's highest accolade.
+Lomonosovsky District | Lomonosovsky District is the name of several administrative and municipal districts in Russia.  The districts are generally named for Mikhail Lomonosov, a Russian polymath.
+Lomonosov Mountains | The Lomonosov Mountains ( ) are a somewhat isolated chain of mountains extending 18 nmi northeast–southwest, located 20 nmi east of the Wohlthat Mountains in Queen Maud Land, Antarctica.  They were discovered and first plotted from air photos by the Third German Antarctic Expedition, 1938–39, and were mapped from air photos and surveys by the Sixth Norwegian Antarctic Expedition, 1958–59.  The mountains were remapped by the Soviet Antarctic Expedition, 1960–61, and named after Russian scientist Mikhail Lomonosov.
+Akademik Lomonosov | Akademik Lomonosov is a non-self-propelled vessel to be operated as the first Russian floating nuclear power station.  The ship was named after Academician Mikhail Lomonosov.
+Mikhailo Lomonosov (satellite) | Mikhailo Lomonosov (or MVL-300) is an astronomical satellite of MSU named after Mikhail Lomonosov.
+Science and technology in Russia | Science and technology in Russia developed rapidly since the Age of Enlightenment, when Peter the Great founded the Russian Academy of Sciences and Saint Petersburg State University and polymath Mikhail Lomonosov founded the Moscow State University, establishing a strong native tradition in learning and innovation.
+Moscow State University | Lomonosov Moscow State University (MSU; Russian: Московский государственный университет имени М.  В.  Ломоносова , often abbreviated МГУ) is a coeducational and public research university located in Moscow, Russia.  It was founded on January 25, 1755 by Mikhail Lomonosov.  MSU was renamed after Lomonosov in 1940 and was then known as "Lomonosov University".  It also houses the tallest educational building in the world.  It is rated among the universities with the best reputation in the world.  Its current rector is Viktor Sadovnichiy.
+Lomonosovfonna | Lomonosovfonna is an ice cap at Spitsbergen, Svalbard.  The glacier is located northeast of the fjord Billefjorden.  It covers an area of about 600 square kilometers, and divides Ny-Friesland from Olav V Land.  It is named after Russian scientist Mikhail Lomonosov.
+Mikhail Shcherbatov | Prince Mikhailo Mikhailovich Shcherbatov (Russian: Михаи́л Миха́йлович Щерба́тов , July 22, 1733 – December 12, 1790) was a leading ideologue and exponent of the Russian Enlightenment, on the par with Mikhail Lomonosov and Nikolay Novikov.  His view of human nature and social progress is kindred to Swift's pessimism.  He was known as a statesman, historian, writer and philosopher, and was one of the most visible representatives of the nascent Russian conservatism during the second half of the 18th century.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Bilibino Nuclear Power Plant | The Bilibino Nuclear Power Plant (Russian: Билибинская АЭС [   ]) is a power plant in Bilibino, Chukotka Autonomous Okrug, Russia.  The plant is equipped with four EGP-6 reactors.  The plant is the smallest and the northernmost operating nuclear power plant in the world.  Plans to begin a shutdown procedure of the plant in 2019 have been announced, and it will be replaced by the floating nuclear power station "Akademik Lomonosov".
+Diablo Canyon Power Plant | The Diablo Canyon Power Plant is an electricity-generating nuclear power plant near Avila Beach in San Luis Obispo County, California.  After the permanent shutdown of the San Onofre Nuclear Generating Station in 2013 it is the only nuclear plant operational in the state.  The plant has two Westinghouse-designed 4-loop pressurized-water nuclear reactors operated by Pacific Gas & Electric.
+Ignalina Nuclear Power Plant | The Ignalina Nuclear Power Plant (Lithuanian: "Ignalinos Atominė Elektrinė, IAE" , Russian: Игналинская атомная электростанция, "Ignalinskaya atomnaya elektrostantsiya" ) is a closed two-unit RBMK-1500 nuclear power station in Visaginas municipality, Lithuania.  It was named after the nearby city of Ignalina.  Due to the plant's similarities to the failed Chernobyl Nuclear Power Plant in both reactor design and lack of a robust containment building, Lithuania agreed to close the plant as part of its accession agreement to the European Union.  Unit 1 was closed in December 2004.  The remaining Unit 2 which counted for 25% of Lithuania's electricity generating capacity and supplied about 70% of Lithuania's electrical demand, was closed on December 31, 2009.  Proposals have been made to construct a new nuclear power plant at the same site.
+List of nuclear whistleblowers | There have been a number of nuclear whistleblowers, often nuclear engineers, who have identified safety concerns about nuclear power and nuclear weapons production.  In 1976 Gregory Minor, Richard Hubbard and Dale Bridenbaugh "blew the whistle" on safety problems at nuclear power plants in the United States.  George Galatis was a senior nuclear engineer who reported safety problems at the Millstone 1 Nuclear Power Plant, relating to reactor refueling procedures, in 1996.  Other nuclear power whistleblowers include Arnold Gundersen and David Lochbaum.
+Sendai Nuclear Power Plant | The Sendai Nuclear Power Plant (川内原子力発電所 , Sendai Genshiryoku Hatsudensho , Sendai NPP) is a nuclear power plant located in the city of Satsumasendai in Kagoshima Prefecture.  The two 846 MW net reactors are owned and operated by the Kyūshū Electric Power Company.  The plant, like all other nuclear power plants in Japan, did not generate electricity after the nationwide shutdown in the wake of the Fukushima Daiichi nuclear disaster in 2011, but was restarted on August 11, 2015, and began providing power to nearby towns again.  Sendai is the first of Japan's nuclear power plants to be restarted.
+Marble Hill Nuclear Power Plant | Marble Hill Nuclear Power Station was an unfinished nuclear power plant in Saluda Township, Jefferson County, near Hanover, Indiana, USA.  In 1984, the Public Service Company of Indiana announced it was abandoning the half-finished nuclear power plant, on which $2.5 billion had already been spent.
+Sinop Nuclear Power Plant | The Sinop Nuclear Power Plant (Turkish: "Sinop Nükleer Enerji Santrali" ) is a planned nuclear plant located at Sinop in northern Turkey.  It will be the country's second nuclear power plant after the projected Akkuyu Nuclear Power Plant.
+Mikhail Lomonosov | Mikhail Vasilyevich Lomonosov ( ; Russian: Михаи́л (Михáйло) Васи́льевич Ломоно́сов ; ] ; November 19 [O.S. November 8] 1711 – April 15 [O.S. April 4] 1765 ) was a Russian polymath, scientist and writer, who made important contributions to literature, education, and science.  Among his discoveries were the atmosphere of Venus and the Law of Mass Conservation in chemical reactions. His spheres of science were natural science, chemistry, physics, mineralogy, history, art, philology, optical devices and others.  Lomonosov was also a poet and influenced the formation of the modern Russian literary language.
+Lomonosov Gold Medal | The Lomonosov Gold Medal, named after Russian scientist and polymath Mikhail Lomonosov, is awarded each year since 1959 for outstanding achievements in the natural sciences and the humanities by the USSR Academy of Sciences and later the Russian Academy of Sciences (RAS).  Since 1967, two medals are awarded annually: one to a Russian and one to a foreign scientist.  It is the Academy's highest accolade.
+Lomonosovsky District | Lomonosovsky District is the name of several administrative and municipal districts in Russia.  The districts are generally named for Mikhail Lomonosov, a Russian polymath.
+Lomonosov Mountains | The Lomonosov Mountains ( ) are a somewhat isolated chain of mountains extending 18 nmi northeast–southwest, located 20 nmi east of the Wohlthat Mountains in Queen Maud Land, Antarctica.  They were discovered and first plotted from air photos by the Third German Antarctic Expedition, 1938–39, and were mapped from air photos and surveys by the Sixth Norwegian Antarctic Expedition, 1958–59.  The mountains were remapped by the Soviet Antarctic Expedition, 1960–61, and named after Russian scientist Mikhail Lomonosov.
+Science and technology in Russia | Science and technology in Russia developed rapidly since the Age of Enlightenment, when Peter the Great founded the Russian Academy of Sciences and Saint Petersburg State University and polymath Mikhail Lomonosov founded the Moscow State University, establishing a strong native tradition in learning and innovation.
+Mikhail Shcherbatov | Prince Mikhailo Mikhailovich Shcherbatov (Russian: Михаи́л Миха́йлович Щерба́тов , July 22, 1733 – December 12, 1790) was a leading ideologue and exponent of the Russian Enlightenment, on the par with Mikhail Lomonosov and Nikolay Novikov.  His view of human nature and social progress is kindred to Swift's pessimism.  He was known as a statesman, historian, writer and philosopher, and was one of the most visible representatives of the nascent Russian conservatism during the second half of the 18th century.
+Akademik Lomonosov | Akademik Lomonosov is a non-self-propelled vessel to be operated as the first Russian floating nuclear power station.  The ship was named after Academician Mikhail Lomonosov.
+Mikhail Lomonosov | Mikhail Vasilyevich Lomonosov ( ; Russian: Михаи́л (Михáйло) Васи́льевич Ломоно́сов ; ] ; November 19 [O.S. November 8] 1711 – April 15 [O.S. April 4] 1765 ) was a Russian polymath, scientist and writer, who made important contributions to literature, education, and science.  Among his discoveries were the atmosphere of Venus and the Law of Mass Conservation in chemical reactions. His spheres of science were natural science, chemistry, physics, mineralogy, history, art, philology, optical devices and others.  Lomonosov was also a poet and influenced the formation of the modern Russian literary language.
+Lomonosov Gold Medal | The Lomonosov Gold Medal, named after Russian scientist and polymath Mikhail Lomonosov, is awarded each year since 1959 for outstanding achievements in the natural sciences and the humanities by the USSR Academy of Sciences and later the Russian Academy of Sciences (RAS).  Since 1967, two medals are awarded annually: one to a Russian and one to a foreign scientist.  It is the Academy's highest accolade.
+Lomonosovsky District | Lomonosovsky District is the name of several administrative and municipal districts in Russia.  The districts are generally named for Mikhail Lomonosov, a Russian polymath.
+Lomonosov Mountains | The Lomonosov Mountains ( ) are a somewhat isolated chain of mountains extending 18 nmi northeast–southwest, located 20 nmi east of the Wohlthat Mountains in Queen Maud Land, Antarctica.  They were discovered and first plotted from air photos by the Third German Antarctic Expedition, 1938–39, and were mapped from air photos and surveys by the Sixth Norwegian Antarctic Expedition, 1958–59.  The mountains were remapped by the Soviet Antarctic Expedition, 1960–61, and named after Russian scientist Mikhail Lomonosov.
+Akademik Lomonosov | Akademik Lomonosov is a non-self-propelled vessel to be operated as the first Russian floating nuclear power station.  The ship was named after Academician Mikhail Lomonosov.
+Mikhailo Lomonosov (satellite) | Mikhailo Lomonosov (or MVL-300) is an astronomical satellite of MSU named after Mikhail Lomonosov.
+Science and technology in Russia | Science and technology in Russia developed rapidly since the Age of Enlightenment, when Peter the Great founded the Russian Academy of Sciences and Saint Petersburg State University and polymath Mikhail Lomonosov founded the Moscow State University, establishing a strong native tradition in learning and innovation.
+Moscow State University | Lomonosov Moscow State University (MSU; Russian: Московский государственный университет имени М.  В.  Ломоносова , often abbreviated МГУ) is a coeducational and public research university located in Moscow, Russia.  It was founded on January 25, 1755 by Mikhail Lomonosov.  MSU was renamed after Lomonosov in 1940 and was then known as "Lomonosov University".  It also houses the tallest educational building in the world.  It is rated among the universities with the best reputation in the world.  Its current rector is Viktor Sadovnichiy.
+Lomonosovfonna | Lomonosovfonna is an ice cap at Spitsbergen, Svalbard.  The glacier is located northeast of the fjord Billefjorden.  It covers an area of about 600 square kilometers, and divides Ny-Friesland from Olav V Land.  It is named after Russian scientist Mikhail Lomonosov.
+Mikhail Shcherbatov | Prince Mikhailo Mikhailovich Shcherbatov (Russian: Михаи́л Миха́йлович Щерба́тов , July 22, 1733 – December 12, 1790) was a leading ideologue and exponent of the Russian Enlightenment, on the par with Mikhail Lomonosov and Nikolay Novikov.  His view of human nature and social progress is kindred to Swift's pessimism.  He was known as a statesman, historian, writer and philosopher, and was one of the most visible representatives of the nascent Russian conservatism during the second half of the 18th century.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 query: 'Mikhail Lomonosov Russian polymath scientist writer' (simple keyword query for biographical info). Hop 3 query: 'Was Mikhail Lomonosov a Russian polymath, scientist, and writer? Did Mikhail Lomonosov discover or contribute to the discovery of Venus's atmosphere?' Both queries target the exact same biographical information about Lomonosov despite Summary_2 already confirming this info
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Hop 3 query formulated as compound yes/no questions: 'Was Mikhail Lomonosov a Russian polymath, scientist, and writer? Did Mikhail Lomonosov discover or contribute to the discovery of Venus's atmosphere?' This bundles multiple verification targets into natural-language question form rather than using keyword-based entity retrieval format.
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

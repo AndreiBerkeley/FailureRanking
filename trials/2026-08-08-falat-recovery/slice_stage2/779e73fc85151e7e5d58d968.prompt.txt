@@ -1,0 +1,432 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "1. Receive the claim to verify as input to the pipeline.",
+    "2. Retriever performs hop-1: executes BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim, returns a set of relevant document passages.",
+    "3. Solver produces summary 1: analyzes the hop-1 retrieved passages to identify what they establish about the claim and what information is still missing.",
+    "4. Coordinator generates query for hop-2: transforms solver summary 1 into a keyword-style retrieval query targeting the missing information.",
+    "5. Retriever performs hop-2: executes BM25 search using the coordinator's query, returns a second set of relevant document passages.",
+    "6. Solver produces summary 2: analyzes the hop-2 retrieved passages (in context of what was already found) to identify what they establish and what remains missing.",
+    "7. Coordinator generates query for hop-3: transforms solver summary 2 into a keyword-style retrieval query targeting any remaining information gaps.",
+    "8. Retriever performs hop-3: executes BM25 search using the coordinator's query, returns a third set of relevant document passages.",
+    "9. Final output is produced: concatenation of all documents retrieved across hop-1, hop-2, and hop-3, with no verdict or additional analysis."
+  ],
+  "role_boundaries": {
+    "retriever": "Should execute BM25 searches over Wikipedia abstracts using keyword-style queries provided to it; return relevant passages. Should not interpret the claim semantically, generate its own queries autonomously, summarize content, reason about what is missing, or make verification judgments.",
+    "solver": "Should analyze retrieved passages to summarize what they establish about the claim and explicitly identify what information is still missing or needed. Should not perform retrieval, generate retrieval queries directly, make final verification verdicts, or operate on anything other than the passages provided to it.",
+    "coordinator": "Should transform solver summaries into keyword-style retrieval queries suitable for BM25 search, targeting the missing information identified by the solver. Should not perform retrieval itself, analyze passage content, make judgments about the claim, or generate queries independently of solver summaries."
+  },
+  "risk_patterns": [
+    "Retriever might receive a query that is too vague or too specific, causing irrelevant or no results to be returned.",
+    "Solver might fail to identify missing information, leading to redundant subsequent retrievals.",
+    "Coordinator might generate a query that does not effectively translate the solver's natural language summary into BM25-friendly keywords.",
+    "Retriever might return empty or low-quality results at any hop, propagating insufficient information forward.",
+    "Solver might over-interpret or hallucinate information not present in the retrieved passages.",
+    "Coordinator might lose focus on the original claim and drift toward tangential topics across hops.",
+    "The pipeline might exhaust its three hops without retrieving sufficient information to verify the claim.",
+    "Role confusion might occur where one component attempts to perform another's function, breaking the intended workflow.",
+    "The final concatenated output might contain duplicate or contradictory passages without reconciliation.",
+    "Early hops might retrieve documents that make later hops unnecessary, but the pipeline must still execute all three hops regardless."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The pirate-themed Las Vegas resort Treasure Island is one of many developed by the Las Vegas casino magnate, established in 1950, who built the Shadow Creek Golf Course.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Shadow Creek Golf Course | Shadow Creek is an 18-hole golf course in North Las Vegas, Nevada, designed by Tom Fazio and built by Las Vegas casino magnate Steve Wynn in 1989.
+Westgate Las Vegas Resort &amp; Casino | The Westgate Las Vegas Resort & Casino is a hotel and casino in Winchester, Nevada.  It is owned by Westgate Resorts and operated by Navegante Group.  It has 2,956 hotel rooms including 305 suites.  It opened in 1969 as the International Hotel, and was known for many years as the Las Vegas Hilton, then briefly as the LVH – Las Vegas Hotel and Casino.  It was renamed the Westgate Las Vegas on July 1, 2014.
+Encore Las Vegas | Encore Las Vegas (also called Encore at Wynn Las Vegas; often just called Encore) is a luxury resort, casino and hotel located on the Las Vegas Strip in Paradise, Nevada.  The resort is connected to its sister resort, Wynn Las Vegas; both are owned by Wynn Resorts, headed by casino developer Steve Wynn.
+JW Marriott Las Vegas | JW Marriott Las Vegas Resort and Spa is a luxury hotel in Summerlin, Nevada, near Las Vegas.  The 54 acre resort was designed using a Tuscan/Tropical theme.  Golf was a component of the project from the start as it acquired tee times at the adjacent Tournament Players Club course with direct access from the resort.
+Wynn Las Vegas | Wynn Las Vegas, often simply referred to as Wynn, is a luxury resort and casino located on the Las Vegas Strip in Paradise, Nevada.  The US$2.7-billion resort is named after casino developer Steve Wynn and is the flagship property of Wynn Resorts.  The resort covers 215 acre .  It is located at the northeast corner of Las Vegas Boulevard and Sands Avenue, directly across The Strip from the Fashion Show Mall.
+The Mirage | The Mirage is a 3,044 room Polynesian-themed resort and casino resort located on the Las Vegas Strip in Paradise, Nevada, United States.  The resort was built by developer Steve Wynn and is currently owned and operated by MGM Resorts International.
+Tropicana – Las Vegas Boulevard intersection | The Tropicana – Las Vegas Boulevard intersection on the Las Vegas Strip (Tropicana Avenue and Las Vegas Boulevard), is noteworthy for several reasons.  It was the first intersection in Las Vegas completely closed to street level pedestrian traffic and its four corners are home to four major resorts: Excalibur Hotel and Casino, Tropicana Las Vegas, New York-New York Hotel and Casino and MGM Grand Las Vegas—the latter has 5,044 rooms and was once the largest hotel in the world.  The resorts at the four corners have a total of 12,536 hotel rooms as of 2016.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+The pirate-themed Las Vegas resort Treasure Island is one of many developed by the Las Vegas casino magnate, established in 1950, who built the Shadow Creek Golf Course.
+
+[[ ## passages ## ]]
+[1] «Shadow Creek Golf Course | Shadow Creek is an 18-hole golf course in North Las Vegas, Nevada, designed by Tom Fazio and built by Las Vegas casino magnate Steve Wynn in 1989.»
+[2] «Westgate Las Vegas Resort &amp; Casino | The Westgate Las Vegas Resort & Casino is a hotel and casino in Winchester, Nevada.  It is owned by Westgate Resorts and operated by Navegante Group.  It has 2,956 hotel rooms including 305 suites.  It opened in 1969 as the International Hotel, and was known for many years as the Las Vegas Hilton, then briefly as the LVH – Las Vegas Hotel and Casino.  It was renamed the Westgate Las Vegas on July 1, 2014.»
+[3] «Encore Las Vegas | Encore Las Vegas (also called Encore at Wynn Las Vegas; often just called Encore) is a luxury resort, casino and hotel located on the Las Vegas Strip in Paradise, Nevada.  The resort is connected to its sister resort, Wynn Las Vegas; both are owned by Wynn Resorts, headed by casino developer Steve Wynn.»
+[4] «JW Marriott Las Vegas | JW Marriott Las Vegas Resort and Spa is a luxury hotel in Summerlin, Nevada, near Las Vegas.  The 54 acre resort was designed using a Tuscan/Tropical theme.  Golf was a component of the project from the start as it acquired tee times at the adjacent Tournament Players Club course with direct access from the resort.»
+[5] «Wynn Las Vegas | Wynn Las Vegas, often simply referred to as Wynn, is a luxury resort and casino located on the Las Vegas Strip in Paradise, Nevada.  The US$2.7-billion resort is named after casino developer Steve Wynn and is the flagship property of Wynn Resorts.  The resort covers 215 acre .  It is located at the northeast corner of Las Vegas Boulevard and Sands Avenue, directly across The Strip from the Fashion Show Mall.»
+[6] «The Mirage | The Mirage is a 3,044 room Polynesian-themed resort and casino resort located on the Las Vegas Strip in Paradise, Nevada, United States.  The resort was built by developer Steve Wynn and is currently owned and operated by MGM Resorts International.»
+[7] «Tropicana – Las Vegas Boulevard intersection | The Tropicana – Las Vegas Boulevard intersection on the Las Vegas Strip (Tropicana Avenue and Las Vegas Boulevard), is noteworthy for several reasons.  It was the first intersection in Las Vegas completely closed to street level pedestrian traffic and its four corners are home to four major resorts: Excalibur Hotel and Casino, Tropicana Las Vegas, New York-New York Hotel and Casino and MGM Grand Las Vegas—the latter has 5,044 rooms and was once the largest hotel in the world.  The resorts at the four corners have a total of 12,536 hotel rooms as of 2016.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me parse the claim into its components:
+
+1. Treasure Island is a pirate-themed Las Vegas resort
+2. Treasure Island was developed by a Las Vegas casino magnate
+3. This casino magnate was established in 1950
+4. This same magnate built Shadow Creek Golf Course
+
+Now let me cross-reference against the passages:
+
+From passage [1]: Shadow Creek Golf Course was built by Las Vegas casino magnate Steve Wynn in 1989.
+
+This establishes that Steve Wynn is the casino magnate who built Shadow Creek Golf Course. However, the passages do not provide information about:
+- When Steve Wynn was "established" (born? started his career?) in relation to 1950
+- Whether Steve Wynn developed Treasure Island
+- Any details about Treasure Island itself being pirate-themed
+
+The passages mention several Steve Wynn developments: Shadow Creek Golf Course (1989), Wynn Las Vegas, Encore Las Vegas, and The Mirage, but Treasure Island is never mentioned in any of the provided passages.
+
+The claim makes specific assertions that cannot be verified from these passages alone.
+
+[[ ## summary ## ]]
+
+**Verification Status:** Not verified (cannot be confirmed from provided passages)
+
+The claim contains multiple assertions that require verification:
+
+1. **Treasure Island resort and its pirate theme**: The pirate-themed Las Vegas resort called Treasure Island is not mentioned in any of the provided passages. Full information about Treasure Island's theme, location, and development is needed.
+
+2. **Developer identification**: While the passages confirm that Steve Wynn is a Las Vegas casino magnate who built Shadow Creek Golf Course in 1989, the passages do not confirm that Steve Wynn developed Treasure Island. A direct connection between Steve Wynn and Treasure Island's development must be established.
+
+3. **Establishment date of 1950**: The claim states the casino magnate was "established in 1950." The passages do not provide information about when Steve Wynn was established, born, or started his career. This specific date (1950) requires verification in relation to Steve Wynn's biographical information.
+
+4. **Shadow Creek Golf Course verification**: Confirmed in passages—built by Steve Wynn in 1989.
+
+To fully verify this claim, the following information is needed:
+- Details about Treasure Island Las Vegas resort, its pirate theme, and its developer(s)
+- Steve Wynn's biographical information, specifically his establishment date or birth year in relation to 1950
+- Confirmation of Steve Wynn's involvement in developing Treasure Island
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+The pirate-themed Las Vegas resort Treasure Island is one of many developed by the Las Vegas casino magnate, established in 1950, who built the Shadow Creek Golf Course.
+
+[[ ## summary_1 ## ]]
+**Verification Status:** Not verified (cannot be confirmed from provided passages)
+
+The claim contains multiple assertions that require verification:
+
+1. **Treasure Island resort and its pirate theme**: The pirate-themed Las Vegas resort called Treasure Island is not mentioned in any of the provided passages. Full information about Treasure Island's theme, location, and development is needed.
+
+2. **Developer identification**: While the passages confirm that Steve Wynn is a Las Vegas casino magnate who built Shadow Creek Golf Course in 1989, the passages do not confirm that Steve Wynn developed Treasure Island. A direct connection between Steve Wynn and Treasure Island's development must be established.
+
+3. **Establishment date of 1950**: The claim states the casino magnate was "established in 1950." The passages do not provide information about when Steve Wynn was established, born, or started his career. This specific date (1950) requires verification in relation to Steve Wynn's biographical information.
+
+4. **Shadow Creek Golf Course verification**: Confirmed in passages—built by Steve Wynn in 1989.
+
+To fully verify this claim, the following information is needed:
+- Details about Treasure Island Las Vegas resort, its pirate theme, and its developer(s)
+- Steve Wynn's biographical information, specifically his establishment date or birth year in relation to 1950
+- Confirmation of Steve Wynn's involvement in developing Treasure Island
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim makes several interconnected assertions: (1) Treasure Island is a pirate-themed Las Vegas resort, (2) it was developed by a Las Vegas casino magnate, (3) this magnate was "established in 1950", and (4) this same person built Shadow Creek Golf Course. While Shadow Creek Golf Course is confirmed to have been built by Steve Wynn in 1989, the summary correctly identifies that the passages do not confirm: the connection between Steve Wynn and Treasure Island's development, whether "1950" refers to Steve Wynn's birth year or business establishment, or details about Treasure Island itself. The phrasing "established in 1950" is ambiguous—it could refer to a person's birth or professional founding. To verify the claim comprehensively, we need to confirm both Treasure Island's developer and clarify what "established in 1950" means in relation to the magnate mentioned.
+
+[[ ## query ## ]]
+Who developed Treasure Island Las Vegas resort, and was it built by Steve Wynn? When was Steve Wynn born or when did he establish his business career?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Steve Wynn | Stephen Alan Wynn ("né" Weinberg; born January 27, 1942) is an American real estate businessman and art collector.  He is known for his involvement in the American luxury casino and hotel industry.  Early in his career he oversaw the construction and operation of several notable Las Vegas and Atlantic City hotels, including the Golden Nugget, the Golden Nugget Atlantic City, The Mirage, Treasure Island, the Bellagio, and Beau Rivage in Mississippi, and he played a pivotal role in the resurgence and expansion of the Las Vegas Strip in the 1990s.  In 2000, Wynn sold his company Mirage Resorts to MGM Grand Inc., resulting in the formation of MGM Mirage (now MGM Resorts International).  Wynn afterwards took his company Wynn Resorts public in an initial public offering, and he remains Wynn Resorts' CEO and Chairman of the Board.  He is a member of the Republican Party.  Wynn is the finance chair of the Republican National Committee (RNC) since 2017.
+Encore Las Vegas | Encore Las Vegas (also called Encore at Wynn Las Vegas; often just called Encore) is a luxury resort, casino and hotel located on the Las Vegas Strip in Paradise, Nevada.  The resort is connected to its sister resort, Wynn Las Vegas; both are owned by Wynn Resorts, headed by casino developer Steve Wynn.
+Wynn Las Vegas | Wynn Las Vegas, often simply referred to as Wynn, is a luxury resort and casino located on the Las Vegas Strip in Paradise, Nevada.  The US$2.7-billion resort is named after casino developer Steve Wynn and is the flagship property of Wynn Resorts.  The resort covers 215 acre .  It is located at the northeast corner of Las Vegas Boulevard and Sands Avenue, directly across The Strip from the Fashion Show Mall.
+Wynn Resorts | Wynn Resorts Limited is a publicly traded corporation based on the Las Vegas Strip, Nevada that is a developer and operator of high end hotels and casinos.  It was founded in 2002 by former Mirage Resorts Chairman and CEO Steve Wynn.  s of 2016 , the Company has developed five properties.
+The Mirage | The Mirage is a 3,044 room Polynesian-themed resort and casino resort located on the Las Vegas Strip in Paradise, Nevada, United States.  The resort was built by developer Steve Wynn and is currently owned and operated by MGM Resorts International.
+Sean Christie | Sean Christie (born April 21, 1974) is the Executive Vice President of Business Development for Wynn Resorts.  Previously, Christie served as the Chief Operating Officer as well as the Vice President of Operations at Wynn and Encore and before that he served as the founder and owner of Las Vegas Nightlife Group and managing partner of Encore Las Vegas Beach Club, Surrender Night Club, and Andrea’s Restaurant at the Wynn Las Vegas.
+Roger Thomas (designer) | Roger Thomas (born 1951) is an American interior designer best known for his work on resort hotels and casinos in Las Vegas, including the Bellagio, Wynn Las Vegas and Encore Las Vegas.  His work also extends to other areas of the world, including Wynn Macau and Encore Macau in China.  He is the Executive Vice President of Design for Wynn Design & Development, and principal of the Roger Thomas Collection.  Thomas has been named five times to the "Architectural Digest" AD100 list of the world's preeminent architects and designers, and was inducted into the "Interior Design Magazine" Hall of Fame in 2015.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+The pirate-themed Las Vegas resort Treasure Island is one of many developed by the Las Vegas casino magnate, established in 1950, who built the Shadow Creek Golf Course.
+
+[[ ## context ## ]]
+**Verification Status:** Not verified (cannot be confirmed from provided passages)
+
+The claim contains multiple assertions that require verification:
+
+1. **Treasure Island resort and its pirate theme**: The pirate-themed Las Vegas resort called Treasure Island is not mentioned in any of the provided passages. Full information about Treasure Island's theme, location, and development is needed.
+
+2. **Developer identification**: While the passages confirm that Steve Wynn is a Las Vegas casino magnate who built Shadow Creek Golf Course in 1989, the passages do not confirm that Steve Wynn developed Treasure Island. A direct connection between Steve Wynn and Treasure Island's development must be established.
+
+3. **Establishment date of 1950**: The claim states the casino magnate was "established in 1950." The passages do not provide information about when Steve Wynn was established, born, or started his career. This specific date (1950) requires verification in relation to Steve Wynn's biographical information.
+
+4. **Shadow Creek Golf Course verification**: Confirmed in passages—built by Steve Wynn in 1989.
+
+To fully verify this claim, the following information is needed:
+- Details about Treasure Island Las Vegas resort, its pirate theme, and its developer(s)
+- Steve Wynn's biographical information, specifically his establishment date or birth year in relation to 1950
+- Confirmation of Steve Wynn's involvement in developing Treasure Island
+
+[[ ## passages ## ]]
+[1] «Steve Wynn | Stephen Alan Wynn ("né" Weinberg; born January 27, 1942) is an American real estate businessman and art collector.  He is known for his involvement in the American luxury casino and hotel industry.  Early in his career he oversaw the construction and operation of several notable Las Vegas and Atlantic City hotels, including the Golden Nugget, the Golden Nugget Atlantic City, The Mirage, Treasure Island, the Bellagio, and Beau Rivage in Mississippi, and he played a pivotal role in the resurgence and expansion of the Las Vegas Strip in the 1990s.  In 2000, Wynn sold his company Mirage Resorts to MGM Grand Inc., resulting in the formation of MGM Mirage (now MGM Resorts International).  Wynn afterwards took his company Wynn Resorts public in an initial public offering, and he remains Wynn Resorts' CEO and Chairman of the Board.  He is a member of the Republican Party.  Wynn is the finance chair of the Republican National Committee (RNC) since 2017.»
+[2] «Encore Las Vegas | Encore Las Vegas (also called Encore at Wynn Las Vegas; often just called Encore) is a luxury resort, casino and hotel located on the Las Vegas Strip in Paradise, Nevada.  The resort is connected to its sister resort, Wynn Las Vegas; both are owned by Wynn Resorts, headed by casino developer Steve Wynn.»
+[3] «Wynn Las Vegas | Wynn Las Vegas, often simply referred to as Wynn, is a luxury resort and casino located on the Las Vegas Strip in Paradise, Nevada.  The US$2.7-billion resort is named after casino developer Steve Wynn and is the flagship property of Wynn Resorts.  The resort covers 215 acre .  It is located at the northeast corner of Las Vegas Boulevard and Sands Avenue, directly across The Strip from the Fashion Show Mall.»
+[4] «Wynn Resorts | Wynn Resorts Limited is a publicly traded corporation based on the Las Vegas Strip, Nevada that is a developer and operator of high end hotels and casinos.  It was founded in 2002 by former Mirage Resorts Chairman and CEO Steve Wynn.  s of 2016 , the Company has developed five properties.»
+[5] «The Mirage | The Mirage is a 3,044 room Polynesian-themed resort and casino resort located on the Las Vegas Strip in Paradise, Nevada, United States.  The resort was built by developer Steve Wynn and is currently owned and operated by MGM Resorts International.»
+[6] «Sean Christie | Sean Christie (born April 21, 1974) is the Executive Vice President of Business Development for Wynn Resorts.  Previously, Christie served as the Chief Operating Officer as well as the Vice President of Operations at Wynn and Encore and before that he served as the founder and owner of Las Vegas Nightlife Group and managing partner of Encore Las Vegas Beach Club, Surrender Night Club, and Andrea’s Restaurant at the Wynn Las Vegas.»
+[7] «Roger Thomas (designer) | Roger Thomas (born 1951) is an American interior designer best known for his work on resort hotels and casinos in Las Vegas, including the Bellagio, Wynn Las Vegas and Encore Las Vegas.  His work also extends to other areas of the world, including Wynn Macau and Encore Macau in China.  He is the Executive Vice President of Design for Wynn Design & Development, and principal of the Roger Thomas Collection.  Thomas has been named five times to the "Architectural Digest" AD100 list of the world's preeminent architects and designers, and was inducted into the "Interior Design Magazine" Hall of Fame in 2015.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Analyzing the claim against the provided passages:
+
+1. **Treasure Island's pirate theme**: The passages do not explicitly mention that Treasure Island has a pirate theme. However, Passage [1] confirms that Steve Wynn oversaw the construction and operation of Treasure Island, establishing that a connection exists.
+
+2. **Developer identification**: Passage [1] clearly states that Steve Wynn "oversaw the construction and operation of several notable Las Vegas and Atlantic City hotels, including...Treasure Island." This directly confirms Steve Wynn's involvement in developing Treasure Island.
+
+3. **Establishment date of 1950**: Passage [1] states that Steve Wynn was "born January 27, 1942." The claim states the magnate was "established in 1950," which is ambiguous. If this refers to when Wynn was established or born, 1950 is incorrect (he was born in 1942). If it refers to when he started his casino development career, the passages do not provide this specific information.
+
+4. **Shadow Creek Golf Course**: The passages do NOT mention Shadow Creek Golf Course at all. The claim states the magnate "built the Shadow Creek Golf Course," but this cannot be verified from the provided passages.
+
+5. **Casino magnate status**: Passage [1] confirms Steve Wynn is indeed a casino magnate involved in the luxury casino and hotel industry.
+
+The critical issue is that the claim contains inaccurate information (1950 vs. 1942 birth year) and references Shadow Creek Golf Course, which is not mentioned in any provided passage.
+
+[[ ## summary ## ]]
+
+The claim is **partially verifiable but contains inaccuracies**. Steve Wynn is confirmed as a Las Vegas casino magnate who developed Treasure Island. However, the establishment date of "1950" is incorrect—Steve Wynn was born January 27, 1942, not established in 1950. Additionally, the Shadow Creek Golf Course is not mentioned in any of the provided passages, so this claim cannot be verified from the available information. The pirate theme of Treasure Island is also not explicitly confirmed in the passages, though Wynn's involvement in its development is clearly documented.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The pirate-themed Las Vegas resort Treasure Island is one of many developed by the Las Vegas casino magnate, established in 1950, who built the Shadow Creek Golf Course.
+
+[[ ## summary_1 ## ]]
+**Verification Status:** Not verified (cannot be confirmed from provided passages)
+
+The claim contains multiple assertions that require verification:
+
+1. **Treasure Island resort and its pirate theme**: The pirate-themed Las Vegas resort called Treasure Island is not mentioned in any of the provided passages. Full information about Treasure Island's theme, location, and development is needed.
+
+2. **Developer identification**: While the passages confirm that Steve Wynn is a Las Vegas casino magnate who built Shadow Creek Golf Course in 1989, the passages do not confirm that Steve Wynn developed Treasure Island. A direct connection between Steve Wynn and Treasure Island's development must be established.
+
+3. **Establishment date of 1950**: The claim states the casino magnate was "established in 1950." The passages do not provide information about when Steve Wynn was established, born, or started his career. This specific date (1950) requires verification in relation to Steve Wynn's biographical information.
+
+4. **Shadow Creek Golf Course verification**: Confirmed in passages—built by Steve Wynn in 1989.
+
+To fully verify this claim, the following information is needed:
+- Details about Treasure Island Las Vegas resort, its pirate theme, and its developer(s)
+- Steve Wynn's biographical information, specifically his establishment date or birth year in relation to 1950
+- Confirmation of Steve Wynn's involvement in developing Treasure Island
+
+[[ ## summary_2 ## ]]
+The claim is **partially verifiable but contains inaccuracies**. Steve Wynn is confirmed as a Las Vegas casino magnate who developed Treasure Island. However, the establishment date of "1950" is incorrect—Steve Wynn was born January 27, 1942, not established in 1950. Additionally, the Shadow Creek Golf Course is not mentioned in any of the provided passages, so this claim cannot be verified from the available information. The pirate theme of Treasure Island is also not explicitly confirmed in the passages, though Wynn's involvement in its development is clearly documented.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries provide conflicting assessments of the claim. Summary_1 states the claim cannot be verified from provided passages and identifies specific gaps in verification, particularly questioning whether Steve Wynn (implied as the casino magnate) developed Treasure Island and whether 1950 refers to his establishment/birth. Summary_2 asserts the claim is "partially verifiable but contains inaccuracies," stating that Steve Wynn did develop Treasure Island, that he was born in 1942 (not 1950), and that Shadow Creek Golf Course cannot be verified from passages. 
+
+The core issue is whether Treasure Island was actually developed by Steve Wynn, and whether the date reference (1950) is accurate. Additionally, there's disagreement about whether Shadow Creek Golf Course can be confirmed. To resolve these contradictions and verify the claim's accuracy, we need specific information about: (1) who developed Treasure Island and when, (2) Steve Wynn's biographical details and career timeline, and (3) confirmation of Shadow Creek Golf Course's developer and construction date.
+
+[[ ## query ## ]]
+Did Steve Wynn develop the pirate-themed Treasure Island resort in Las Vegas, and when was it opened? Was Shadow Creek Golf Course built by Steve Wynn?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Shadow Creek Golf Course | Shadow Creek is an 18-hole golf course in North Las Vegas, Nevada, designed by Tom Fazio and built by Las Vegas casino magnate Steve Wynn in 1989.
+Encore Las Vegas | Encore Las Vegas (also called Encore at Wynn Las Vegas; often just called Encore) is a luxury resort, casino and hotel located on the Las Vegas Strip in Paradise, Nevada.  The resort is connected to its sister resort, Wynn Las Vegas; both are owned by Wynn Resorts, headed by casino developer Steve Wynn.
+Wynn Las Vegas | Wynn Las Vegas, often simply referred to as Wynn, is a luxury resort and casino located on the Las Vegas Strip in Paradise, Nevada.  The US$2.7-billion resort is named after casino developer Steve Wynn and is the flagship property of Wynn Resorts.  The resort covers 215 acre .  It is located at the northeast corner of Las Vegas Boulevard and Sands Avenue, directly across The Strip from the Fashion Show Mall.
+The Mirage | The Mirage is a 3,044 room Polynesian-themed resort and casino resort located on the Las Vegas Strip in Paradise, Nevada, United States.  The resort was built by developer Steve Wynn and is currently owned and operated by MGM Resorts International.
+Wynn Resorts | Wynn Resorts Limited is a publicly traded corporation based on the Las Vegas Strip, Nevada that is a developer and operator of high end hotels and casinos.  It was founded in 2002 by former Mirage Resorts Chairman and CEO Steve Wynn.  s of 2016 , the Company has developed five properties.
+Steve Wynn | Stephen Alan Wynn ("né" Weinberg; born January 27, 1942) is an American real estate businessman and art collector.  He is known for his involvement in the American luxury casino and hotel industry.  Early in his career he oversaw the construction and operation of several notable Las Vegas and Atlantic City hotels, including the Golden Nugget, the Golden Nugget Atlantic City, The Mirage, Treasure Island, the Bellagio, and Beau Rivage in Mississippi, and he played a pivotal role in the resurgence and expansion of the Las Vegas Strip in the 1990s.  In 2000, Wynn sold his company Mirage Resorts to MGM Grand Inc., resulting in the formation of MGM Mirage (now MGM Resorts International).  Wynn afterwards took his company Wynn Resorts public in an initial public offering, and he remains Wynn Resorts' CEO and Chairman of the Board.  He is a member of the Republican Party.  Wynn is the finance chair of the Republican National Committee (RNC) since 2017.
+Wynn Palace | Wynn Palace, also referred to as Wynn Palace Cotai, is an integrated resort owned and operated by Wynn Resorts in Macau, China.  As the company's first resort on the Cotai Strip and third skyscraper in Macau, Wynn Palace features a luxury hotel with 1,706 rooms, a casino, an 8-acre performance lake, gondolas, meeting facilities, spa and salon, and retail and dining venues.  With 29 floors and a construction floor area of around 450,000 square meters, Steve Wynn has described it as "the most aggressive, ambitious and lovely project" undertaken by Wynn Resorts.  Construction began in 2013 with total cost estimated at USD $4.4 billion.  between commencement in 2013 and the opening on August 22, 2016.  On January 28, 2016, "Forbes" described Wynn Palace's then-upcoming debut as one of the "20 Most Anticipated Hotel Openings Of 2016."  After it opened, the Las Vegas Review-Journal said "the project is the best [Wynn] ever produced," and the Associated Press wrote that "the lavish decor and extravagant features Wynn is known for abound."  There are approximately 350 gaming tables, of which 60 are used as VIP tables.
+Wynn Macau | Wynn Macau () (), owned by Wynn Resorts, is a luxury integrated resort in Sé, Macau, China, offering gaming combined with a hotel, restaurants, shops, spa, and a "Performance Lake".  It opened on 6 September 2006.  Steve Wynn is the Chairman of the Board and Chief Executive Officer of Wynn Macau.
+Sean Christie | Sean Christie (born April 21, 1974) is the Executive Vice President of Business Development for Wynn Resorts.  Previously, Christie served as the Chief Operating Officer as well as the Vice President of Operations at Wynn and Encore and before that he served as the founder and owner of Las Vegas Nightlife Group and managing partner of Encore Las Vegas Beach Club, Surrender Night Club, and Andrea’s Restaurant at the Wynn Las Vegas.
+Park Towers (Las Vegas) | Park Towers is a 20-story twin-tower condominium property located east of the Las Vegas Strip, in Paradise, Nevada.  The project was announced in 1998, and began construction the following year.  The property was developed by Irwin Molasky and Steve Wynn, and was completed in 2001.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Shadow Creek Golf Course | Shadow Creek is an 18-hole golf course in North Las Vegas, Nevada, designed by Tom Fazio and built by Las Vegas casino magnate Steve Wynn in 1989.
+Westgate Las Vegas Resort &amp; Casino | The Westgate Las Vegas Resort & Casino is a hotel and casino in Winchester, Nevada.  It is owned by Westgate Resorts and operated by Navegante Group.  It has 2,956 hotel rooms including 305 suites.  It opened in 1969 as the International Hotel, and was known for many years as the Las Vegas Hilton, then briefly as the LVH – Las Vegas Hotel and Casino.  It was renamed the Westgate Las Vegas on July 1, 2014.
+Encore Las Vegas | Encore Las Vegas (also called Encore at Wynn Las Vegas; often just called Encore) is a luxury resort, casino and hotel located on the Las Vegas Strip in Paradise, Nevada.  The resort is connected to its sister resort, Wynn Las Vegas; both are owned by Wynn Resorts, headed by casino developer Steve Wynn.
+JW Marriott Las Vegas | JW Marriott Las Vegas Resort and Spa is a luxury hotel in Summerlin, Nevada, near Las Vegas.  The 54 acre resort was designed using a Tuscan/Tropical theme.  Golf was a component of the project from the start as it acquired tee times at the adjacent Tournament Players Club course with direct access from the resort.
+Wynn Las Vegas | Wynn Las Vegas, often simply referred to as Wynn, is a luxury resort and casino located on the Las Vegas Strip in Paradise, Nevada.  The US$2.7-billion resort is named after casino developer Steve Wynn and is the flagship property of Wynn Resorts.  The resort covers 215 acre .  It is located at the northeast corner of Las Vegas Boulevard and Sands Avenue, directly across The Strip from the Fashion Show Mall.
+The Mirage | The Mirage is a 3,044 room Polynesian-themed resort and casino resort located on the Las Vegas Strip in Paradise, Nevada, United States.  The resort was built by developer Steve Wynn and is currently owned and operated by MGM Resorts International.
+Tropicana – Las Vegas Boulevard intersection | The Tropicana – Las Vegas Boulevard intersection on the Las Vegas Strip (Tropicana Avenue and Las Vegas Boulevard), is noteworthy for several reasons.  It was the first intersection in Las Vegas completely closed to street level pedestrian traffic and its four corners are home to four major resorts: Excalibur Hotel and Casino, Tropicana Las Vegas, New York-New York Hotel and Casino and MGM Grand Las Vegas—the latter has 5,044 rooms and was once the largest hotel in the world.  The resorts at the four corners have a total of 12,536 hotel rooms as of 2016.
+Steve Wynn | Stephen Alan Wynn ("né" Weinberg; born January 27, 1942) is an American real estate businessman and art collector.  He is known for his involvement in the American luxury casino and hotel industry.  Early in his career he oversaw the construction and operation of several notable Las Vegas and Atlantic City hotels, including the Golden Nugget, the Golden Nugget Atlantic City, The Mirage, Treasure Island, the Bellagio, and Beau Rivage in Mississippi, and he played a pivotal role in the resurgence and expansion of the Las Vegas Strip in the 1990s.  In 2000, Wynn sold his company Mirage Resorts to MGM Grand Inc., resulting in the formation of MGM Mirage (now MGM Resorts International).  Wynn afterwards took his company Wynn Resorts public in an initial public offering, and he remains Wynn Resorts' CEO and Chairman of the Board.  He is a member of the Republican Party.  Wynn is the finance chair of the Republican National Committee (RNC) since 2017.
+Encore Las Vegas | Encore Las Vegas (also called Encore at Wynn Las Vegas; often just called Encore) is a luxury resort, casino and hotel located on the Las Vegas Strip in Paradise, Nevada.  The resort is connected to its sister resort, Wynn Las Vegas; both are owned by Wynn Resorts, headed by casino developer Steve Wynn.
+Wynn Las Vegas | Wynn Las Vegas, often simply referred to as Wynn, is a luxury resort and casino located on the Las Vegas Strip in Paradise, Nevada.  The US$2.7-billion resort is named after casino developer Steve Wynn and is the flagship property of Wynn Resorts.  The resort covers 215 acre .  It is located at the northeast corner of Las Vegas Boulevard and Sands Avenue, directly across The Strip from the Fashion Show Mall.
+Wynn Resorts | Wynn Resorts Limited is a publicly traded corporation based on the Las Vegas Strip, Nevada that is a developer and operator of high end hotels and casinos.  It was founded in 2002 by former Mirage Resorts Chairman and CEO Steve Wynn.  s of 2016 , the Company has developed five properties.
+The Mirage | The Mirage is a 3,044 room Polynesian-themed resort and casino resort located on the Las Vegas Strip in Paradise, Nevada, United States.  The resort was built by developer Steve Wynn and is currently owned and operated by MGM Resorts International.
+Sean Christie | Sean Christie (born April 21, 1974) is the Executive Vice President of Business Development for Wynn Resorts.  Previously, Christie served as the Chief Operating Officer as well as the Vice President of Operations at Wynn and Encore and before that he served as the founder and owner of Las Vegas Nightlife Group and managing partner of Encore Las Vegas Beach Club, Surrender Night Club, and Andrea’s Restaurant at the Wynn Las Vegas.
+Roger Thomas (designer) | Roger Thomas (born 1951) is an American interior designer best known for his work on resort hotels and casinos in Las Vegas, including the Bellagio, Wynn Las Vegas and Encore Las Vegas.  His work also extends to other areas of the world, including Wynn Macau and Encore Macau in China.  He is the Executive Vice President of Design for Wynn Design & Development, and principal of the Roger Thomas Collection.  Thomas has been named five times to the "Architectural Digest" AD100 list of the world's preeminent architects and designers, and was inducted into the "Interior Design Magazine" Hall of Fame in 2015.
+Shadow Creek Golf Course | Shadow Creek is an 18-hole golf course in North Las Vegas, Nevada, designed by Tom Fazio and built by Las Vegas casino magnate Steve Wynn in 1989.
+Encore Las Vegas | Encore Las Vegas (also called Encore at Wynn Las Vegas; often just called Encore) is a luxury resort, casino and hotel located on the Las Vegas Strip in Paradise, Nevada.  The resort is connected to its sister resort, Wynn Las Vegas; both are owned by Wynn Resorts, headed by casino developer Steve Wynn.
+Wynn Las Vegas | Wynn Las Vegas, often simply referred to as Wynn, is a luxury resort and casino located on the Las Vegas Strip in Paradise, Nevada.  The US$2.7-billion resort is named after casino developer Steve Wynn and is the flagship property of Wynn Resorts.  The resort covers 215 acre .  It is located at the northeast corner of Las Vegas Boulevard and Sands Avenue, directly across The Strip from the Fashion Show Mall.
+The Mirage | The Mirage is a 3,044 room Polynesian-themed resort and casino resort located on the Las Vegas Strip in Paradise, Nevada, United States.  The resort was built by developer Steve Wynn and is currently owned and operated by MGM Resorts International.
+Wynn Resorts | Wynn Resorts Limited is a publicly traded corporation based on the Las Vegas Strip, Nevada that is a developer and operator of high end hotels and casinos.  It was founded in 2002 by former Mirage Resorts Chairman and CEO Steve Wynn.  s of 2016 , the Company has developed five properties.
+Steve Wynn | Stephen Alan Wynn ("né" Weinberg; born January 27, 1942) is an American real estate businessman and art collector.  He is known for his involvement in the American luxury casino and hotel industry.  Early in his career he oversaw the construction and operation of several notable Las Vegas and Atlantic City hotels, including the Golden Nugget, the Golden Nugget Atlantic City, The Mirage, Treasure Island, the Bellagio, and Beau Rivage in Mississippi, and he played a pivotal role in the resurgence and expansion of the Las Vegas Strip in the 1990s.  In 2000, Wynn sold his company Mirage Resorts to MGM Grand Inc., resulting in the formation of MGM Mirage (now MGM Resorts International).  Wynn afterwards took his company Wynn Resorts public in an initial public offering, and he remains Wynn Resorts' CEO and Chairman of the Board.  He is a member of the Republican Party.  Wynn is the finance chair of the Republican National Committee (RNC) since 2017.
+Wynn Palace | Wynn Palace, also referred to as Wynn Palace Cotai, is an integrated resort owned and operated by Wynn Resorts in Macau, China.  As the company's first resort on the Cotai Strip and third skyscraper in Macau, Wynn Palace features a luxury hotel with 1,706 rooms, a casino, an 8-acre performance lake, gondolas, meeting facilities, spa and salon, and retail and dining venues.  With 29 floors and a construction floor area of around 450,000 square meters, Steve Wynn has described it as "the most aggressive, ambitious and lovely project" undertaken by Wynn Resorts.  Construction began in 2013 with total cost estimated at USD $4.4 billion.  between commencement in 2013 and the opening on August 22, 2016.  On January 28, 2016, "Forbes" described Wynn Palace's then-upcoming debut as one of the "20 Most Anticipated Hotel Openings Of 2016."  After it opened, the Las Vegas Review-Journal said "the project is the best [Wynn] ever produced," and the Associated Press wrote that "the lavish decor and extravagant features Wynn is known for abound."  There are approximately 350 gaming tables, of which 60 are used as VIP tables.
+Wynn Macau | Wynn Macau () (), owned by Wynn Resorts, is a luxury integrated resort in Sé, Macau, China, offering gaming combined with a hotel, restaurants, shops, spa, and a "Performance Lake".  It opened on 6 September 2006.  Steve Wynn is the Chairman of the Board and Chief Executive Officer of Wynn Macau.
+Sean Christie | Sean Christie (born April 21, 1974) is the Executive Vice President of Business Development for Wynn Resorts.  Previously, Christie served as the Chief Operating Officer as well as the Vice President of Operations at Wynn and Encore and before that he served as the founder and owner of Las Vegas Nightlife Group and managing partner of Encore Las Vegas Beach Club, Surrender Night Club, and Andrea’s Restaurant at the Wynn Las Vegas.
+Park Towers (Las Vegas) | Park Towers is a 20-story twin-tower condominium property located east of the Las Vegas Strip, in Paradise, Nevada.  The project was announced in 1998, and began construction the following year.  The property was developed by Irwin Molasky and Steve Wynn, and was completed in 2001.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: In summary_2, the solver states 'the Shadow Creek Golf Course is not mentioned in any of the provided passages, so this claim cannot be verified from the available information.' However, hop 1 retrieval explicitly included passage [1]: 'Shadow Creek Golf Course | Shadow Creek is an 18-hole golf course in North Las Vegas, Nevada, designed by Tom Fazio and built by Las Vegas casino magnate Steve Wyn
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Summary_1 states 'The pirate-themed Las Vegas resort called Treasure Island is not mentioned in any of the provided passages. Full information about Treasure Island's theme, location, and development is needed.' Neither summary_1 nor summary_2 explicitly names 'pirate theme of Treasure Island' or 'Treasure Island pirate theme' as the specific missing fact requiring verification. The summaries requ
+- code B.12 (Verdict_Despite_Insufficiency), anchored near step UNKNOWN: evidence: Summary_2 renders a definitive assessment: 'The claim is **partially verifiable but contains inaccuracies**' and states 'the establishment date of "1950" is incorrect—Steve Wynn was born January 27, 1942, not established in 1950.' However, the same summary acknowledges 'The pirate theme of Treasure Island is also not explicitly confirmed in the passages,' indicating incomplete verification. The so
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

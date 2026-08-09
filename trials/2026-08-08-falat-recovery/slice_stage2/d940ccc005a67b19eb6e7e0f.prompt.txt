@@ -1,0 +1,377 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "1. Receive the claim to verify as input to the pipeline.",
+    "2. Retriever performs hop-1: executes BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim, returns a set of relevant document passages.",
+    "3. Solver produces summary 1: analyzes the hop-1 retrieved passages to identify what they establish about the claim and what information is still missing.",
+    "4. Coordinator generates query for hop-2: transforms solver summary 1 into a keyword-style retrieval query targeting the missing information.",
+    "5. Retriever performs hop-2: executes BM25 search using the coordinator's query, returns a second set of relevant document passages.",
+    "6. Solver produces summary 2: analyzes the hop-2 retrieved passages (in context of what was already found) to identify what they establish and what remains missing.",
+    "7. Coordinator generates query for hop-3: transforms solver summary 2 into a keyword-style retrieval query targeting any remaining information gaps.",
+    "8. Retriever performs hop-3: executes BM25 search using the coordinator's query, returns a third set of relevant document passages.",
+    "9. Final output is produced: concatenation of all documents retrieved across hop-1, hop-2, and hop-3, with no verdict or additional analysis."
+  ],
+  "role_boundaries": {
+    "retriever": "Should execute BM25 searches over Wikipedia abstracts using keyword-style queries provided to it; return relevant passages. Should not interpret the claim semantically, generate its own queries autonomously, summarize content, reason about what is missing, or make verification judgments.",
+    "solver": "Should analyze retrieved passages to summarize what they establish about the claim and explicitly identify what information is still missing or needed. Should not perform retrieval, generate retrieval queries directly, make final verification verdicts, or operate on anything other than the passages provided to it.",
+    "coordinator": "Should transform solver summaries into keyword-style retrieval queries suitable for BM25 search, targeting the missing information identified by the solver. Should not perform retrieval itself, analyze passage content, make judgments about the claim, or generate queries independently of solver summaries."
+  },
+  "risk_patterns": [
+    "Retriever might receive a query that is too vague or too specific, causing irrelevant or no results to be returned.",
+    "Solver might fail to identify missing information, leading to redundant subsequent retrievals.",
+    "Coordinator might generate a query that does not effectively translate the solver's natural language summary into BM25-friendly keywords.",
+    "Retriever might return empty or low-quality results at any hop, propagating insufficient information forward.",
+    "Solver might over-interpret or hallucinate information not present in the retrieved passages.",
+    "Coordinator might lose focus on the original claim and drift toward tangential topics across hops.",
+    "The pipeline might exhaust its three hops without retrieving sufficient information to verify the claim.",
+    "Role confusion might occur where one component attempts to perform another's function, breaking the intended workflow.",
+    "The final concatenated output might contain duplicate or contradictory passages without reconciliation.",
+    "Early hops might retrieve documents that make later hops unnecessary, but the pipeline must still execute all three hops regardless."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The defending champion doubles partner of Nicole Kriz, in the 2009 Hansol Korea Open – Doubles, and Francesca Schiavone have both been professional tennis players.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+2009 Hansol Korea Open – Doubles | Chuang Chia-jung and Hsieh Su-wei were the defending champion, but Hsieh chose not to participate that year.  Chuang partnered with Yan Zi, but they lost in the semifinals against Chan Yung-jan and Abigail Spears. Chan Yung-jan and Abigail Spears won in the final 6–3, 6–4 against Carly Gullickson and Nicole Kriz.
+2009 Toray Pan Pacific Open – Doubles | Vania King and Nadia Petrova were the defending champions, both of them were present this year, but played with different partners.King partnered with Zheng Jie and Petrova partnered with Gisela Dulko both lost to Daniela Hantuchová and Ai Sugiyama, in the first round and the semifinals respectively. Alisa Kleybanova and Francesca Schiavone won in the final 6-4, 6-2 against Daniela Hantuchová and Ai Sugiyama.
+2007 Dubai Tennis Championships – Women's Doubles | Květa Peschke and Francesca Schiavone were the defending champions.  They were both present but did not compete together.
+2010 Toray Pan Pacific Open – Doubles | Alisa Kleybanova and Francesca Schiavone were the defending champions.  Both were present, but competed with different partners.Kleybanova competed with Hsieh Su-wei, but lost in the first round to Benešová and Záhlavová-Strýcová, while Schiavone competed with Tathiana Garbin, however withdrew before their quarterfinal match against Lisa Raymond and Rennae Stubbs.
+2009 Odlum Brown Vancouver Open – Women's Doubles | Carly Gullickson and Nicole Kriz were the defending champions, but decided not to participate this year.
+2014 Brasil Tennis Cup – Doubles | Anabel Medina Garrigues and Yaroslava Shvedova were the defending champions and successfully defended their title, defeating Francesca Schiavone and Silvia Soler Espinosa in the final, 7–6, 2–6, [10–3].
+Nicole Kriz | Nicole Kriz (born 13 December 1983, in Bankstown, New South Wales) is an Australian professional tennis player.  Her career-high WTA doubles ranking is No. 104, set at 9 July 2007.  Her career-high WTA singles ranking is No. 332, which she reached on 4 August 2008.  She is currently the 3rd highest ranked Australian on the WTA doubles rankings.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+[STEP 4] (user) [[ ## claim ## ]]
+The defending champion doubles partner of Nicole Kriz, in the 2009 Hansol Korea Open – Doubles, and Francesca Schiavone have both been professional tennis players.
+
+[[ ## passages ## ]]
+[1] «2009 Hansol Korea Open – Doubles | Chuang Chia-jung and Hsieh Su-wei were the defending champion, but Hsieh chose not to participate that year.  Chuang partnered with Yan Zi, but they lost in the semifinals against Chan Yung-jan and Abigail Spears. Chan Yung-jan and Abigail Spears won in the final 6–3, 6–4 against Carly Gullickson and Nicole Kriz.»
+[2] «2009 Toray Pan Pacific Open – Doubles | Vania King and Nadia Petrova were the defending champions, both of them were present this year, but played with different partners.King partnered with Zheng Jie and Petrova partnered with Gisela Dulko both lost to Daniela Hantuchová and Ai Sugiyama, in the first round and the semifinals respectively. Alisa Kleybanova and Francesca Schiavone won in the final 6-4, 6-2 against Daniela Hantuchová and Ai Sugiyama.»
+[3] «2007 Dubai Tennis Championships – Women's Doubles | Květa Peschke and Francesca Schiavone were the defending champions.  They were both present but did not compete together.»
+[4] «2010 Toray Pan Pacific Open – Doubles | Alisa Kleybanova and Francesca Schiavone were the defending champions.  Both were present, but competed with different partners.Kleybanova competed with Hsieh Su-wei, but lost in the first round to Benešová and Záhlavová-Strýcová, while Schiavone competed with Tathiana Garbin, however withdrew before their quarterfinal match against Lisa Raymond and Rennae Stubbs.»
+[5] «2009 Odlum Brown Vancouver Open – Women's Doubles | Carly Gullickson and Nicole Kriz were the defending champions, but decided not to participate this year.»
+[6] «2014 Brasil Tennis Cup – Doubles | Anabel Medina Garrigues and Yaroslava Shvedova were the defending champions and successfully defended their title, defeating Francesca Schiavone and Silvia Soler Espinosa in the final, 7–6, 2–6, [10–3].»
+[7] «Nicole Kriz | Nicole Kriz (born 13 December 1983, in Bankstown, New South Wales) is an Australian professional tennis player.  Her career-high WTA doubles ranking is No. 104, set at 9 July 2007.  Her career-high WTA singles ranking is No. 332, which she reached on 4 August 2008.  She is currently the 3rd highest ranked Australian on the WTA doubles rankings.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze this claim step by step.
+
+The claim states: "The defending champion doubles partner of Nicole Kriz, in the 2009 Hansol Korea Open – Doubles, and Francesca Schiavone have both been professional tennis players."
+
+Breaking down what needs to be verified:
+1. Who was Nicole Kriz's partner in the 2009 Hansol Korea Open – Doubles?
+2. Who were the defending champions in that tournament?
+3. Was Nicole Kriz's partner one of the defending champions?
+4. Has that person been a professional tennis player?
+5. Has Francesca Schiavone been a professional tennis player?
+
+From passage [1]: "Chan Yung-jan and Abigail Spears won in the final 6–3, 6–4 against Carly Gullickson and Nicole Kriz."
+- This tells us Nicole Kriz played in the 2009 final with Carly Gullickson as her partner
+- The passage also states "Chuang Chia-jung and Hsieh Su-wei were the defending champion"
+
+So the defending champions were Chuang Chia-jung and Hsieh Su-wei. Since Nicole Kriz's partner was Carly Gullickson (not one of the defending champions), the claim is asking about Carly Gullickson.
+
+From passage [5]: "Carly Gullickson and Nicole Kriz were the defending champions" (in 2009 Odlum Brown Vancouver Open)
+- This confirms Carly Gullickson was a professional tennis player
+
+From passages [2], [4], and [6]: Francesca Schiavone participated in multiple professional tournaments as a doubles player and won championships, clearly indicating she is a professional tennis player.
+
+From passage [7]: Nicole Kriz is confirmed as "an Australian professional tennis player."
+
+The claim appears to have a logical issue in its phrasing. It seems to be asking whether Nicole Kriz's partner (Carly Gullickson) and Francesca Schiavone have both been professional tennis players. The evidence shows both have been professional tennis players.
+
+[[ ## summary ## ]]
+The claim can be verified with the provided passages. According to passage [1], Nicole Kriz's doubles partner in the 2009 Hansol Korea Open was Carly Gullickson (they reached the final). Passage [5] confirms that Carly Gullickson was a professional tennis player, as she and Nicole Kriz were defending champions at the 2009 Odlum Brown Vancouver Open. Multiple passages [2], [4], and [6] demonstrate that Francesca Schiavone participated in professional tennis tournaments and won doubles championships, confirming she is a professional tennis player. Therefore, both Carly Gullickson and Francesca Schiavone have been professional tennis players, and the claim is verified as TRUE.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+The defending champion doubles partner of Nicole Kriz, in the 2009 Hansol Korea Open – Doubles, and Francesca Schiavone have both been professional tennis players.
+
+[[ ## summary_1 ## ]]
+The claim can be verified with the provided passages. According to passage [1], Nicole Kriz's doubles partner in the 2009 Hansol Korea Open was Carly Gullickson (they reached the final). Passage [5] confirms that Carly Gullickson was a professional tennis player, as she and Nicole Kriz were defending champions at the 2009 Odlum Brown Vancouver Open. Multiple passages [2], [4], and [6] demonstrate that Francesca Schiavone participated in professional tennis tournaments and won doubles championships, confirming she is a professional tennis player. Therefore, both Carly Gullickson and Francesca Schiavone have been professional tennis players, and the claim is verified as TRUE.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim states that both the defending champion doubles partner of Nicole Kriz at the 2009 Hansol Korea Open and Francesca Schiavone have been professional tennis players. According to the summary provided, Carly Gullickson was Nicole Kriz's doubles partner at this tournament, and both Carly Gullickson and Francesca Schiavone are confirmed to have been professional tennis players based on their participation in professional tournaments and championship wins. This supports the validity of the claim.
+
+[[ ## query ## ]]
+Who was Nicole Kriz's doubles partner at the 2009 Hansol Korea Open, and have both this partner and Francesca Schiavone been professional tennis players?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+2009 Hansol Korea Open – Doubles | Chuang Chia-jung and Hsieh Su-wei were the defending champion, but Hsieh chose not to participate that year.  Chuang partnered with Yan Zi, but they lost in the semifinals against Chan Yung-jan and Abigail Spears. Chan Yung-jan and Abigail Spears won in the final 6–3, 6–4 against Carly Gullickson and Nicole Kriz.
+2009 Toray Pan Pacific Open – Doubles | Vania King and Nadia Petrova were the defending champions, both of them were present this year, but played with different partners.King partnered with Zheng Jie and Petrova partnered with Gisela Dulko both lost to Daniela Hantuchová and Ai Sugiyama, in the first round and the semifinals respectively. Alisa Kleybanova and Francesca Schiavone won in the final 6-4, 6-2 against Daniela Hantuchová and Ai Sugiyama.
+2010 Toray Pan Pacific Open – Doubles | Alisa Kleybanova and Francesca Schiavone were the defending champions.  Both were present, but competed with different partners.Kleybanova competed with Hsieh Su-wei, but lost in the first round to Benešová and Záhlavová-Strýcová, while Schiavone competed with Tathiana Garbin, however withdrew before their quarterfinal match against Lisa Raymond and Rennae Stubbs.
+Francesca Schiavone | Francesca Schiavone (] ; born 23 June 1980 in Milan) is an Italian tennis player who turned professional in 1998.  She won the 2010 French Open singles title, becoming the first Italian woman to win a Grand Slam event in singles.  She was also runner-up at the 2011 French Open.  Her career high ranking is world No. 4, achieved on 31 January 2011.  To date, Schiavone is the last one handed-backhand player to win a Grand Slam title on the women's tour.
+2009 Hansol Korea Open | The 2009 Hansol Korea Open was a women's tennis tournament played on outdoor hard courts.  It was the 6th edition of the event known that year as the Hansol Korea Open, and was part of the WTA International tournaments of the 2009 WTA Tour.  It was held at the Seoul Olympic Park Tennis Center in Seoul, South Korea, from September 21 through September 27, 2009.
+Nicole Kriz | Nicole Kriz (born 13 December 1983, in Bankstown, New South Wales) is an Australian professional tennis player.  Her career-high WTA doubles ranking is No. 104, set at 9 July 2007.  Her career-high WTA singles ranking is No. 332, which she reached on 4 August 2008.  She is currently the 3rd highest ranked Australian on the WTA doubles rankings.
+Francesca Schiavone career statistics | This is a list of the main career statistics of professional Italian tennis player Francesca Schiavone.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+The defending champion doubles partner of Nicole Kriz, in the 2009 Hansol Korea Open – Doubles, and Francesca Schiavone have both been professional tennis players.
+
+[[ ## context ## ]]
+The claim can be verified with the provided passages. According to passage [1], Nicole Kriz's doubles partner in the 2009 Hansol Korea Open was Carly Gullickson (they reached the final). Passage [5] confirms that Carly Gullickson was a professional tennis player, as she and Nicole Kriz were defending champions at the 2009 Odlum Brown Vancouver Open. Multiple passages [2], [4], and [6] demonstrate that Francesca Schiavone participated in professional tennis tournaments and won doubles championships, confirming she is a professional tennis player. Therefore, both Carly Gullickson and Francesca Schiavone have been professional tennis players, and the claim is verified as TRUE.
+
+[[ ## passages ## ]]
+[1] «2009 Hansol Korea Open – Doubles | Chuang Chia-jung and Hsieh Su-wei were the defending champion, but Hsieh chose not to participate that year.  Chuang partnered with Yan Zi, but they lost in the semifinals against Chan Yung-jan and Abigail Spears. Chan Yung-jan and Abigail Spears won in the final 6–3, 6–4 against Carly Gullickson and Nicole Kriz.»
+[2] «2009 Toray Pan Pacific Open – Doubles | Vania King and Nadia Petrova were the defending champions, both of them were present this year, but played with different partners.King partnered with Zheng Jie and Petrova partnered with Gisela Dulko both lost to Daniela Hantuchová and Ai Sugiyama, in the first round and the semifinals respectively. Alisa Kleybanova and Francesca Schiavone won in the final 6-4, 6-2 against Daniela Hantuchová and Ai Sugiyama.»
+[3] «2010 Toray Pan Pacific Open – Doubles | Alisa Kleybanova and Francesca Schiavone were the defending champions.  Both were present, but competed with different partners.Kleybanova competed with Hsieh Su-wei, but lost in the first round to Benešová and Záhlavová-Strýcová, while Schiavone competed with Tathiana Garbin, however withdrew before their quarterfinal match against Lisa Raymond and Rennae Stubbs.»
+[4] «Francesca Schiavone | Francesca Schiavone (] ; born 23 June 1980 in Milan) is an Italian tennis player who turned professional in 1998.  She won the 2010 French Open singles title, becoming the first Italian woman to win a Grand Slam event in singles.  She was also runner-up at the 2011 French Open.  Her career high ranking is world No. 4, achieved on 31 January 2011.  To date, Schiavone is the last one handed-backhand player to win a Grand Slam title on the women's tour.»
+[5] «2009 Hansol Korea Open | The 2009 Hansol Korea Open was a women's tennis tournament played on outdoor hard courts.  It was the 6th edition of the event known that year as the Hansol Korea Open, and was part of the WTA International tournaments of the 2009 WTA Tour.  It was held at the Seoul Olympic Park Tennis Center in Seoul, South Korea, from September 21 through September 27, 2009.»
+[6] «Nicole Kriz | Nicole Kriz (born 13 December 1983, in Bankstown, New South Wales) is an Australian professional tennis player.  Her career-high WTA doubles ranking is No. 104, set at 9 July 2007.  Her career-high WTA singles ranking is No. 332, which she reached on 4 August 2008.  She is currently the 3rd highest ranked Australian on the WTA doubles rankings.»
+[7] «Francesca Schiavone career statistics | This is a list of the main career statistics of professional Italian tennis player Francesca Schiavone.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+Let me verify the claim step by step:
+
+1. First, I need to identify Nicole Kriz's doubles partner at the 2009 Hansol Korea Open.
+   - According to passage [1], Carly Gullickson and Nicole Kriz reached the final of the 2009 Hansol Korea Open – Doubles, losing to Chan Yung-jan and Abigail Spears 6–3, 6–4.
+   - Therefore, Carly Gullickson was Nicole Kriz's doubles partner.
+
+2. The claim states the partner was the "defending champion" - I need to verify if Carly Gullickson was the defending champion.
+   - Passage [1] states: "Chuang Chia-jung and Hsieh Su-wei were the defending champion" at the 2009 Hansol Korea Open.
+   - This means Carly Gullickson and Nicole Kriz were NOT the defending champions; they were only finalists.
+   - Therefore, there is a factual error in the claim regarding the "defending champion" status.
+
+3. I need to verify if both Carly Gullickson and Francesca Schiavone are professional tennis players.
+   - Passage [4] confirms Francesca Schiavone is a professional tennis player (turned professional in 1998, won Grand Slam titles).
+   - Passage [6] confirms Nicole Kriz is a professional tennis player, but doesn't directly confirm Carly Gullickson's professional status in the provided passages.
+   - However, the context provided and passage [1] demonstrate Carly Gullickson competed in professional WTA tournaments.
+
+4. The core claim is that both individuals have been professional tennis players - this is supported by the evidence, though the "defending champion" descriptor is inaccurate.
+
+[[ ## summary ## ]]
+The claim is partially inaccurate. While Carly Gullickson (Nicole Kriz's doubles partner at the 2009 Hansol Korea Open) and Francesca Schiavone are both confirmed professional tennis players, Carly Gullickson and Nicole Kriz were NOT the defending champions at that tournament. According to passage [1], Chuang Chia-jung and Hsieh Su-wei were the defending champions. Gullickson and Kriz were finalists, not defending champions. The claim contains a factual error in describing Gullickson as the "defending champion" doubles partner.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The defending champion doubles partner of Nicole Kriz, in the 2009 Hansol Korea Open – Doubles, and Francesca Schiavone have both been professional tennis players.
+
+[[ ## summary_1 ## ]]
+The claim can be verified with the provided passages. According to passage [1], Nicole Kriz's doubles partner in the 2009 Hansol Korea Open was Carly Gullickson (they reached the final). Passage [5] confirms that Carly Gullickson was a professional tennis player, as she and Nicole Kriz were defending champions at the 2009 Odlum Brown Vancouver Open. Multiple passages [2], [4], and [6] demonstrate that Francesca Schiavone participated in professional tennis tournaments and won doubles championships, confirming she is a professional tennis player. Therefore, both Carly Gullickson and Francesca Schiavone have been professional tennis players, and the claim is verified as TRUE.
+
+[[ ## summary_2 ## ]]
+The claim is partially inaccurate. While Carly Gullickson (Nicole Kriz's doubles partner at the 2009 Hansol Korea Open) and Francesca Schiavone are both confirmed professional tennis players, Carly Gullickson and Nicole Kriz were NOT the defending champions at that tournament. According to passage [1], Chuang Chia-jung and Hsieh Su-wei were the defending champions. Gullickson and Kriz were finalists, not defending champions. The claim contains a factual error in describing Gullickson as the "defending champion" doubles partner.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries present conflicting interpretations of the claim. Summary_1 concludes the claim is TRUE, while summary_2 identifies a factual error regarding the "defending champion" designation. The key disagreement centers on whether Nicole Kriz's 2009 doubles partner at the Hansol Korea Open was actually a defending champion at that tournament. Summary_2 correctly identifies that Chuang Chia-jung and Hsieh Su-wei were the defending champions, not Gullickson and Kriz (who were finalists). However, both summaries agree that Carly Gullickson and Francesca Schiavone were both professional tennis players. The critical issue is the accuracy of the "defending champion" claim. Summary_2's interpretation appears more precise in distinguishing between being finalists versus being defending champions.
+
+[[ ## query ## ]]
+Who were the defending champions of the 2009 Hansol Korea Open – Doubles, and did they differ from Nicole Kriz's doubles partner?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+2009 Hansol Korea Open – Doubles | Chuang Chia-jung and Hsieh Su-wei were the defending champion, but Hsieh chose not to participate that year.  Chuang partnered with Yan Zi, but they lost in the semifinals against Chan Yung-jan and Abigail Spears. Chan Yung-jan and Abigail Spears won in the final 6–3, 6–4 against Carly Gullickson and Nicole Kriz.
+2009 Odlum Brown Vancouver Open – Women's Doubles | Carly Gullickson and Nicole Kriz were the defending champions, but decided not to participate this year.
+2006 Hansol Korea Open – Doubles | Chan Yung-jan and Chuang Chia-jung were the defending champions, but Chan did not compete this year.  Chuang teamed up with Mariana Díaz Oliva and lost in the final to Virginia Ruano Pascual and Paola Suárez, 6–2, 6–3.
+1996 French Open – Mixed Doubles | Larisa Neiland and Todd Woodbridge were the defending champions, but competed this year with different partners.  Neiland teamed up with Mark Woodforde and were eliminated in semifinals, while Woodbridge partnered with Nicole Bradtke and were eliminated in quarterfinals.
+1991 US Open – Mixed Doubles | Elizabeth Smylie and Todd Woodbridge were the defending champions but they competed with different partners that year, Smylie with John Fitzgerald and Woodbridge with Nicole Provis.
+2008 Hansol Korea Open – Doubles | Chuang Chia-jung and Hsieh Su-wei were the defending champions, and won in the final 6–3, 6–0, against Vera Dushevina and Maria Kirilenko.
+2002 Pacific Life Open – Women's Doubles | Nicole Arendt and Ai Sugiyama were the defending champions but they competed with different partners that year, Arendt with Liezel Huber and Sugiyama with Elena Tatarkova.
+1993 KAL Cup Korea Open – Doubles | Kelly Evernden and Brad Pearce were the defending champions, but did not participate together this year.  Evernden partnered Brett Steven, losing in the semifinals.  Pearce partnered David Rikl, losing in the first round.
+2009 St. Petersburg Open – Doubles | Travis Parrott and Filip Polášek were the defending champions, but they chose to participate with different partners.
+2006 Hansol Korea Open – Singles | Nicole Vaidišová was the defending champion from 2005, but decided not to compete in 2006.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+2009 Hansol Korea Open – Doubles | Chuang Chia-jung and Hsieh Su-wei were the defending champion, but Hsieh chose not to participate that year.  Chuang partnered with Yan Zi, but they lost in the semifinals against Chan Yung-jan and Abigail Spears. Chan Yung-jan and Abigail Spears won in the final 6–3, 6–4 against Carly Gullickson and Nicole Kriz.
+2009 Toray Pan Pacific Open – Doubles | Vania King and Nadia Petrova were the defending champions, both of them were present this year, but played with different partners.King partnered with Zheng Jie and Petrova partnered with Gisela Dulko both lost to Daniela Hantuchová and Ai Sugiyama, in the first round and the semifinals respectively. Alisa Kleybanova and Francesca Schiavone won in the final 6-4, 6-2 against Daniela Hantuchová and Ai Sugiyama.
+2007 Dubai Tennis Championships – Women's Doubles | Květa Peschke and Francesca Schiavone were the defending champions.  They were both present but did not compete together.
+2010 Toray Pan Pacific Open – Doubles | Alisa Kleybanova and Francesca Schiavone were the defending champions.  Both were present, but competed with different partners.Kleybanova competed with Hsieh Su-wei, but lost in the first round to Benešová and Záhlavová-Strýcová, while Schiavone competed with Tathiana Garbin, however withdrew before their quarterfinal match against Lisa Raymond and Rennae Stubbs.
+2009 Odlum Brown Vancouver Open – Women's Doubles | Carly Gullickson and Nicole Kriz were the defending champions, but decided not to participate this year.
+2014 Brasil Tennis Cup – Doubles | Anabel Medina Garrigues and Yaroslava Shvedova were the defending champions and successfully defended their title, defeating Francesca Schiavone and Silvia Soler Espinosa in the final, 7–6, 2–6, [10–3].
+Nicole Kriz | Nicole Kriz (born 13 December 1983, in Bankstown, New South Wales) is an Australian professional tennis player.  Her career-high WTA doubles ranking is No. 104, set at 9 July 2007.  Her career-high WTA singles ranking is No. 332, which she reached on 4 August 2008.  She is currently the 3rd highest ranked Australian on the WTA doubles rankings.
+2009 Hansol Korea Open – Doubles | Chuang Chia-jung and Hsieh Su-wei were the defending champion, but Hsieh chose not to participate that year.  Chuang partnered with Yan Zi, but they lost in the semifinals against Chan Yung-jan and Abigail Spears. Chan Yung-jan and Abigail Spears won in the final 6–3, 6–4 against Carly Gullickson and Nicole Kriz.
+2009 Toray Pan Pacific Open – Doubles | Vania King and Nadia Petrova were the defending champions, both of them were present this year, but played with different partners.King partnered with Zheng Jie and Petrova partnered with Gisela Dulko both lost to Daniela Hantuchová and Ai Sugiyama, in the first round and the semifinals respectively. Alisa Kleybanova and Francesca Schiavone won in the final 6-4, 6-2 against Daniela Hantuchová and Ai Sugiyama.
+2010 Toray Pan Pacific Open – Doubles | Alisa Kleybanova and Francesca Schiavone were the defending champions.  Both were present, but competed with different partners.Kleybanova competed with Hsieh Su-wei, but lost in the first round to Benešová and Záhlavová-Strýcová, while Schiavone competed with Tathiana Garbin, however withdrew before their quarterfinal match against Lisa Raymond and Rennae Stubbs.
+Francesca Schiavone | Francesca Schiavone (] ; born 23 June 1980 in Milan) is an Italian tennis player who turned professional in 1998.  She won the 2010 French Open singles title, becoming the first Italian woman to win a Grand Slam event in singles.  She was also runner-up at the 2011 French Open.  Her career high ranking is world No. 4, achieved on 31 January 2011.  To date, Schiavone is the last one handed-backhand player to win a Grand Slam title on the women's tour.
+2009 Hansol Korea Open | The 2009 Hansol Korea Open was a women's tennis tournament played on outdoor hard courts.  It was the 6th edition of the event known that year as the Hansol Korea Open, and was part of the WTA International tournaments of the 2009 WTA Tour.  It was held at the Seoul Olympic Park Tennis Center in Seoul, South Korea, from September 21 through September 27, 2009.
+Nicole Kriz | Nicole Kriz (born 13 December 1983, in Bankstown, New South Wales) is an Australian professional tennis player.  Her career-high WTA doubles ranking is No. 104, set at 9 July 2007.  Her career-high WTA singles ranking is No. 332, which she reached on 4 August 2008.  She is currently the 3rd highest ranked Australian on the WTA doubles rankings.
+Francesca Schiavone career statistics | This is a list of the main career statistics of professional Italian tennis player Francesca Schiavone.
+2009 Hansol Korea Open – Doubles | Chuang Chia-jung and Hsieh Su-wei were the defending champion, but Hsieh chose not to participate that year.  Chuang partnered with Yan Zi, but they lost in the semifinals against Chan Yung-jan and Abigail Spears. Chan Yung-jan and Abigail Spears won in the final 6–3, 6–4 against Carly Gullickson and Nicole Kriz.
+2009 Odlum Brown Vancouver Open – Women's Doubles | Carly Gullickson and Nicole Kriz were the defending champions, but decided not to participate this year.
+2006 Hansol Korea Open – Doubles | Chan Yung-jan and Chuang Chia-jung were the defending champions, but Chan did not compete this year.  Chuang teamed up with Mariana Díaz Oliva and lost in the final to Virginia Ruano Pascual and Paola Suárez, 6–2, 6–3.
+1996 French Open – Mixed Doubles | Larisa Neiland and Todd Woodbridge were the defending champions, but competed this year with different partners.  Neiland teamed up with Mark Woodforde and were eliminated in semifinals, while Woodbridge partnered with Nicole Bradtke and were eliminated in quarterfinals.
+1991 US Open – Mixed Doubles | Elizabeth Smylie and Todd Woodbridge were the defending champions but they competed with different partners that year, Smylie with John Fitzgerald and Woodbridge with Nicole Provis.
+2008 Hansol Korea Open – Doubles | Chuang Chia-jung and Hsieh Su-wei were the defending champions, and won in the final 6–3, 6–0, against Vera Dushevina and Maria Kirilenko.
+2002 Pacific Life Open – Women's Doubles | Nicole Arendt and Ai Sugiyama were the defending champions but they competed with different partners that year, Arendt with Liezel Huber and Sugiyama with Elena Tatarkova.
+1993 KAL Cup Korea Open – Doubles | Kelly Evernden and Brad Pearce were the defending champions, but did not participate together this year.  Evernden partnered Brett Steven, losing in the semifinals.  Pearce partnered David Rikl, losing in the first round.
+2009 St. Petersburg Open – Doubles | Travis Parrott and Filip Polášek were the defending champions, but they chose to participate with different partners.
+2006 Hansol Korea Open – Singles | Nicole Vaidišová was the defending champion from 2005, but decided not to compete in 2006.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code C.7 (Entity_Coreference_Error), anchored near step 5: evidence: Summary_1 states 'According to passage [1], Nicole Kriz's doubles partner in the 2009 Hansol Korea Open was Carly Gullickson (they reached the final). Passage [5] confirms that Carly Gullickson was a professional tennis player, as she and Nicole Kriz were defending champions at the 2009 Odlum Brown Vancouver Open.' The solver conflates Carly Gullickson being the defending champion at the 2009 Odlu
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query at hop 2: 'Who was Nicole Kriz's doubles partner at the 2009 Hansol Korea Open, and have both this partner and Francesca Schiavone been professional tennis players?' This query re-asks the already-answered question from hop 1 without advancing the investigation. Summary_1 had already stated 'According to passage [1], Nicole Kriz's doubles partner in the 2009 Hansol Korea Open was Carly Gulli
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query at hop 3: 'Who were the defending champions of the 2009 Hansol Korea Open – Doubles, and did they differ from Nicole Kriz's doubles partner?' This information was already explicitly stated in passage [1] from hop 1: 'Chuang Chia-jung and Hsieh Su-wei were the defending champion' and 'Chan Yung-jan and Abigail Spears won in the final 6–3, 6–4 against Carly Gullickson and Nicole Kriz.' The que
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

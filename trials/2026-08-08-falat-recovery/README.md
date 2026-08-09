@@ -66,5 +66,38 @@ consumed by Φ v0.1).
 present in the AdaMAST venv but not in the system python3 — invoke it
 with `~/.local/share/uv/tools/adamast/bin/python`.
 
-**Conclusion.** PENDING — awaiting the Stage-2 edge-typing dry run, then
-the full 600-trace Stage-1 + Stage-2 pass.
+**Stage-2 dry run (24 traces, 24/24 succeeded, 0 failures).**
+Two runner bugs of mine were found and fixed first: boto3 ignores
+`AWS_REGION` (only `AWS_DEFAULT_REGION`), and — the substantive one —
+first-match quote localization dragged later occurrences back to
+earlier steps because converted traces repeat earlier content inside
+later prompts, inverting causal order (the crash) and silently
+collapsing distinct occurrences (would have broken per-occurrence
+enumeration). Localization now honors the model's asserted step when
+the quote is verifiable there; malformed output is counted, never fatal.
+
+Results:
+- **Enumeration:** 154 occurrences over 24 traces (mean 6.4); 48
+  (trace, code) pairs carry >1 occurrence, up to 10 — per-instance
+  enumeration works as specified.
+- **Closure:** 184 edges (follow_up 135, error_shift 24, redundancy 20,
+  correction 4, dead_end 1); 22/154 occurrences (14%) left unlinked
+  despite the closure requirement — a Q_Recovery gap, currently charged
+  conservatively as persisted.
+- **Quote verification:** 94% `at_claimed`, 2% fuzzy, 1% relocated,
+  4% unverified — the anchors the graph relies on are sound.
+- **Recovery signal is alive:** 30/154 occurrences recovered (19.5%)
+  vs the legacy judge's 4.9% (84 of 1729 failure points). At the
+  (task, mode) level, 13/86 pairs fully recovered (15%), 2/24 traces
+  fully clean. Mechanism split: 19 blocked downstream, 7 non-
+  propagating only, 4 explicitly corrected.
+- **Known instrument noise:** 25 backward edges dropped (16% of edges) —
+  the model asserting causation against trace order; a real Q_Recovery
+  error term to measure, not silently absorbed.
+
+**Conclusion.** The FALAT-derived instrument works end to end and
+produces a live recovery axis where the legacy judge produced almost
+none (19.5% vs 4.9%), with every verdict computed deterministically
+from quote-verified, trace-anchored edge claims. Ready for the full
+600-trace pass. Open Q_Recovery terms carried forward: 14% unlinked
+occurrences and 16% backward edges.

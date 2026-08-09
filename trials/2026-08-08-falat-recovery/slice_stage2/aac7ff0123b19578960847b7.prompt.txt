@@ -1,0 +1,524 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "1. Receive the claim to verify as input to the pipeline.",
+    "2. Retriever performs hop-1: executes BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim, returns a set of relevant document passages.",
+    "3. Solver produces summary 1: analyzes the hop-1 retrieved passages to identify what they establish about the claim and what information is still missing.",
+    "4. Coordinator generates query for hop-2: transforms solver summary 1 into a keyword-style retrieval query targeting the missing information.",
+    "5. Retriever performs hop-2: executes BM25 search using the coordinator's query, returns a second set of relevant document passages.",
+    "6. Solver produces summary 2: analyzes the hop-2 retrieved passages (in context of what was already found) to identify what they establish and what remains missing.",
+    "7. Coordinator generates query for hop-3: transforms solver summary 2 into a keyword-style retrieval query targeting any remaining information gaps.",
+    "8. Retriever performs hop-3: executes BM25 search using the coordinator's query, returns a third set of relevant document passages.",
+    "9. Final output is produced: concatenation of all documents retrieved across hop-1, hop-2, and hop-3, with no verdict or additional analysis."
+  ],
+  "role_boundaries": {
+    "retriever": "Should execute BM25 searches over Wikipedia abstracts using keyword-style queries provided to it; return relevant passages. Should not interpret the claim semantically, generate its own queries autonomously, summarize content, reason about what is missing, or make verification judgments.",
+    "solver": "Should analyze retrieved passages to summarize what they establish about the claim and explicitly identify what information is still missing or needed. Should not perform retrieval, generate retrieval queries directly, make final verification verdicts, or operate on anything other than the passages provided to it.",
+    "coordinator": "Should transform solver summaries into keyword-style retrieval queries suitable for BM25 search, targeting the missing information identified by the solver. Should not perform retrieval itself, analyze passage content, make judgments about the claim, or generate queries independently of solver summaries."
+  },
+  "risk_patterns": [
+    "Retriever might receive a query that is too vague or too specific, causing irrelevant or no results to be returned.",
+    "Solver might fail to identify missing information, leading to redundant subsequent retrievals.",
+    "Coordinator might generate a query that does not effectively translate the solver's natural language summary into BM25-friendly keywords.",
+    "Retriever might return empty or low-quality results at any hop, propagating insufficient information forward.",
+    "Solver might over-interpret or hallucinate information not present in the retrieved passages.",
+    "Coordinator might lose focus on the original claim and drift toward tangential topics across hops.",
+    "The pipeline might exhaust its three hops without retrieving sufficient information to verify the claim.",
+    "Role confusion might occur where one component attempts to perform another's function, breaking the intended workflow.",
+    "The final concatenated output might contain duplicate or contradictory passages without reconciliation.",
+    "Early hops might retrieve documents that make later hops unnecessary, but the pipeline must still execute all three hops regardless."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Mark Patrick was the host of the game show Hoosier Millionaire. The game the show is based on includes the sale of the lottery game offered by 44 states.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Mark Patrick | Mark Patrick Storen (born c. 1959), better known by his professional name Mark Patrick, is an American radio personality based in Indianapolis.  Starting out on satellite radio, he was part of MLB Network Radio as the co-host of "Baseball This Morning" along with Buck Martinez and Larry Bowa .  Patrick also hosted the Hoosier Lottery television game show Hoosier Millionaire for 14 years.  Patrick also had a nationally syndicated morning show on Fox Sports Radio for a few years.  Patrick was primary sports anchor for WISH-TV from 1990 to 1998.
+Powerball Instant Millionaire | Powerball Instant Millionaire is a lottery-based game show that aired from October 5, 2002 to September 2004 in some of the jurisdictions that offered the Powerball game.  Todd Newton was the host.
+Monopoly Millionaires' Club (U.S. game show) | Monopoly Millionaires' Club is an American game show that debuted in syndication on March 28, 2015.  Hosted by stand-up comedian/actor Billy Gardell, best known for his role as Chicago police officer Mike Biggs on the sitcom "Mike & Molly," it was initially based on an unsuccessful drawing game of the same name that was coordinated by the Multi-State Lottery Association (MUSL), using the "Monopoly" board game brand under license from Hasbro.  The lottery game returned, in scratch-off form, in the spring of 2015.
+Hoosier Millionaire | Hoosier Millionaire is an American television lottery game show which aired on television stations in Indiana, Illinois and Kentucky from October 28, 1989 to November 19, 2005.
+Powerball: The Game Show | Powerball: The Game Show is a lottery-based game show that aired from October 2000 to September 2002 in some of the jurisdictions that offered the Powerball game.  Bob Eubanks and Debbie James were the hosts, while Ed MacKay announced.
+The Money Game (game show) | The Money Game, also known as "The Oregon Lottery's Money Game", was a short-lived lottery game show which ran in the state of Oregon from 1988 to 1990, and was hosted by Tom Parker and Karen Trumbo.  It offered five contestants an opportunity to win up to $50,000 and possibly a car.  It was produced by KGW-TV, Channel 8, in Portland, Oregon, the same station that broadcast the award-winning question and answer quiz show "On the Spot", and also by station KOIN-TV, Channel 6.
+Pat Finn | Patrick Joseph "Pat" Finn (born July 24, 1956) is an American television presenter and game show host.  He is the owner of the production company Rubicon Entertainment.  Finn's first national gig was hosting the 1990 remake of the classic Jack Barry show "The Joker's Wild".  In 1991, he became host of "Shop 'til You Drop", the #1 rated cable game show in America at the time, where he remained for 11 years, and from 1999-2009 he became the host of the California State Lottery's weekly game show, "The Big Spin".
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+Mark Patrick was the host of the game show Hoosier Millionaire. The game the show is based on includes the sale of the lottery game offered by 44 states.
+
+[[ ## passages ## ]]
+[1] «Mark Patrick | Mark Patrick Storen (born c. 1959), better known by his professional name Mark Patrick, is an American radio personality based in Indianapolis.  Starting out on satellite radio, he was part of MLB Network Radio as the co-host of "Baseball This Morning" along with Buck Martinez and Larry Bowa .  Patrick also hosted the Hoosier Lottery television game show Hoosier Millionaire for 14 years.  Patrick also had a nationally syndicated morning show on Fox Sports Radio for a few years.  Patrick was primary sports anchor for WISH-TV from 1990 to 1998.»
+[2] «Powerball Instant Millionaire | Powerball Instant Millionaire is a lottery-based game show that aired from October 5, 2002 to September 2004 in some of the jurisdictions that offered the Powerball game.  Todd Newton was the host.»
+[3] «Monopoly Millionaires' Club (U.S. game show) | Monopoly Millionaires' Club is an American game show that debuted in syndication on March 28, 2015.  Hosted by stand-up comedian/actor Billy Gardell, best known for his role as Chicago police officer Mike Biggs on the sitcom "Mike & Molly," it was initially based on an unsuccessful drawing game of the same name that was coordinated by the Multi-State Lottery Association (MUSL), using the "Monopoly" board game brand under license from Hasbro.  The lottery game returned, in scratch-off form, in the spring of 2015.»
+[4] «Hoosier Millionaire | Hoosier Millionaire is an American television lottery game show which aired on television stations in Indiana, Illinois and Kentucky from October 28, 1989 to November 19, 2005.»
+[5] «Powerball: The Game Show | Powerball: The Game Show is a lottery-based game show that aired from October 2000 to September 2002 in some of the jurisdictions that offered the Powerball game.  Bob Eubanks and Debbie James were the hosts, while Ed MacKay announced.»
+[6] «The Money Game (game show) | The Money Game, also known as "The Oregon Lottery's Money Game", was a short-lived lottery game show which ran in the state of Oregon from 1988 to 1990, and was hosted by Tom Parker and Karen Trumbo.  It offered five contestants an opportunity to win up to $50,000 and possibly a car.  It was produced by KGW-TV, Channel 8, in Portland, Oregon, the same station that broadcast the award-winning question and answer quiz show "On the Spot", and also by station KOIN-TV, Channel 6.»
+[7] «Pat Finn | Patrick Joseph "Pat" Finn (born July 24, 1956) is an American television presenter and game show host.  He is the owner of the production company Rubicon Entertainment.  Finn's first national gig was hosting the 1990 remake of the classic Jack Barry show "The Joker's Wild".  In 1991, he became host of "Shop 'til You Drop", the #1 rated cable game show in America at the time, where he remained for 11 years, and from 1999-2009 he became the host of the California State Lottery's weekly game show, "The Big Spin".»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze the claim by breaking it into its component parts:
+
+1. **Mark Patrick was the host of Hoosier Millionaire** - VERIFIED
+   - Passage [1] explicitly states: "Patrick also hosted the Hoosier Lottery television game show Hoosier Millionaire for 14 years."
+
+2. **Hoosier Millionaire is based on a lottery game** - PARTIALLY VERIFIED
+   - Passage [4] confirms: "Hoosier Millionaire is an American television lottery game show which aired on television stations in Indiana, Illinois and Kentucky from October 28, 1989 to November 19, 2005."
+   - This establishes it is a lottery-based game show, but does not specify which underlying lottery game it is based on.
+
+3. **The game the show is based on includes the sale of the lottery game offered by 44 states** - NOT VERIFIED
+   - Passage [4] does not specify which lottery game Hoosier Millionaire was based on.
+   - The passages mention several lottery games (Powerball, Monopoly Millionaires' Club lottery game, The Oregon Lottery's Money Game) but none explicitly state that they are offered by 44 states.
+   - Powerball passages [2] and [5] mention it was offered in "some of the jurisdictions" but do not specify the number of states.
+   - No passage provides information about a lottery game offered by exactly 44 states.
+
+To fully verify the claim, I would need: information about which specific lottery game Hoosier Millionaire was based on, and documentation that this lottery game was being offered by 44 states during the period Hoosier Millionaire aired (1989-2005).
+
+[[ ## summary ## ]]
+
+**Verification Status: PARTIALLY VERIFIED**
+
+The claim has two verifiable and one unverifiable component:
+
+1. **Mark Patrick as host of Hoosier Millionaire** - VERIFIED: Passage [1] confirms Mark Patrick hosted Hoosier Millionaire for 14 years.
+
+2. **Hoosier Millionaire being lottery-based** - VERIFIED: Passage [4] confirms Hoosier Millionaire is a "television lottery game show."
+
+3. **The underlying lottery game being offered by 44 states** - NOT VERIFIED: The passages do not identify which specific lottery game Hoosier Millionaire was based on, nor do they provide any information about a lottery game offered by exactly 44 states.
+
+**Information needed for complete verification:**
+- Explicit identification of which lottery game Hoosier Millionaire was based on (e.g., whether it was based on Powerball or another multi-state lottery)
+- Documentation that this specific lottery game was offered in 44 states (or confirmation of the exact number of states where it was offered during Hoosier Millionaire's broadcast period of October 28, 1989 to November 19, 2005)
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+Mark Patrick was the host of the game show Hoosier Millionaire. The game the show is based on includes the sale of the lottery game offered by 44 states.
+
+[[ ## summary_1 ## ]]
+**Verification Status: PARTIALLY VERIFIED**
+
+The claim has two verifiable and one unverifiable component:
+
+1. **Mark Patrick as host of Hoosier Millionaire** - VERIFIED: Passage [1] confirms Mark Patrick hosted Hoosier Millionaire for 14 years.
+
+2. **Hoosier Millionaire being lottery-based** - VERIFIED: Passage [4] confirms Hoosier Millionaire is a "television lottery game show."
+
+3. **The underlying lottery game being offered by 44 states** - NOT VERIFIED: The passages do not identify which specific lottery game Hoosier Millionaire was based on, nor do they provide any information about a lottery game offered by exactly 44 states.
+
+**Information needed for complete verification:**
+- Explicit identification of which lottery game Hoosier Millionaire was based on (e.g., whether it was based on Powerball or another multi-state lottery)
+- Documentation that this specific lottery game was offered in 44 states (or confirmation of the exact number of states where it was offered during Hoosier Millionaire's broadcast period of October 28, 1989 to November 19, 2005)
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that while Mark Patrick's role and the lottery-based nature of Hoosier Millionaire have been verified, the critical missing piece is identification of the specific lottery game that Hoosier Millionaire was based on, and confirmation that this game was offered by 44 states.
+
+To complete verification of the claim, I need to:
+1. Identify which specific lottery game served as the basis for Hoosier Millionaire
+2. Verify that this lottery game was offered in exactly 44 states (or determine the actual number of states offering it during the show's run from 1989-2005)
+3. Account for the possibility that the game might have been based on a major multi-state lottery like Powerball, Mega Millions, or a state-specific lottery
+
+The query should target documents that explain the relationship between Hoosier Millionaire and the underlying lottery game, as well as information about the geographic distribution and state participation of any lottery game identified as the basis for the show.
+[[ ## query ## ]]
+What lottery game was Hoosier Millionaire based on? Which specific lottery game is Hoosier Millionaire derived from, and how many states offered this lottery game during the show's broadcast period (1989-2005)? Was Hoosier Millionaire based on Powerball or another multi-state lottery game, and what was the number of participating states?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Hoosier Millionaire | Hoosier Millionaire is an American television lottery game show which aired on television stations in Indiana, Illinois and Kentucky from October 28, 1989 to November 19, 2005.
+Hoosier Lottery | The Hoosier Lottery is the official state lottery of Indiana, and is the only US lottery that uses the state's nickname as its official name.  It is a member of the Multi-State Lottery Association (MUSL).  The Hoosier Lottery sells scratch-off tickets; its draw games include Mega Millions, Hoosier Lotto, Powerball, Cash 5, and Poker Lotto.
+Powerball Instant Millionaire | Powerball Instant Millionaire is a lottery-based game show that aired from October 5, 2002 to September 2004 in some of the jurisdictions that offered the Powerball game.  Todd Newton was the host.
+New Mexico Lottery | The New Mexico Lottery is run by the government of New Mexico.  It was established in 1996.  It is a member of the Multi-State Lottery Association (MUSL).  It offer draw games and scratch off games.  As of December 2014, draw games are Powerball, Mega Millions, Monopoly Millionaires' Club, Hot Lotto, Roadrunner Cash, Pick 3, Quicksters, and Lucky Numbers Bingo.
+Monopoly Millionaires' Club (U.S. game show) | Monopoly Millionaires' Club is an American game show that debuted in syndication on March 28, 2015.  Hosted by stand-up comedian/actor Billy Gardell, best known for his role as Chicago police officer Mike Biggs on the sitcom "Mike & Molly," it was initially based on an unsuccessful drawing game of the same name that was coordinated by the Multi-State Lottery Association (MUSL), using the "Monopoly" board game brand under license from Hasbro.  The lottery game returned, in scratch-off form, in the spring of 2015.
+Rhode Island Lottery | The Rhode Island Lottery (or "The Lot") is run by the government of Rhode Island.  It is a charter member of the Multi-State Lottery Association (MUSL).  Rhode Island Lottery games include Mega Millions, Powerball, Wild Money, keno, and scratch tickets.  Rhode Island also offers video lottery, which includes the multi-jurisdictional MegaHits game.
+Hot Lotto | Hot Lotto is a multi-state lottery game administered by the Iowa-based Multi-State Lottery Association (MUSL), which is best known for operating the Mega Millions and Powerball games.  Hot Lotto is available in 14 states.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        Your task is to generate a summary that evaluates whether the claim can be verified from the provided passages. Your summary will be used to guide a three-hop retrieval system to find all required evidence documents.
+        
+        **Critical Requirement**: Your summary must be structured to ensure that a retrieval system will identify and retrieve ALL required evidence documents across three retrieval hops. The feedback will indicate which required evidence documents were successfully retrieved and which were missed.
+        
+        **Three-Hop Retrieval Strategy**:
+        - **Hop 1**: The retrieval system will extract key entities and concepts from the claim itself to retrieve initial documents
+        - **Hop 2**: The system will analyze the retrieved documents and context to identify additional entities that need verification
+        - **Hop 3**: The system will retrieve final documents based on connections and relationships discovered in previous hops
+        
+        **Guidelines for Writing Your Summary**:
+        
+        1. **Identify ALL entities in the claim**: Your summary should explicitly mention every specific entity (people, events, organizations, films, tournaments, seasons, locations, etc.) that appears in the claim. This helps the retrieval system identify what documents are needed.
+        
+        2. **Highlight missing information gaps**: When information is missing from the passages, clearly state what specific documents or facts would be needed. Use explicit document titles or entity names when possible (e.g., "Information about the film 'Undiscovered' and its ticket sales", "Gene Mayer's birth date", "who coached the Memphis Grizzlies in 2004-05").
+        
+        3. **Name entities from context that need verification**: If the context identifies specific entities (like "Lionel Hollins" or "Maurice Cheeks") that are relevant but not fully covered in passages, explicitly mention these names in your summary so they can be retrieved.
+        
+        4. **State verification requirements explicitly**: Clearly articulate what information would be needed to verify the claim, using specific entity names and document types (e.g., "the 1980 Lorraine Open results", "Serena Williams' birth date", "the 2004-05 Memphis Grizzlies season coaching staff").
+        
+        5. **Connect multi-hop relationships**: For claims requiring multiple pieces of information (e.g., "the actor from movie X that did Y"), explicitly state each step: identify movie X, identify the actor, verify the actor did Y.
+        
+        6. **Distinguish between similar entities**: When there might be confusion between entities (e.g., Golden Calf vs. Golden Globes, different people with coaching roles), be explicit about which specific entity or fact needs to be verified.
+        
+        7. **Format for retrieval**: Structure your summary to make it easy for a retrieval system to extract search queries. Use phrases like "requires information about [specific entity/document]" or "needs verification of [specific fact from specific source]".
+        
+        Your summary should conclude with a clear statement about whether the claim is verified, cannot be verified, or is false based on available passages, while making it obvious what additional documents would complete the verification chain.
+[STEP 11] (user) [[ ## claim ## ]]
+Mark Patrick was the host of the game show Hoosier Millionaire. The game the show is based on includes the sale of the lottery game offered by 44 states.
+
+[[ ## context ## ]]
+**Verification Status: PARTIALLY VERIFIED**
+
+The claim has two verifiable and one unverifiable component:
+
+1. **Mark Patrick as host of Hoosier Millionaire** - VERIFIED: Passage [1] confirms Mark Patrick hosted Hoosier Millionaire for 14 years.
+
+2. **Hoosier Millionaire being lottery-based** - VERIFIED: Passage [4] confirms Hoosier Millionaire is a "television lottery game show."
+
+3. **The underlying lottery game being offered by 44 states** - NOT VERIFIED: The passages do not identify which specific lottery game Hoosier Millionaire was based on, nor do they provide any information about a lottery game offered by exactly 44 states.
+
+**Information needed for complete verification:**
+- Explicit identification of which lottery game Hoosier Millionaire was based on (e.g., whether it was based on Powerball or another multi-state lottery)
+- Documentation that this specific lottery game was offered in 44 states (or confirmation of the exact number of states where it was offered during Hoosier Millionaire's broadcast period of October 28, 1989 to November 19, 2005)
+
+[[ ## passages ## ]]
+[1] «Hoosier Millionaire | Hoosier Millionaire is an American television lottery game show which aired on television stations in Indiana, Illinois and Kentucky from October 28, 1989 to November 19, 2005.»
+[2] «Hoosier Lottery | The Hoosier Lottery is the official state lottery of Indiana, and is the only US lottery that uses the state's nickname as its official name.  It is a member of the Multi-State Lottery Association (MUSL).  The Hoosier Lottery sells scratch-off tickets; its draw games include Mega Millions, Hoosier Lotto, Powerball, Cash 5, and Poker Lotto.»
+[3] «Powerball Instant Millionaire | Powerball Instant Millionaire is a lottery-based game show that aired from October 5, 2002 to September 2004 in some of the jurisdictions that offered the Powerball game.  Todd Newton was the host.»
+[4] «New Mexico Lottery | The New Mexico Lottery is run by the government of New Mexico.  It was established in 1996.  It is a member of the Multi-State Lottery Association (MUSL).  It offer draw games and scratch off games.  As of December 2014, draw games are Powerball, Mega Millions, Monopoly Millionaires' Club, Hot Lotto, Roadrunner Cash, Pick 3, Quicksters, and Lucky Numbers Bingo.»
+[5] «Monopoly Millionaires' Club (U.S. game show) | Monopoly Millionaires' Club is an American game show that debuted in syndication on March 28, 2015.  Hosted by stand-up comedian/actor Billy Gardell, best known for his role as Chicago police officer Mike Biggs on the sitcom "Mike & Molly," it was initially based on an unsuccessful drawing game of the same name that was coordinated by the Multi-State Lottery Association (MUSL), using the "Monopoly" board game brand under license from Hasbro.  The lottery game returned, in scratch-off form, in the spring of 2015.»
+[6] «Rhode Island Lottery | The Rhode Island Lottery (or "The Lot") is run by the government of Rhode Island.  It is a charter member of the Multi-State Lottery Association (MUSL).  Rhode Island Lottery games include Mega Millions, Powerball, Wild Money, keno, and scratch tickets.  Rhode Island also offers video lottery, which includes the multi-jurisdictional MegaHits game.»
+[7] «Hot Lotto | Hot Lotto is a multi-state lottery game administered by the Iowa-based Multi-State Lottery Association (MUSL), which is best known for operating the Mega Millions and Powerball games.  Hot Lotto is available in 14 states.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+The claim contains two main assertions that need verification:
+
+1. **Mark Patrick as host of Hoosier Millionaire** - This is directly confirmed in passage [1], which states "Hoosier Millionaire is an American television lottery game show" and the context confirms Mark Patrick hosted it for 14 years.
+
+2. **The game being based on a lottery offered by 44 states** - This is the critical unverified component. The passages confirm:
+   - Hoosier Millionaire was a lottery-based game show (passage [1])
+   - The Hoosier Lottery is a member of MUSL and offers multiple games including Powerball (passage [2])
+   - Other similar lottery-based game shows exist (Powerball Instant Millionaire in passage [3], Monopoly Millionaires' Club in passage [5])
+   
+However, the passages provide NO information about:
+   - Which specific lottery game Hoosier Millionaire was based on
+   - How many states offered any particular lottery game during Hoosier Millionaire's broadcast period (October 28, 1989 to November 19, 2005)
+   - Verification that any lottery game was offered in exactly 44 states
+
+The passages mention various multi-state lottery games (Powerball, Mega Millions, Hot Lotto) but do not establish which one Hoosier Millionaire was based on, nor do they confirm the "44 states" claim for any game.
+
+[[ ## summary ## ]]
+
+**Verification Status: PARTIALLY VERIFIED - CRITICAL GAPS REMAIN**
+
+The claim has three distinct components requiring verification:
+
+**Component 1 - VERIFIED**: Mark Patrick hosted Hoosier Millionaire (confirmed in passage [1] and context verification).
+
+**Component 2 - VERIFIED**: Hoosier Millionaire is a lottery-based game show (confirmed in passage [1]).
+
+**Component 3 - NOT VERIFIED**: The specific lottery game underlying Hoosier Millionaire being offered by 44 states.
+
+**Critical Information Gaps Requiring Retrieval:**
+
+To complete verification of the claim, the following specific documents and information are needed across three retrieval hops:
+
+- **Hop 1 (Direct)**: Requires explicit documentation identifying which specific lottery game Hoosier Millionaire was based on (e.g., was it Powerball, Mega Millions, Hoosier Lotto, or another multi-state game?). This information should be found in Hoosier Millionaire game show documentation, production information, or official game rules.
+
+- **Hop 2 (Connection)**: Once the underlying lottery game is identified, requires documentation about that specific lottery game's history and distribution during the Hoosier Millionaire broadcast period (October 28, 1989 to November 19, 2005), specifically: which states participated, how many states offered it, and verification of the "44 states" claim.
+
+- **Hop 3 (Verification)**: Requires cross-reference documentation confirming the exact number of states that participated in the identified lottery game during Hoosier Millionaire's active years.
+
+**Current Knowledge**: While passages mention that Hoosier Lottery is a MUSL member offering multiple games, and other lottery-based game shows existed (like Powerball Instant Millionaire), none of the passages establish which specific game Hoosier Millionaire was based on or confirm the 44-state participation claim for any game.
+
+**Conclusion**: The claim cannot be fully verified with current passages. The first two components are verified, but the critical claim about a 44-state lottery game remains completely unverified and requires identification of the specific underlying lottery game and documentation of its multi-state participation numbers.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Mark Patrick was the host of the game show Hoosier Millionaire. The game the show is based on includes the sale of the lottery game offered by 44 states.
+
+[[ ## summary_1 ## ]]
+**Verification Status: PARTIALLY VERIFIED**
+
+The claim has two verifiable and one unverifiable component:
+
+1. **Mark Patrick as host of Hoosier Millionaire** - VERIFIED: Passage [1] confirms Mark Patrick hosted Hoosier Millionaire for 14 years.
+
+2. **Hoosier Millionaire being lottery-based** - VERIFIED: Passage [4] confirms Hoosier Millionaire is a "television lottery game show."
+
+3. **The underlying lottery game being offered by 44 states** - NOT VERIFIED: The passages do not identify which specific lottery game Hoosier Millionaire was based on, nor do they provide any information about a lottery game offered by exactly 44 states.
+
+**Information needed for complete verification:**
+- Explicit identification of which lottery game Hoosier Millionaire was based on (e.g., whether it was based on Powerball or another multi-state lottery)
+- Documentation that this specific lottery game was offered in 44 states (or confirmation of the exact number of states where it was offered during Hoosier Millionaire's broadcast period of October 28, 1989 to November 19, 2005)
+
+[[ ## summary_2 ## ]]
+**Verification Status: PARTIALLY VERIFIED - CRITICAL GAPS REMAIN**
+
+The claim has three distinct components requiring verification:
+
+**Component 1 - VERIFIED**: Mark Patrick hosted Hoosier Millionaire (confirmed in passage [1] and context verification).
+
+**Component 2 - VERIFIED**: Hoosier Millionaire is a lottery-based game show (confirmed in passage [1]).
+
+**Component 3 - NOT VERIFIED**: The specific lottery game underlying Hoosier Millionaire being offered by 44 states.
+
+**Critical Information Gaps Requiring Retrieval:**
+
+To complete verification of the claim, the following specific documents and information are needed across three retrieval hops:
+
+- **Hop 1 (Direct)**: Requires explicit documentation identifying which specific lottery game Hoosier Millionaire was based on (e.g., was it Powerball, Mega Millions, Hoosier Lotto, or another multi-state game?). This information should be found in Hoosier Millionaire game show documentation, production information, or official game rules.
+
+- **Hop 2 (Connection)**: Once the underlying lottery game is identified, requires documentation about that specific lottery game's history and distribution during the Hoosier Millionaire broadcast period (October 28, 1989 to November 19, 2005), specifically: which states participated, how many states offered it, and verification of the "44 states" claim.
+
+- **Hop 3 (Verification)**: Requires cross-reference documentation confirming the exact number of states that participated in the identified lottery game during Hoosier Millionaire's active years.
+
+**Current Knowledge**: While passages mention that Hoosier Lottery is a MUSL member offering multiple games, and other lottery-based game shows existed (like Powerball Instant Millionaire), none of the passages establish which specific game Hoosier Millionaire was based on or confirm the 44-state participation claim for any game.
+
+**Conclusion**: The claim cannot be fully verified with current passages. The first two components are verified, but the critical claim about a 44-state lottery game remains completely unverified and requires identification of the specific underlying lottery game and documentation of its multi-state participation numbers.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries agree that the claim has three components: (1) Mark Patrick hosted Hoosier Millionaire - VERIFIED, (2) Hoosier Millionaire is lottery-based - VERIFIED, and (3) the underlying lottery game was offered by 44 states - NOT VERIFIED. The critical gap is the identification of which specific lottery game Hoosier Millionaire was based on, and verification that this game was offered in exactly 44 states during the show's broadcast period (1989-2005). Summary_2 provides more detailed guidance on the multi-hop retrieval strategy needed: first identifying the specific lottery game, then documenting that game's multi-state participation, and finally verifying the 44-state claim. Neither summary provides information about the specific lottery game underlying Hoosier Millionaire or confirmation of 44-state participation.
+[[ ## query ## ]]
+What specific lottery game was Hoosier Millionaire based on, and in how many states was that lottery game offered during the show's broadcast period from 1989 to 2005?
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Hoosier Millionaire | Hoosier Millionaire is an American television lottery game show which aired on television stations in Indiana, Illinois and Kentucky from October 28, 1989 to November 19, 2005.
+Powerball Instant Millionaire | Powerball Instant Millionaire is a lottery-based game show that aired from October 5, 2002 to September 2004 in some of the jurisdictions that offered the Powerball game.  Todd Newton was the host.
+Monopoly Millionaires' Club (U.S. game show) | Monopoly Millionaires' Club is an American game show that debuted in syndication on March 28, 2015.  Hosted by stand-up comedian/actor Billy Gardell, best known for his role as Chicago police officer Mike Biggs on the sitcom "Mike & Molly," it was initially based on an unsuccessful drawing game of the same name that was coordinated by the Multi-State Lottery Association (MUSL), using the "Monopoly" board game brand under license from Hasbro.  The lottery game returned, in scratch-off form, in the spring of 2015.
+Hoosier Lottery | The Hoosier Lottery is the official state lottery of Indiana, and is the only US lottery that uses the state's nickname as its official name.  It is a member of the Multi-State Lottery Association (MUSL).  The Hoosier Lottery sells scratch-off tickets; its draw games include Mega Millions, Hoosier Lotto, Powerball, Cash 5, and Poker Lotto.
+New Mexico Lottery | The New Mexico Lottery is run by the government of New Mexico.  It was established in 1996.  It is a member of the Multi-State Lottery Association (MUSL).  It offer draw games and scratch off games.  As of December 2014, draw games are Powerball, Mega Millions, Monopoly Millionaires' Club, Hot Lotto, Roadrunner Cash, Pick 3, Quicksters, and Lucky Numbers Bingo.
+The Money Game (game show) | The Money Game, also known as "The Oregon Lottery's Money Game", was a short-lived lottery game show which ran in the state of Oregon from 1988 to 1990, and was hosted by Tom Parker and Karen Trumbo.  It offered five contestants an opportunity to win up to $50,000 and possibly a car.  It was produced by KGW-TV, Channel 8, in Portland, Oregon, the same station that broadcast the award-winning question and answer quiz show "On the Spot", and also by station KOIN-TV, Channel 6.
+Fame and Fortune (TV series) | Fame & Fortune is a game show broadcast on RTÉ One on Saturday nights between 1996 and 2006.  Presented by Marty Whelan (who signed off every show with the catchphrase: "How do you play?  You buy a ticket.") , the show aired during the summer months of June, July, and August as a seasonal replacement for "Winning Streak".  It was preceded by "Millionaire", also hosted by Whelan, and succeeded by "The Trump Card" in 2007, hosted by Laura Woods.  "Fame & Fortune" had its production costs funded by RTÉ and its prize money funded by Ireland's National Lottery.  Entry to the show was based on National Lottery scratchcards, and contestants could win cash, cars, holidays, and other prizes.  "Fame & Fortune" had its final season in the summer of 2006.  Its 2007 replacement, "The Trump Card", was itself replaced a year later by "The Big Money Game".
+Make Me a Millionaire | Make Me a Millionaire is the second television game show of the California Lottery, having replaced "The Big Spin" on January 17, 2009.  Originally contracted for a four-year run, the Lottery cancelled the show after eighteen months, with its last episode telecast on July 3, 2010.  On July 9, five unaired episodes were uploaded to the California Lottery's official YouTube page.
+Mark Patrick | Mark Patrick Storen (born c. 1959), better known by his professional name Mark Patrick, is an American radio personality based in Indianapolis.  Starting out on satellite radio, he was part of MLB Network Radio as the co-host of "Baseball This Morning" along with Buck Martinez and Larry Bowa .  Patrick also hosted the Hoosier Lottery television game show Hoosier Millionaire for 14 years.  Patrick also had a nationally syndicated morning show on Fox Sports Radio for a few years.  Patrick was primary sports anchor for WISH-TV from 1990 to 1998.
+Tri-State Lottery | Tri-State Lottery refers to terminal-generated games offered specifically by the Maine, New Hampshire, and/or Vermont lotteries.  It was the first multi-jurisdictional lottery, with its first multi-state game ("Tri-State Megabucks") in September 1985.  The compact (as of September 2017) includes five games: "Megabucks Plus" (drawn Wednesdays and Saturdays); "Pick 3" and "Pick 4" (both have "day" and "night" drawings daily, including Sundays), "Gimme 5" (drawn Mondays, Wednesdays, and Fridays), and "Fast Play" (terminal-generated "instant" tickets); the latter are games that often differ among the three states.  "Megabucks Plus" jackpot winners can choose cash in lieu of the annuity.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Mark Patrick | Mark Patrick Storen (born c. 1959), better known by his professional name Mark Patrick, is an American radio personality based in Indianapolis.  Starting out on satellite radio, he was part of MLB Network Radio as the co-host of "Baseball This Morning" along with Buck Martinez and Larry Bowa .  Patrick also hosted the Hoosier Lottery television game show Hoosier Millionaire for 14 years.  Patrick also had a nationally syndicated morning show on Fox Sports Radio for a few years.  Patrick was primary sports anchor for WISH-TV from 1990 to 1998.
+Powerball Instant Millionaire | Powerball Instant Millionaire is a lottery-based game show that aired from October 5, 2002 to September 2004 in some of the jurisdictions that offered the Powerball game.  Todd Newton was the host.
+Monopoly Millionaires' Club (U.S. game show) | Monopoly Millionaires' Club is an American game show that debuted in syndication on March 28, 2015.  Hosted by stand-up comedian/actor Billy Gardell, best known for his role as Chicago police officer Mike Biggs on the sitcom "Mike & Molly," it was initially based on an unsuccessful drawing game of the same name that was coordinated by the Multi-State Lottery Association (MUSL), using the "Monopoly" board game brand under license from Hasbro.  The lottery game returned, in scratch-off form, in the spring of 2015.
+Hoosier Millionaire | Hoosier Millionaire is an American television lottery game show which aired on television stations in Indiana, Illinois and Kentucky from October 28, 1989 to November 19, 2005.
+Powerball: The Game Show | Powerball: The Game Show is a lottery-based game show that aired from October 2000 to September 2002 in some of the jurisdictions that offered the Powerball game.  Bob Eubanks and Debbie James were the hosts, while Ed MacKay announced.
+The Money Game (game show) | The Money Game, also known as "The Oregon Lottery's Money Game", was a short-lived lottery game show which ran in the state of Oregon from 1988 to 1990, and was hosted by Tom Parker and Karen Trumbo.  It offered five contestants an opportunity to win up to $50,000 and possibly a car.  It was produced by KGW-TV, Channel 8, in Portland, Oregon, the same station that broadcast the award-winning question and answer quiz show "On the Spot", and also by station KOIN-TV, Channel 6.
+Pat Finn | Patrick Joseph "Pat" Finn (born July 24, 1956) is an American television presenter and game show host.  He is the owner of the production company Rubicon Entertainment.  Finn's first national gig was hosting the 1990 remake of the classic Jack Barry show "The Joker's Wild".  In 1991, he became host of "Shop 'til You Drop", the #1 rated cable game show in America at the time, where he remained for 11 years, and from 1999-2009 he became the host of the California State Lottery's weekly game show, "The Big Spin".
+Hoosier Millionaire | Hoosier Millionaire is an American television lottery game show which aired on television stations in Indiana, Illinois and Kentucky from October 28, 1989 to November 19, 2005.
+Hoosier Lottery | The Hoosier Lottery is the official state lottery of Indiana, and is the only US lottery that uses the state's nickname as its official name.  It is a member of the Multi-State Lottery Association (MUSL).  The Hoosier Lottery sells scratch-off tickets; its draw games include Mega Millions, Hoosier Lotto, Powerball, Cash 5, and Poker Lotto.
+Powerball Instant Millionaire | Powerball Instant Millionaire is a lottery-based game show that aired from October 5, 2002 to September 2004 in some of the jurisdictions that offered the Powerball game.  Todd Newton was the host.
+New Mexico Lottery | The New Mexico Lottery is run by the government of New Mexico.  It was established in 1996.  It is a member of the Multi-State Lottery Association (MUSL).  It offer draw games and scratch off games.  As of December 2014, draw games are Powerball, Mega Millions, Monopoly Millionaires' Club, Hot Lotto, Roadrunner Cash, Pick 3, Quicksters, and Lucky Numbers Bingo.
+Monopoly Millionaires' Club (U.S. game show) | Monopoly Millionaires' Club is an American game show that debuted in syndication on March 28, 2015.  Hosted by stand-up comedian/actor Billy Gardell, best known for his role as Chicago police officer Mike Biggs on the sitcom "Mike & Molly," it was initially based on an unsuccessful drawing game of the same name that was coordinated by the Multi-State Lottery Association (MUSL), using the "Monopoly" board game brand under license from Hasbro.  The lottery game returned, in scratch-off form, in the spring of 2015.
+Rhode Island Lottery | The Rhode Island Lottery (or "The Lot") is run by the government of Rhode Island.  It is a charter member of the Multi-State Lottery Association (MUSL).  Rhode Island Lottery games include Mega Millions, Powerball, Wild Money, keno, and scratch tickets.  Rhode Island also offers video lottery, which includes the multi-jurisdictional MegaHits game.
+Hot Lotto | Hot Lotto is a multi-state lottery game administered by the Iowa-based Multi-State Lottery Association (MUSL), which is best known for operating the Mega Millions and Powerball games.  Hot Lotto is available in 14 states.
+Hoosier Millionaire | Hoosier Millionaire is an American television lottery game show which aired on television stations in Indiana, Illinois and Kentucky from October 28, 1989 to November 19, 2005.
+Powerball Instant Millionaire | Powerball Instant Millionaire is a lottery-based game show that aired from October 5, 2002 to September 2004 in some of the jurisdictions that offered the Powerball game.  Todd Newton was the host.
+Monopoly Millionaires' Club (U.S. game show) | Monopoly Millionaires' Club is an American game show that debuted in syndication on March 28, 2015.  Hosted by stand-up comedian/actor Billy Gardell, best known for his role as Chicago police officer Mike Biggs on the sitcom "Mike & Molly," it was initially based on an unsuccessful drawing game of the same name that was coordinated by the Multi-State Lottery Association (MUSL), using the "Monopoly" board game brand under license from Hasbro.  The lottery game returned, in scratch-off form, in the spring of 2015.
+Hoosier Lottery | The Hoosier Lottery is the official state lottery of Indiana, and is the only US lottery that uses the state's nickname as its official name.  It is a member of the Multi-State Lottery Association (MUSL).  The Hoosier Lottery sells scratch-off tickets; its draw games include Mega Millions, Hoosier Lotto, Powerball, Cash 5, and Poker Lotto.
+New Mexico Lottery | The New Mexico Lottery is run by the government of New Mexico.  It was established in 1996.  It is a member of the Multi-State Lottery Association (MUSL).  It offer draw games and scratch off games.  As of December 2014, draw games are Powerball, Mega Millions, Monopoly Millionaires' Club, Hot Lotto, Roadrunner Cash, Pick 3, Quicksters, and Lucky Numbers Bingo.
+The Money Game (game show) | The Money Game, also known as "The Oregon Lottery's Money Game", was a short-lived lottery game show which ran in the state of Oregon from 1988 to 1990, and was hosted by Tom Parker and Karen Trumbo.  It offered five contestants an opportunity to win up to $50,000 and possibly a car.  It was produced by KGW-TV, Channel 8, in Portland, Oregon, the same station that broadcast the award-winning question and answer quiz show "On the Spot", and also by station KOIN-TV, Channel 6.
+Fame and Fortune (TV series) | Fame & Fortune is a game show broadcast on RTÉ One on Saturday nights between 1996 and 2006.  Presented by Marty Whelan (who signed off every show with the catchphrase: "How do you play?  You buy a ticket.") , the show aired during the summer months of June, July, and August as a seasonal replacement for "Winning Streak".  It was preceded by "Millionaire", also hosted by Whelan, and succeeded by "The Trump Card" in 2007, hosted by Laura Woods.  "Fame & Fortune" had its production costs funded by RTÉ and its prize money funded by Ireland's National Lottery.  Entry to the show was based on National Lottery scratchcards, and contestants could win cash, cars, holidays, and other prizes.  "Fame & Fortune" had its final season in the summer of 2006.  Its 2007 replacement, "The Trump Card", was itself replaced a year later by "The Big Money Game".
+Make Me a Millionaire | Make Me a Millionaire is the second television game show of the California Lottery, having replaced "The Big Spin" on January 17, 2009.  Originally contracted for a four-year run, the Lottery cancelled the show after eighteen months, with its last episode telecast on July 3, 2010.  On July 9, five unaired episodes were uploaded to the California Lottery's official YouTube page.
+Mark Patrick | Mark Patrick Storen (born c. 1959), better known by his professional name Mark Patrick, is an American radio personality based in Indianapolis.  Starting out on satellite radio, he was part of MLB Network Radio as the co-host of "Baseball This Morning" along with Buck Martinez and Larry Bowa .  Patrick also hosted the Hoosier Lottery television game show Hoosier Millionaire for 14 years.  Patrick also had a nationally syndicated morning show on Fox Sports Radio for a few years.  Patrick was primary sports anchor for WISH-TV from 1990 to 1998.
+Tri-State Lottery | Tri-State Lottery refers to terminal-generated games offered specifically by the Maine, New Hampshire, and/or Vermont lotteries.  It was the first multi-jurisdictional lottery, with its first multi-state game ("Tri-State Megabucks") in September 1985.  The compact (as of September 2017) includes five games: "Megabucks Plus" (drawn Wednesdays and Saturdays); "Pick 3" and "Pick 4" (both have "day" and "night" drawings daily, including Sundays), "Gimme 5" (drawn Mondays, Wednesdays, and Fridays), and "Fast Play" (terminal-generated "instant" tickets); the latter are games that often differ among the three states.  "Megabucks Plus" jackpot winners can choose cash in lieu of the annuity.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Both summary_1 and summary_2 acknowledge the critical gap: 'The passages do not identify which specific lottery game Hoosier Millionaire was based on, nor do they provide any information about a lottery game offered by exactly 44 states.' However, neither summary explicitly names the missing entity that needs to be retrieved. Summary_2 states 'Requires explicit documentation identifying which spec
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: The hop 2 query asks: 'What specific lottery game was Hoosier Millionaire based on, and in how many states was that lottery game offered during the show's broadcast period from 1989 to 2005?' This query does not advance from hop 1 because: (1) hop 1 already retrieved the Hoosier Millionaire and Hoosier Lottery documents that would answer which lottery game the show was based on if that information
+- code B.10 (Evidence_Present_But_Missed), anchored near step 9: evidence: The Hoosier Lottery passage retrieved in hop 3 states: 'The Hoosier Lottery is the official state lottery of Indiana...It is a member of the Multi-State Lottery Association (MUSL). The Hoosier Lottery sells scratch-off tickets; its draw games include Mega Millions, Hoosier Lotto, Powerball, Cash 5, and Poker Lotto.' This passage explicitly identifies the lottery games offered by Hoosier Lottery du
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary_2 explicitly identifies the missing evidence: 'Requires explicit documentation identifying which specific lottery game Hoosier Millionaire was based on' and later targets it with the hop 2 query: 'What specific lottery game was Hoosier Millionaire based on, and in how many states was that lottery game offered during the show's broadcast period from 1989 to 2005?' Despite this well-formed q
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}
