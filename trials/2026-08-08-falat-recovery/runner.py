@@ -139,10 +139,23 @@ def stage2_for_trace(trace, findings, prior_text, args, out_dir):
     if args.build_only:
         return {"trace_id": tid, "built": True, "diagnostics": diagnostics}
 
+    # One retry on malformed JSON: a formatting slip is usually transient,
+    # and without this it costs the whole trace (600-trace run lost one).
     raw = bedrock_call(prompt, args.model, args.aws_region,
                        args.max_output_tokens)
     (out_dir / f"{tid}.raw.txt").write_text(raw)
-    payload = parse_json(raw)
+    try:
+        payload = parse_json(raw)
+    except Exception as exc:
+        diagnostics["parse_retries"] = 1
+        retry_prompt = (prompt + "\n\nYour previous response was not valid "
+                        f"JSON ({type(exc).__name__}). Return ONLY the JSON "
+                        "object described above, correctly delimited, with no "
+                        "commentary and no code fences.")
+        raw = bedrock_call(retry_prompt, args.model, args.aws_region,
+                           args.max_output_tokens)
+        (out_dir / f"{tid}.raw.txt").write_text(raw)
+        payload = parse_json(raw)
 
     occurrences, occ_modes, steps = [], {}, {}
     for o in payload.get("occurrences", []):
