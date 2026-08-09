@@ -199,6 +199,26 @@ def stage2_for_trace(trace, findings, prior_text, args, out_dir):
     return record
 
 
+def load_done(out_dir: Path, trace_id: str):
+    """Return an already-written record for `trace_id`, else None.
+
+    Resume support: a per-trace record counts as done only if it parses
+    and carries the fields the merge needs, so a truncated write from a
+    killed run is redone rather than silently accepted.
+    """
+    p = out_dir / f"{trace_id}.json"
+    if not p.exists():
+        return None
+    try:
+        rec = json.loads(p.read_text())
+    except Exception:
+        return None
+    if rec.get("trace_id") == trace_id and "mode_recovery" in rec \
+            and "statuses" in rec and "diagnostics" in rec:
+        return rec
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--traces", required=True)
@@ -231,11 +251,17 @@ def main():
 
     records, skipped, failures = [], 0, []
     files = sorted(Path(args.traces).glob("*.json"))
+    resumed = 0
     for i, f in enumerate(files, start=1):
         trace = json.loads(f.read_text())
         findings = by_trace.get(trace["trace_id"])
         if findings is None:
             skipped += 1
+            continue
+        prior_record = load_done(out_dir, trace["trace_id"])
+        if prior_record is not None and not args.build_only:
+            records.append(prior_record)
+            resumed += 1
             continue
         try:
             records.append(stage2_for_trace(trace, findings, prior_text,
@@ -250,10 +276,13 @@ def main():
     if not args.build_only:
         (out_dir / "recovery.json").write_text(json.dumps(
             {"records": records, "skipped_no_stage1": skipped,
-             "failures": failures}, indent=1))
+             "resumed_from_disk": resumed, "failures": failures}, indent=1))
     print(f"{'built prompts for' if args.build_only else 'processed'} "
-          f"{len(records)} traces; failed: {len(failures)}; "
-          f"skipped (no stage-1 entry): {skipped}")
+          f"{len(records)} traces ({resumed} resumed from disk); "
+          f"failed: {len(failures)}; skipped (no stage-1 entry): {skipped}")
+    if failures:
+        print("re-run the same command to retry the failed traces "
+              "(completed traces are skipped)")
 
 
 if __name__ == "__main__":
