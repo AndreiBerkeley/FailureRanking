@@ -84,9 +84,9 @@ def test_mode_mapping():
                   "consume_step": 3},
                  {"src": "F2", "dst": "OUTPUT", "label": "dead_end"},
                  {"src": "F3", "dst": "OUTPUT", "label": "follow_up"}])
-    modes = task_mode_recovery({"F1": "B.2a", "F2": "B.2a", "F3": "B.5b"}, r)
-    assert modes["B.2a"] == "fully_recovered"      # both occurrences recovered
-    assert modes["B.5b"] == "unrecovered"
+    modes = task_mode_recovery({"F1": "B.10", "F2": "B.10", "F3": "B.14"}, r)
+    assert modes["B.10"] == "fully_recovered"      # both occurrences recovered
+    assert modes["B.14"] == "unrecovered"
 
 
 def test_step_ordering_enforced():

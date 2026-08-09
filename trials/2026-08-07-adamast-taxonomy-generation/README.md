@@ -75,8 +75,21 @@ Retrieval_Loop_Terminated_Early (counts explicit RETRIEVAL EVENTs) +
 B.9b Terminal_Output_Without_Verification; A.11 rescoped as
 environment-attributable (named gap, well-formed queries, evidence
 still never arrived), mutually exclusive with B.2b by construction.
-Everything below support 3 dropped per Andrei's rule. Registered as
-`tax-20260808T184241Z-8598f86e-11ef4f`. Sub-code support is provisional
-(evidence reassignment, no fresh judging run — Andrei chose to settle);
-validated implicitly at the subset re-judge. Prototyping-grade
-throughout.
+Everything below support 3 dropped per Andrei's rule. Sub-code support
+is provisional (evidence reassignment, no fresh judging run — Andrei
+chose to settle); validated implicitly at the subset re-judge.
+Prototyping-grade throughout.
+
+**Amended after the Stage-1 dry run (2026-08-08).** First use of the
+frozen taxonomy on the 24-trace slice found two defects:
+Terminal_Output_Without_Verification fired on 22/24 traces for the
+program's specified ending (documents-only output, no verdict
+requested) and was **dropped**; and the two evidence-gap codes co-fired
+on 3/24 traces citing the *same* gap with contradictory readings, so
+both were rewritten as per-evidence-gap decision tests requiring the
+scanned summary and issued query to be quoted (co-firing on a trace is
+allowed only for different gaps). Codes were also **renumbered flat**
+(no letter suffixes): verbatim-kept codes keep their draft ids, changed
+definitions take fresh ids above the draft maxima so no id ever denotes
+two definitions. Current frozen artifact: **K = 16** (4 A, 9 B, 3 C),
+registered `tax-20260809T003430Z-e255d1f3-d1a04b`.

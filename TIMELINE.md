@@ -252,5 +252,29 @@ reproducible freeze script in
 **Caveats:** sub-code support figures are provisional (evidence
 reassignment, no dedicated validation run — implicit validation at the
 subset re-judge); prototyping-grade per the 2026-08-07 amendment —
-E001's taxonomy freezes on E001's own traces. Ψ and Φ unchanged; K = 17
-flows into Φ's equal-weight default when scoring under this instrument.
+E001's taxonomy freezes on E001's own traces. Ψ and Φ unchanged.
+
+**Amended 2026-08-08 after the Stage-1 dry run (24-trace slice, first
+use of the frozen taxonomy).** Two defects surfaced and were fixed
+before any full run:
+- `Terminal_Output_Without_Verification` fired on 22/24 traces, always
+  citing the program's *specified* ending (final output = retrieved
+  documents; no verdict is requested) — a code penalizing correct
+  execution, the same pathology as the retired shakedown B.3. **Dropped.**
+- The two evidence-gap codes co-fired on 3/24 traces and, on inspection,
+  all three cited the *same* evidence gap with contradictory readings of
+  the decidable "was the gap named?" test. Per Andrei's criterion —
+  co-firing on a task is fine, co-firing on the same *error* is not —
+  both definitions were rewritten as explicit per-evidence-gap decision
+  tests that require quoting the summary scanned and the query issued,
+  and that permit both codes on one trace only for different gaps.
+- **Renumbering (Andrei):** flat sequential ids, no letter suffixes.
+  Codes retained verbatim from the draft keep their ids; every changed
+  definition takes a fresh id above the draft maxima (A ≤ 11, B ≤ 9,
+  C ≤ 12), so no id ever denotes two different definitions across
+  artifacts. Enforced by assertion in the build script.
+
+**Frozen artifact (current): K = 16** (4 A, 9 B, 3 C) — A.6, A.8, A.10,
+A.12, B.1, B.6, B.8, B.10–B.15, C.1, C.4, C.7. Registered as
+`tax-20260809T003430Z-e255d1f3-d1a04b` (supersedes the K = 17
+registration). K = 16 flows into Φ's equal-weight default.

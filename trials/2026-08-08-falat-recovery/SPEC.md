@@ -9,7 +9,7 @@ dated TIMELINE binding entry adopts it.
 ## Position in the pipeline
 
 Stage 1 (unchanged): the judge, under the frozen taxonomy
-(`tax-20260808T184241Z-8598f86e-11ef4f`), emits failure points with step
+(`tax-20260809T003430Z-e255d1f3-d1a04b`), emits failure points with step
 anchors. Stage 2 (this instrument) consumes the trace + Stage-1 failure
 points and emits per-occurrence recovery labels and causal positions.
 
@@ -74,7 +74,7 @@ occurrence's effect reach the final output?", computed on the graph.
 
 Per (task, mode): fully recovered iff EVERY occurrence of that mode on
 the task is RECOVERED — drops into the existing harness as
-recovery_status ∈ {fully_recovered, unrecovered}. K = 17 under the
+recovery_status ∈ {fully_recovered, unrecovered}. K = 16 under the
 frozen taxonomy.
 
 ## Error surface (Ψ)
