@@ -36,7 +36,16 @@ LABELS = {"follow_up", "redundancy", "no_influence", "error_shift",
 INFLUENCE = {"follow_up", "error_shift"}
 
 
-def _validate(occurrences, edges):
+def _validate(occurrences, edges, on_step_violation="raise"):
+    """`on_step_violation`:
+    'raise'      — a backward edge is an error (original strict behaviour).
+    'trust_edge' — the model's asserted direction wins over our step
+                   anchors. A backward edge almost always means the two
+                   occurrences' step anchors were assigned in the wrong
+                   order, not that causality runs backwards; dropping
+                   such edges severs chains and silently converts
+                   propagating failures into "recoveries".
+    """
     steps = {o["id"]: o["step"] for o in occurrences}
     if len(steps) != len(occurrences):
         raise ValueError("duplicate occurrence ids")
@@ -48,7 +57,7 @@ def _validate(occurrences, edges):
         if e["dst"] != OUTPUT:
             if e["dst"] not in steps:
                 raise ValueError(f"edge dst {e['dst']!r} is not an occurrence")
-            if steps[e["src"]] >= steps[e["dst"]]:
+            if steps[e["src"]] >= steps[e["dst"]] and on_step_violation == "raise":
                 raise ValueError(
                     f"edge {e['src']}->{e['dst']} violates step ordering")
     return steps
@@ -60,10 +69,11 @@ def _consume_step(edge, steps):
     return math.inf if edge["dst"] == OUTPUT else steps[edge["dst"]]
 
 
-def analyze(occurrences, edges, default_when_unlinked="persisted"):
+def analyze(occurrences, edges, default_when_unlinked="persisted",
+            on_step_violation="raise"):
     """Return {occurrence_id: {"status", "position", "sigma"}} plus a
     summary dict under the key "_summary"."""
-    steps = _validate(occurrences, edges)
+    steps = _validate(occurrences, edges, on_step_violation)
 
     corrected_at = {}
     for e in edges:
@@ -85,17 +95,25 @@ def analyze(occurrences, edges, default_when_unlinked="persisted"):
         if live(e):
             out_edges[e["src"]].append(e["dst"])
 
-    # persisted iff a live influence path reaches OUTPUT
+    # persisted iff a live influence path reaches OUTPUT.
+    # Trusting model-asserted direction allows cycles, so the traversal
+    # must be cycle-safe: a node currently on the stack contributes
+    # nothing (its own resolution is still pending) rather than looping.
     memo = {}
+    on_stack = set()
 
     def reaches_output(u):
         if u == OUTPUT:
             return True
         if u in memo:
             return memo[u]
-        memo[u] = False  # step ordering makes cycles impossible; guard anyway
-        memo[u] = any(reaches_output(v) for v in out_edges[u])
-        return memo[u]
+        if u in on_stack:
+            return False
+        on_stack.add(u)
+        result = any(reaches_output(v) for v in out_edges[u])
+        on_stack.discard(u)
+        memo[u] = result
+        return result
 
     results = {}
     for o in occurrences:
@@ -117,11 +135,16 @@ def analyze(occurrences, edges, default_when_unlinked="persisted"):
             succ[e["src"]].append(e["dst"])
             pred[e["dst"]].append(e["src"])
 
-    def depth(node, nbrs, best):
-        # longest path length to a node with no neighbours (DAG)
-        if not nbrs[node]:
+    def depth(node, nbrs, best, seen=None):
+        # longest/shortest path to a node with no neighbours; cycle-safe
+        # because trusted model edges are not guaranteed acyclic
+        seen = set() if seen is None else seen
+        if not nbrs[node] or node in seen:
             return 0
-        return best(1 + depth(n, nbrs, best) for n in nbrs[node])
+        seen = seen | {node}
+        vals = [1 + depth(n, nbrs, best, seen) for n in nbrs[node]
+                if n not in seen]
+        return best(vals) if vals else 0
 
     for i in persisted:
         is_root, is_leaf = not pred[i], not succ[i]
