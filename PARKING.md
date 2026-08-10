@@ -66,7 +66,7 @@ discussion.
 Shapley / average attributable fraction (Cox 1985; Eide & Gefeller 1995;
 Land & Gefeller 1997) as the principled burden allocation; FALAT-style
 dependency tracing as the natural edge instrument; noisy-OR (Kim & Pearl)
-as the saturating combiner that Φ v0.1 adopted instead; CCF alpha/beta-
-factor models, latent-class models (tension with boundary 1 — learning
-latent factors ≈ building a taxonomy), BN structure learning, and SBFL —
-all considered and set aside with reasons in the 2026-08-07 discussion.
+as the saturating combiner that Φ v0.1 adopted instead. The rejected
+alternatives — Rothman's causal pies, CCF alpha/beta-factor models,
+SBFL, BN structure learning, latent-class models — are now filed with
+links and per-entry rejection reasons in **LITERATURE.md §5**.

@@ -123,6 +123,63 @@ research directions (Andrei / Mert)".
   precisely what the parked causal-position package (PARKING.md
   2026-08-07) would relax.
 
-## 5. Mathematical foundations (combinatorics · number theory · …)
+## 5. Considered and rejected — co-occurrence & attribution alternatives
+
+Surveyed 2026-08-07 while choosing how Φ should handle several failure
+modes striking one task, and set aside. Filed so the design space is
+visible: what we did *not* adopt, and why. Promotion out of this split
+is possible if the rejection reason stops applying.
+
+- [Rothman's sufficient-component-cause model ("causal pies")](https://en.wikipedia.org/wiki/Causal_pie_model) — Rothman, 1976; see also [Rothman and multicausality](https://www.sciencedirect.com/science/article/pii/S0398762011004457).
+  An outcome occurs when a "pie" of component causes is complete; a
+  component's effect is defined only relative to its co-present
+  components, and components recur across different pies. Gold: none —
+  a conceptual frame, not a procedure. *Why we care:* the cleanest
+  statement of **why per-mode marginal charges over-count**, and the
+  conceptual ancestor of the attributable-fraction line in §4.
+  *Rejected as a method* because it prescribes no computation; its
+  deterministic engineering rendering (fault trees / minimal cut sets)
+  needs authored structure, so it fits the future rubric-5 authored-rule
+  layer rather than v0.1. Retained as framing, not machinery.
+- [Common-cause failure parametric models — alpha-factor, beta-factor, MGL](https://ftaassociates.com/wp-content/uploads/2018/12/A.-Mosieh-Guidelines-on-Modeling-Common-Cause-Failures-in-Probabilistic-Risk-Assessment-NUREGCR-5485-November-1998.pdf) — Mosleh & Siu; NUREG/CR-4780 (1988), NUREG/CR-5485 (1998); [alpha-factor updating](https://doi.org/10.1177/1748006X16689542).
+  Nuclear/aerospace PRA splits each component's failure rate into an
+  independent part and a shared-cause part, with few parameters
+  estimable from observed event multiplicities (how often 1, 2, … k
+  components fail together). Gold: component failure data; no task-gold
+  concept. *Why we care:* purpose-built for "correlated failures inflate
+  naive counts," tiny parameter count, freezable on a dev split.
+  *Rejected for now* because the models assume **identical redundant
+  components in symmetric groups**, while our failure modes are
+  heterogeneous — the mapping is an analogy needing care — and it still
+  leaves allocation to the Shapley machinery we did adopt.
+- [A Survey on Software Fault Localization](https://doi.org/10.1109/TSE.2016.2521368) — Wong, Gao, Li, Abreu & Wotawa, IEEE TSE 42(8), 2016; multi-fault treatment in [IJCAI 2023](https://www.ijcai.org/proceedings/2023/0350.pdf).
+  Spectrum-based fault localization scores program components by
+  co-occurrence with failing runs (Tarantula, Ochiai). Gold: **requires
+  pass/fail per run**. *Why we care:* software engineering's version of
+  our problem, and a documented negative result — suspiciousness metrics
+  **degrade as simultaneous fault count grows**, the same pathology we
+  hit, with its workarounds as a warning catalogue. *Rejected for the
+  scoring path* on the gold requirement; usable as a gold-calibrated
+  baseline and related work.
+- [Bayesian-network structure learning](https://arxiv.org/abs/1302.4972) — Spirtes/Glymour PC algorithm and successors.
+  Learn a DAG over mode-incidence data (typically with noisy-OR CPDs)
+  and read off root-vs-derived modes. Gold: none required. *Why we care:*
+  the fully data-driven route to the causal structure the parked
+  σ-package needs. *Rejected* because observational co-occurrence badly
+  underdetermines edge direction while **trace order gives it directly**
+  (FALAT-style edges, §1), it is data-hungry at our N, and pooling
+  across candidates to gain samples would break Φ's per-candidate
+  independence.
+- [Latent Class Analysis: A Guide to Best Practice](https://doi.org/10.1177/0095798420930932) — Weller, Bowen & Faubert, J. Black Psychology 46(4), 2020; method originates with Lazarsfeld & Henry (1968).
+  Modes co-occur because several are symptoms of one unobserved fault;
+  charge the latent factor rather than the observed modes. Gold: none
+  required. *Why we care:* the elegant answer to taxonomy aliasing — the
+  case where two codes name the same event. *Rejected* on **boundary 1**:
+  estimating latent failure factors from data *is* building a taxonomy,
+  which is an inherited instrument in this project, not our
+  contribution; estimation is also unstable at our scale. Aliasing is
+  handled instead as a Q_Taxonomy signal in Ψ.
+
+## 6. Mathematical foundations (combinatorics · number theory · …)
 
 *(empty — create sub-splits as the first papers are filed)*
