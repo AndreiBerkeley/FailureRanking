@@ -1,0 +1,498 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        5. **CRITICAL: For every distinct entity mentioned in the claim (whether explicitly named or referenced indirectly), ensure that passages about that specific entity are available. If passages are missing for any entity in the claim, identify those missing evidence documents.**
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        **Critical requirement for identifying missing evidence documents**:
+        - **If a claim mentions multiple distinct entities (e.g., "Entity A is X. Entity B is not X."), you must have passages about EACH entity mentioned**
+        - **Even if the claim can be partially verified, if any entity in the claim lacks corresponding passages, you must identify that entity's evidence document as missing**
+        - **For comparison claims (e.g., "A is perennial. B is not perennial"), you need passages about both A and B, even if one can be verified**
+        - **When a claim mentions an entity only to negate something about it (e.g., "Duranta is not a perennial"), that entity still requires evidence documents**
+        - **The fact that you can verify part of a claim does not mean you should ignore entities that lack passages - explicitly identify all entities that need but lack evidence documents**
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - **List ALL entities from the claim that lack corresponding passages, even if other parts of the claim are verifiable**
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+        - **When identifying missing evidence documents, use the entity name or subject matter that would be the title/topic of the needed passage (e.g., if the claim mentions "Duranta" but no passages discuss it, identify "duranta" as a missing evidence document)**
+[STEP 4] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## passages ## ]]
+[1] «Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.»
+[2] «John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.»
+[3] «List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.»
+[4] «Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.»
+[5] «John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.»
+[6] «Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.»
+[7] «Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze the claim systematically by breaking down its components:
+
+The claim states three key facts:
+1. The Collegiate Church of St Peter at Westminster is the place being referenced
+2. Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place
+3. John Fecknam was the last abbot of this place
+
+Verification against passages:
+
+**Fact 1: The place is formerly titled the Collegiate Church of St Peter at Westminster**
+- Passage [6] confirms: "Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster" ✓
+- Passage [3] also confirms this formal title ✓
+
+**Fact 2: Geoffrey Chaucer was the first poet to be buried in Poets' Corner**
+- Passage [1] states: "He was the first poet to be buried in Poets' Corner of Westminster Abbey." ✓
+- Passage [7] confirms that Poets' Corner is in Westminster Abbey ✓
+
+**Fact 3: John Fecknam was the last abbot of this place**
+- Passage [2] states: "John Feckenham (c. 1515 – October, 1584)... was an English churchman, the last abbot of Westminster." ✓
+- Note: The spelling in the claim is "Fecknam" while passage [2] primarily uses "Feckenham" but notes he was "also known as... John Fecknam," confirming this is the same person ✓
+
+All three entities mentioned in the claim (the Collegiate Church of St Peter at Westminster, Geoffrey Chaucer, and John Fecknam/Feckenham) have corresponding passages with relevant information. No critical evidence documents are missing.
+
+[[ ## summary ## ]]
+The claim is fully verifiable through the provided passages. All three assertions are supported:
+
+1. **Westminster Abbey's formal title**: Confirmed that Westminster Abbey was "formally titled the Collegiate Church of St Peter at Westminster" (Passage 6)
+
+2. **Geoffrey Chaucer as first poet in Poets' Corner**: Confirmed that Chaucer "was the first poet to be buried in Poets' Corner of Westminster Abbey" (Passage 1)
+
+3. **John Fecknam as last abbot**: Confirmed that John Feckenham (also known as John Fecknam) "was an English churchman, the last abbot of Westminster" (Passage 2)
+
+No missing evidence documents are identified. All entities referenced in the claim have sufficient supporting passages.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## summary_1 ## ]]
+The claim is fully verifiable through the provided passages. All three assertions are supported:
+
+1. **Westminster Abbey's formal title**: Confirmed that Westminster Abbey was "formally titled the Collegiate Church of St Peter at Westminster" (Passage 6)
+
+2. **Geoffrey Chaucer as first poet in Poets' Corner**: Confirmed that Chaucer "was the first poet to be buried in Poets' Corner of Westminster Abbey" (Passage 1)
+
+3. **John Fecknam as last abbot**: Confirmed that John Feckenham (also known as John Fecknam) "was an English churchman, the last abbot of Westminster" (Passage 2)
+
+No missing evidence documents are identified. All entities referenced in the claim have sufficient supporting passages.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim makes three distinct historical assertions about Westminster Abbey: (1) its formal historical title, (2) Geoffrey Chaucer's significance as the first poet buried in Poets' Corner, and (3) John Fecknam's role as the last abbot. According to the summary provided, all three assertions have been verified against supporting passages. The reasoning is straightforward: since each component of the claim has corresponding documentary evidence, no additional verification queries are necessary. The claim is fully substantiated and requires no further investigation.
+
+[[ ## query ## ]]
+No additional query needed. The claim has been fully verified against available passages. All three historical facts—Westminster Abbey's formal title as the Collegiate Church of St Peter at Westminster, Geoffrey Chaucer being the first poet buried in Poets' Corner, and John Fecknam being the last abbot—are supported by the provided evidence.
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+John Denham (poet) | Sir John Denham FRS (1614 or 1615 – 19 March 1669) was an Anglo-Irish poet and courtier.  He served as Surveyor of the King's Works and is buried in Westminster Abbey.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## context ## ]]
+The claim is fully verifiable through the provided passages. All three assertions are supported:
+
+1. **Westminster Abbey's formal title**: Confirmed that Westminster Abbey was "formally titled the Collegiate Church of St Peter at Westminster" (Passage 6)
+
+2. **Geoffrey Chaucer as first poet in Poets' Corner**: Confirmed that Chaucer "was the first poet to be buried in Poets' Corner of Westminster Abbey" (Passage 1)
+
+3. **John Fecknam as last abbot**: Confirmed that John Feckenham (also known as John Fecknam) "was an English churchman, the last abbot of Westminster" (Passage 2)
+
+No missing evidence documents are identified. All entities referenced in the claim have sufficient supporting passages.
+
+[[ ## passages ## ]]
+[1] «Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.»
+[2] «List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.»
+[3] «Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.»
+[4] «Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.»
+[5] «Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.»
+[6] «John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.»
+[7] «John Denham (poet) | Sir John Denham FRS (1614 or 1615 – 19 March 1669) was an Anglo-Irish poet and courtier.  He served as Surveyor of the King's Works and is buried in Westminster Abbey.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze the claim against the provided passages:
+
+The claim has three main assertions:
+1. Westminster Abbey was "formerly titled the Collegiate Church of St Peter at Westminster"
+2. Geoffrey Chaucer "was the first poet to be buried in Poets' Corner" of this place
+3. John Fecknam "was the last abbot of this place"
+
+Checking against passages:
+
+**Assertion 1 (Westminster Abbey's formal title):**
+- Passage 3 explicitly states: "Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster"
+- Passage 2 also confirms: "The Collegiate Church of St Peter at Westminster, popularly known as 'Westminster Abbey'"
+- ✓ VERIFIED
+
+**Assertion 2 (Chaucer as first poet in Poets' Corner):**
+- Passage 1 explicitly states: "He [Geoffrey Chaucer] was the first poet to be buried in Poets' Corner of Westminster Abbey"
+- ✓ VERIFIED
+
+**Assertion 3 (John Fecknam as last abbot):**
+- Passage 6 explicitly states: "John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster"
+- The passage confirms the alternative spelling "John Fecknam" is indeed one of his known names
+- ✓ VERIFIED
+
+All three assertions in the claim are directly supported by the provided passages. No gaps in evidence exist.
+
+[[ ## summary ## ]]
+
+The claim can be fully verified with the provided passages. All three assertions are explicitly confirmed:
+
+1. **Westminster Abbey's formal title**: Passage 3 directly confirms that Westminster Abbey was "formally titled the Collegiate Church of St Peter at Westminster."
+
+2. **Geoffrey Chaucer as first poet in Poets' Corner**: Passage 1 explicitly states that Geoffrey Chaucer "was the first poet to be buried in Poets' Corner of Westminster Abbey."
+
+3. **John Fecknam as last abbot**: Passage 6 confirms that John Fecknam (also spelled John Feckenham) "was an English churchman, the last abbot of Westminster."
+
+No additional passages or missing evidence documents are needed. The provided passages contain all the information necessary to verify every component of the claim.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## summary_1 ## ]]
+The claim is fully verifiable through the provided passages. All three assertions are supported:
+
+1. **Westminster Abbey's formal title**: Confirmed that Westminster Abbey was "formally titled the Collegiate Church of St Peter at Westminster" (Passage 6)
+
+2. **Geoffrey Chaucer as first poet in Poets' Corner**: Confirmed that Chaucer "was the first poet to be buried in Poets' Corner of Westminster Abbey" (Passage 1)
+
+3. **John Fecknam as last abbot**: Confirmed that John Feckenham (also known as John Fecknam) "was an English churchman, the last abbot of Westminster" (Passage 2)
+
+No missing evidence documents are identified. All entities referenced in the claim have sufficient supporting passages.
+
+[[ ## summary_2 ## ]]
+The claim can be fully verified with the provided passages. All three assertions are explicitly confirmed:
+
+1. **Westminster Abbey's formal title**: Passage 3 directly confirms that Westminster Abbey was "formally titled the Collegiate Church of St Peter at Westminster."
+
+2. **Geoffrey Chaucer as first poet in Poets' Corner**: Passage 1 explicitly states that Geoffrey Chaucer "was the first poet to be buried in Poets' Corner of Westminster Abbey."
+
+3. **John Fecknam as last abbot**: Passage 6 confirms that John Fecknam (also spelled John Feckenham) "was an English churchman, the last abbot of Westminster."
+
+No additional passages or missing evidence documents are needed. The provided passages contain all the information necessary to verify every component of the claim.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summary_1 and summary_2 reach the same conclusion: the claim is fully verifiable and all three assertions are supported by the provided passages. They both confirm:
+1. Westminster Abbey's formal title as the Collegiate Church of St Peter at Westminster
+2. Geoffrey Chaucer as the first poet buried in Poets' Corner
+3. John Fecknam/Feckenham as the last abbot of Westminster
+
+Since both summaries align in their verification and identify no missing evidence or gaps in the provided documentation, there is no contradictory information or unresolved discrepancy that would require a follow-up query. The claim has been sufficiently substantiated by the existing passages cited in both summaries.
+
+[[ ## query ## ]]
+No query is needed. Both summaries confirm complete verification of the claim with no identified gaps or contradictions in the evidence.
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Cherry picking | Cherry picking, suppressing evidence, or the fallacy of incomplete evidence is the act of pointing to individual cases or data that seem to confirm a particular position, while ignoring a significant portion of related cases or data that may contradict that position.  It is a kind of fallacy of selective attention, the most common example of which is the confirmation bias.  Cherry picking may be committed intentionally or unintentionally.  This fallacy is a major problem in public debate.
+Training needs analysis | Training Analysis (sometimes called Training Needs Analysis (TNA)) is the process of identifying the gap in employee training and related training needs.
+Needs assessment | A needs assessment is a systematic process for determining and addressing needs, or "gaps" between current conditions and desired conditions or "wants".  The discrepancy between the current condition and wanted condition must be measured to appropriately identify the need.  The need can be a desire to improve current performance or to correct a deficiency.
+Longevity claims | Longevity claims are unsubstantiated cases of asserted human longevity.  Those asserting lifespans of 110 years or more are referred to as supercentenarians.  Many have either no official verification or are backed only by partial evidence.  Cases where longevity has been fully verified, according to modern standards of longevity research, are reflected in an established list of supercentenarians based on the work of organizations such as the Gerontology Research Group (GRG) or the "Guinness World Records".  This article lists living claims greater than that of the oldest person whose age has been independently verified, Nabi Tajima at and deceased claims greater than that of the oldest person ever whose age has been verified, namely Jeanne Calment who died at the age of 122 years, 164 days.  The upper limit for both lists is 130 years.
+Merchant plug-in | A merchant plug-in (MPI) is a software module designed to facilitate 3D-Secure verifications to help prevent credit card fraud.  The MPI identifies the account number and queries card issuer (Visa, MasterCard, or JCB International) servers to determine if it is enrolled in a 3D-Secure program and returns the web site address of the issuer "access control server" (ACS) if it is found.  Merchants are responsible for installing an SSL/TLS MPI at their servers.
+Dispositive motion | In law, a dispositive motion is a motion seeking a trial court order entirely disposing of all or part of the claims in favor of the moving party without need for further trial court proceedings.  "To dispose" of a claim means to "decide" the claim in favor of one or another party.  As a lawsuit may comprise numerous claims made by and against numerous parties, not every dispositive motion seeks to dispose of the entire lawsuit.  In the U.S., the most common type of dispositive motions seeking to dispose of the entire lawsuit are those for summary judgment.  Many U.S. state jurisdictions also provide for a "partial summary judgment" or motion for "summary adjudication of issues" which only seeks to dispose of part of a lawsuit.  See, e.g., California Code of Civil Procedure section 437c(f)(1).  Regardless whether the dispositive motion is for summary judgment or adjudication, the motion must be supported by declarations under oath, excerpts from depositions which are also under oath, admissions of fact by the opposing party and other discovery such as interrogatories, as well as a legal argument (points and authorities).  The other party may respond with counter-declarations, discovery responses, and legal arguments attempting to show that these issues were "triable issues of fact."  If there is any question as to whether there is conflict on the facts on an issue, the summary judgment or adjudication must be denied regarding that matter.
+Demand signal repository | Demand signal repository (DSR) is the data warehouse designed to integrate and cleanse demand data, and leverage that data to consumer goods manufacturers, service retailers, and end customers efficiently.  Cleansing it and synchronizing it with syndicated and internal data allows companies to provide business users with a more complete view of their retail performance.  The repository itself is a database that stores the information in a format that allows for easy retrieval of information so that users can quickly query the database to identify what's selling, where, when and how.  Identifying Out-of-Stock's (OOS's) is a requirement.  Leveraging that data to perform predictive analytics is where applications actually leverage POS within their data model to help identify both current and potential impact.
+Verification (audit) | Verification means 'Proving the truth' or 'Confirmation'.  Verification is an auditing process in which auditor satisfy himself with the actual existence of assets and liabilities appearing in the Statement of Financial position.  Verification is usually conducted through examination of existence, ownership, title, possession, proper valuation and presence of any charge of lien over assets.
+Data stream management system | A data stream management system (DSMS) is a computer software system to manage continuous data streams.  It is similar to a database management system (DBMS), which is, however, designed for static data in conventional databases.  A DSMS also offers a flexible query processing so that the information need can be expressed using queries.  However, in contrast to a DBMS, a DSMS executes a "continuous query" that is not only performed once, but is permanently installed.  Therefore, the query is continuously executed until it is explicitly uninstalled.  Since most DSMS are data-driven, a continuous query produces new results as long as new data arrive at the system.  This basic concept is similar to Complex event processing so that both technologies are partially coalescing.
+Third-party verification | Third party verification (TPV) is a process of getting an independent party to confirm that the customer is actually requesting a change or ordering a new service or product.  By putting the customer on the phone (usually via transfer or 3-way call) TPV provider asks a customer for his identity, that he is an authorized decision maker and to confirm his order.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+John Denham (poet) | Sir John Denham FRS (1614 or 1615 – 19 March 1669) was an Anglo-Irish poet and courtier.  He served as Surveyor of the King's Works and is buried in Westminster Abbey.
+Cherry picking | Cherry picking, suppressing evidence, or the fallacy of incomplete evidence is the act of pointing to individual cases or data that seem to confirm a particular position, while ignoring a significant portion of related cases or data that may contradict that position.  It is a kind of fallacy of selective attention, the most common example of which is the confirmation bias.  Cherry picking may be committed intentionally or unintentionally.  This fallacy is a major problem in public debate.
+Training needs analysis | Training Analysis (sometimes called Training Needs Analysis (TNA)) is the process of identifying the gap in employee training and related training needs.
+Needs assessment | A needs assessment is a systematic process for determining and addressing needs, or "gaps" between current conditions and desired conditions or "wants".  The discrepancy between the current condition and wanted condition must be measured to appropriately identify the need.  The need can be a desire to improve current performance or to correct a deficiency.
+Longevity claims | Longevity claims are unsubstantiated cases of asserted human longevity.  Those asserting lifespans of 110 years or more are referred to as supercentenarians.  Many have either no official verification or are backed only by partial evidence.  Cases where longevity has been fully verified, according to modern standards of longevity research, are reflected in an established list of supercentenarians based on the work of organizations such as the Gerontology Research Group (GRG) or the "Guinness World Records".  This article lists living claims greater than that of the oldest person whose age has been independently verified, Nabi Tajima at and deceased claims greater than that of the oldest person ever whose age has been verified, namely Jeanne Calment who died at the age of 122 years, 164 days.  The upper limit for both lists is 130 years.
+Merchant plug-in | A merchant plug-in (MPI) is a software module designed to facilitate 3D-Secure verifications to help prevent credit card fraud.  The MPI identifies the account number and queries card issuer (Visa, MasterCard, or JCB International) servers to determine if it is enrolled in a 3D-Secure program and returns the web site address of the issuer "access control server" (ACS) if it is found.  Merchants are responsible for installing an SSL/TLS MPI at their servers.
+Dispositive motion | In law, a dispositive motion is a motion seeking a trial court order entirely disposing of all or part of the claims in favor of the moving party without need for further trial court proceedings.  "To dispose" of a claim means to "decide" the claim in favor of one or another party.  As a lawsuit may comprise numerous claims made by and against numerous parties, not every dispositive motion seeks to dispose of the entire lawsuit.  In the U.S., the most common type of dispositive motions seeking to dispose of the entire lawsuit are those for summary judgment.  Many U.S. state jurisdictions also provide for a "partial summary judgment" or motion for "summary adjudication of issues" which only seeks to dispose of part of a lawsuit.  See, e.g., California Code of Civil Procedure section 437c(f)(1).  Regardless whether the dispositive motion is for summary judgment or adjudication, the motion must be supported by declarations under oath, excerpts from depositions which are also under oath, admissions of fact by the opposing party and other discovery such as interrogatories, as well as a legal argument (points and authorities).  The other party may respond with counter-declarations, discovery responses, and legal arguments attempting to show that these issues were "triable issues of fact."  If there is any question as to whether there is conflict on the facts on an issue, the summary judgment or adjudication must be denied regarding that matter.
+Demand signal repository | Demand signal repository (DSR) is the data warehouse designed to integrate and cleanse demand data, and leverage that data to consumer goods manufacturers, service retailers, and end customers efficiently.  Cleansing it and synchronizing it with syndicated and internal data allows companies to provide business users with a more complete view of their retail performance.  The repository itself is a database that stores the information in a format that allows for easy retrieval of information so that users can quickly query the database to identify what's selling, where, when and how.  Identifying Out-of-Stock's (OOS's) is a requirement.  Leveraging that data to perform predictive analytics is where applications actually leverage POS within their data model to help identify both current and potential impact.
+Verification (audit) | Verification means 'Proving the truth' or 'Confirmation'.  Verification is an auditing process in which auditor satisfy himself with the actual existence of assets and liabilities appearing in the Statement of Financial position.  Verification is usually conducted through examination of existence, ownership, title, possession, proper valuation and presence of any charge of lien over assets.
+Data stream management system | A data stream management system (DSMS) is a computer software system to manage continuous data streams.  It is similar to a database management system (DBMS), which is, however, designed for static data in conventional databases.  A DSMS also offers a flexible query processing so that the information need can be expressed using queries.  However, in contrast to a DBMS, a DSMS executes a "continuous query" that is not only performed once, but is permanently installed.  Therefore, the query is continuously executed until it is explicitly uninstalled.  Since most DSMS are data-driven, a continuous query produces new results as long as new data arrive at the system.  This basic concept is similar to Complex event processing so that both technologies are partially coalescing.
+Third-party verification | Third party verification (TPV) is a process of getting an independent party to confirm that the customer is actually requesting a change or ordering a new service or product.  By putting the customer on the phone (usually via transfer or 3-way call) TPV provider asks a customer for his identity, that he is an authorized decision maker and to confirm his order.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: After summary_1 and summary_2 both concluded 'The claim is fully verifiable' and 'No missing evidence documents are identified', the coordinator generated queries stating 'No additional query needed' and 'No query is needed' yet retrieval events still executed. Hop 2 returned the same 7 documents as hop 1 (Geoffrey Chaucer, John Feckenham, List of Westminster Abbey organists, Close of the Collegia
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step UNKNOWN: evidence: Hop 3 retrieved 10 documents completely irrelevant to the Westminster Abbey claim: 'Cherry picking', 'Training needs analysis', 'Needs assessment', 'Longevity claims', 'Merchant plug-in', 'Dispositive motion', 'Demand signal repository', 'Verification (audit)', 'Data stream management system', 'Third-party verification'. The system continued processing through all three hops despite the solver det
+- code A.6 (Repetitive_Output_Loop), anchored near step UNKNOWN: evidence: Summary_1 states: 'The claim is fully verifiable through the provided passages. All three assertions are supported... No missing evidence documents are identified.' Summary_2 repeats nearly identically: 'The claim can be fully verified with the provided passages. All three assertions are explicitly confirmed... No additional passages or missing evidence documents are needed.' Both coordinator resp
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

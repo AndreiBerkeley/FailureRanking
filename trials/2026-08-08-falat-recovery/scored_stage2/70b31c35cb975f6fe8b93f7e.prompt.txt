@@ -1,0 +1,518 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: A Yakshagana artist combines dance, costum, makeup, and dialogue. The author who wrote the novel Marali Mannige in 2000 is this kind of artist.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Marali Mannige | Marali Mannige is a Kannada novel by novelist K. Shivaram Karanth.  MaraLi MaNNige meaning return back to Earth or dust.
+Yakshagana | Yakshagana ( Kannada : "ಯಕ್ಷಗಾನ", Tulu : "ಆಟ") is a traditional theatre form that combines dance, music, dialogue, costume, make-up, and stage techniques with a unique style and form.  This theatre style is mainly found in Tulunadu and some parts of Malenadu region's of Karnataka and Kerala. Yakshagana is traditionally presented from dusk to dawn.
+Keremane Shivarama Hegde | Keremane Shivarama Hegde is an exponent of Yakshagana, a dance form mostly performed in the state of Karnataka, India.  He is the founder of the troupe, Idagunji Mahaganapathi Yakshagana Mandali which has given performances all over India and abroad.  He is the first Yakshagana artist to receive the Rashtrapati Award (President's Award).  He was given the Sangeet Natak Akademi Award for 1970.
+Yakshagana Tala | Yakshagana Tala (Kannada:ಯಕ್ಷಗಾನ ತಾಳ, pronounced as "yaksha-gaana taala"), is a rhythmical pattern in Yakshagana that is determined by a composition called Yakshagana Padya.  Tala also decides how a composition is enacted by dancers.  It is similar to Tala in other forms of Indian music, but is structurally different from them.  Each composition is set to one or more talas, and as a composition is rendered by Himmela, the percussion artist(s) play supporting the dance performance.  Tala is maintained by the singer using a pair of finger bells.
+Costume designer | A costume designer is a person who designs costumes for a film, stage production or television.  The role of the costume designer is to create the characters and balance the scenes with texture and colour, etc.  The costume designer works alongside the director, scenic, lighting designer, sound designer, and other creative personnel.  The costume designer may also collaborate with hair stylist, wig master, or makeup artist.  In European theatre, the role is different, as the theatre designer usually designs both costume and scenic elements.
+List of Yakshagana artists | Over the centuries, hundreds of Yakshagana artists have performed this semi-classical art form and some of the artists gained star value in coastal areas of Karnataka, India.
+Conor O'Sullivan (make-up artist) | Conor O'Sullivan is a British Prosthetic makeup artist who has been nominated for two Academy Awards, who is perhaps best known for being one of the makeup artists in "The Dark Knight" who was involved in creating The Joker's makeup.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        5. **CRITICAL: For every distinct entity mentioned in the claim (whether explicitly named or referenced indirectly), ensure that passages about that specific entity are available. If passages are missing for any entity in the claim, identify those missing evidence documents.**
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        **Critical requirement for identifying missing evidence documents**:
+        - **If a claim mentions multiple distinct entities (e.g., "Entity A is X. Entity B is not X."), you must have passages about EACH entity mentioned**
+        - **Even if the claim can be partially verified, if any entity in the claim lacks corresponding passages, you must identify that entity's evidence document as missing**
+        - **For comparison claims (e.g., "A is perennial. B is not perennial"), you need passages about both A and B, even if one can be verified**
+        - **When a claim mentions an entity only to negate something about it (e.g., "Duranta is not a perennial"), that entity still requires evidence documents**
+        - **The fact that you can verify part of a claim does not mean you should ignore entities that lack passages - explicitly identify all entities that need but lack evidence documents**
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - **List ALL entities from the claim that lack corresponding passages, even if other parts of the claim are verifiable**
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+        - **When identifying missing evidence documents, use the entity name or subject matter that would be the title/topic of the needed passage (e.g., if the claim mentions "Duranta" but no passages discuss it, identify "duranta" as a missing evidence document)**
+[STEP 4] (user) [[ ## claim ## ]]
+A Yakshagana artist combines dance, costum, makeup, and dialogue. The author who wrote the novel Marali Mannige in 2000 is this kind of artist.
+
+[[ ## passages ## ]]
+[1] «Marali Mannige | Marali Mannige is a Kannada novel by novelist K. Shivaram Karanth.  MaraLi MaNNige meaning return back to Earth or dust.»
+[2] «Yakshagana | Yakshagana ( Kannada : "ಯಕ್ಷಗಾನ", Tulu : "ಆಟ") is a traditional theatre form that combines dance, music, dialogue, costume, make-up, and stage techniques with a unique style and form.  This theatre style is mainly found in Tulunadu and some parts of Malenadu region's of Karnataka and Kerala. Yakshagana is traditionally presented from dusk to dawn.»
+[3] «Keremane Shivarama Hegde | Keremane Shivarama Hegde is an exponent of Yakshagana, a dance form mostly performed in the state of Karnataka, India.  He is the founder of the troupe, Idagunji Mahaganapathi Yakshagana Mandali which has given performances all over India and abroad.  He is the first Yakshagana artist to receive the Rashtrapati Award (President's Award).  He was given the Sangeet Natak Akademi Award for 1970.»
+[4] «Yakshagana Tala | Yakshagana Tala (Kannada:ಯಕ್ಷಗಾನ ತಾಳ, pronounced as "yaksha-gaana taala"), is a rhythmical pattern in Yakshagana that is determined by a composition called Yakshagana Padya.  Tala also decides how a composition is enacted by dancers.  It is similar to Tala in other forms of Indian music, but is structurally different from them.  Each composition is set to one or more talas, and as a composition is rendered by Himmela, the percussion artist(s) play supporting the dance performance.  Tala is maintained by the singer using a pair of finger bells.»
+[5] «Costume designer | A costume designer is a person who designs costumes for a film, stage production or television.  The role of the costume designer is to create the characters and balance the scenes with texture and colour, etc.  The costume designer works alongside the director, scenic, lighting designer, sound designer, and other creative personnel.  The costume designer may also collaborate with hair stylist, wig master, or makeup artist.  In European theatre, the role is different, as the theatre designer usually designs both costume and scenic elements.»
+[6] «List of Yakshagana artists | Over the centuries, hundreds of Yakshagana artists have performed this semi-classical art form and some of the artists gained star value in coastal areas of Karnataka, India.»
+[7] «Conor O'Sullivan (make-up artist) | Conor O'Sullivan is a British Prosthetic makeup artist who has been nominated for two Academy Awards, who is perhaps best known for being one of the makeup artists in "The Dark Knight" who was involved in creating The Joker's makeup.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze the claim step by step:
+
+The claim states: "A Yakshagana artist combines dance, costume, makeup, and dialogue. The author who wrote the novel Marali Mannige in 2000 is this kind of artist."
+
+Components to verify:
+1. A Yakshagana artist combines dance, costume, makeup, and dialogue - This can be verified
+2. Someone wrote the novel Marali Mannige in 2000 - Need to identify the author
+3. That author is a Yakshagana artist - Need to verify this connection
+
+From the passages:
+
+Passage [1]: Marali Mannige is a Kannada novel by novelist K. Shivaram Karanth. However, the passage does NOT mention the year 2000 or confirm when it was written.
+
+Passage [2]: Yakshagana is confirmed to be a traditional theatre form that combines "dance, music, dialogue, costume, make-up" - this matches the claim's description (though the passage includes "music" and "stage techniques" as well, the core elements match).
+
+Now the critical issue: The passages identify K. Shivaram Karanth as the author of Marali Mannige, but there are NO passages provided about K. Shivaram Karanth himself. The passages do not contain information about whether K. Shivaram Karanth is a Yakshagana artist or any other relevant biographical information about him.
+
+Passages [3], [4], [6] discuss Yakshagana artists and the art form, but none of them mention K. Shivaram Karanth or establish any connection between him and Yakshagana.
+
+Additionally, the year 2000 is mentioned in the claim but not confirmed in the passages.
+
+Missing evidence documents:
+- K. Shivaram Karanth (biographical information about the author to verify if he is a Yakshagana artist)
+[[ ## summary ## ]]
+The claim can only be partially verified. 
+
+Verified information:
+- Yakshagana is indeed a traditional theatre form that combines dance, costume, makeup, and dialogue (confirmed in passage [2])
+- Marali Mannige is a Kannada novel written by K. Shivaram Karanth (confirmed in passage [1])
+
+Unverified/Missing information:
+- The passages do NOT confirm that Marali Mannige was written in 2000 - passage [1] provides no publication date
+- **CRITICAL MISSING EVIDENCE: There are NO passages about K. Shivaram Karanth himself.** To verify the claim that "the author who wrote the novel Marali Mannige is a Yakshagana artist," we would need biographical information about K. Shivaram Karanth establishing whether he is or was a Yakshagana artist. The current passages only identify him as a "novelist" but provide no information about any connection to Yakshagana.
+
+**Missing evidence document needed:** K. Shivaram Karanth (to verify his professional background and whether he is a Yakshagana artist)
+
+The claim cannot be fully verified without information about the author K. Shivaram Karanth.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+A Yakshagana artist combines dance, costum, makeup, and dialogue. The author who wrote the novel Marali Mannige in 2000 is this kind of artist.
+
+[[ ## summary_1 ## ]]
+The claim can only be partially verified. 
+
+Verified information:
+- Yakshagana is indeed a traditional theatre form that combines dance, costume, makeup, and dialogue (confirmed in passage [2])
+- Marali Mannige is a Kannada novel written by K. Shivaram Karanth (confirmed in passage [1])
+
+Unverified/Missing information:
+- The passages do NOT confirm that Marali Mannige was written in 2000 - passage [1] provides no publication date
+- **CRITICAL MISSING EVIDENCE: There are NO passages about K. Shivaram Karanth himself.** To verify the claim that "the author who wrote the novel Marali Mannige is a Yakshagana artist," we would need biographical information about K. Shivaram Karanth establishing whether he is or was a Yakshagana artist. The current passages only identify him as a "novelist" but provide no information about any connection to Yakshagana.
+
+**Missing evidence document needed:** K. Shivaram Karanth (to verify his professional background and whether he is a Yakshagana artist)
+
+The claim cannot be fully verified without information about the author K. Shivaram Karanth.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim makes two main assertions:
+1. That Yakshagana is a theatrical form combining dance, costume, makeup, and dialogue - this is verified
+2. That K. Shivaram Karanth, author of Marali Mannige, is a Yakshagana artist - this cannot be verified with current information
+
+While we can confirm that K. Shivaram Karanth wrote Marali Mannige (a Kannada novel), there is no biographical information provided about the author himself. The critical gap is the lack of evidence about K. Shivaram Karanth's professional background and his connection (or lack thereof) to Yakshagana performance art. Additionally, the specific publication year of 2000 for Marali Mannige is not confirmed in the available passages.
+
+To fully verify this claim, we need biographical information about K. Shivaram Karanth that establishes whether he is or was a practitioner of Yakshagana.
+
+[[ ## query ## ]]
+K. Shivaram Karanth biography Yakshagana artist
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+K. Shivaram Karanth | Kota Shivaram Karanth (10 October 1902 – 9 December 1997) was a Kannada writer, social activist, environmentalist, Yakshagana artist, film maker and thinker.  Ramachandra Guha called him the "Rabindranath Tagore of Modern India, who has been one of the finest novelists-activists since independence".  He was the third writer to be decorated with the Jnanpith Award for Kannada, the highest literary honor conferred in India.
+Naranappa Uppoor | Naranappa Uppoor (1918–1984) was a famous "bhagavath" (Yakshagana singer) of Yakshagana art during 20th Century.  He was much known for his voice, knowledge of tradition and heritage of Yakshagana.  Dr. Shivarama Karanth, writer and his contemporary opined that "Naranappa Uppoor is one person who is very familiar with the rich heritage of stage traditions (of Yakshagana).  Only he can tell us what we had in the past and what we are losing."
+Marali Mannige | Marali Mannige is a Kannada novel by novelist K. Shivaram Karanth.  MaraLi MaNNige meaning return back to Earth or dust.
+Chomana Dudi | Chomana Dudi (Kannada: ಚೋಮನ ದುಡಿ , English: "Choma's Drum" ) is a feature film in the Kannada language.  It is based on a novel of the same name, written by Shivaram Karanth.  The film was released in the year 1975 and won the "Swarna Kamal", India's National Award for the best film.
+Mookajjiya Kanasugalu | Mookajjiya Kanasugalu (English: Dreams of Mookajji) is a 1968 Kannada epic novel written by K. Shivaram Karanth.  It won Jnaanapeeta award for best novel in the year 1977.  The novel is about the thoughts of human being of today's generation.  It deals with the beliefs, the origin of tradition etc.
+Chigurida Kanasu | Chigurida Kanasu (Kannada: ಚಿಗುರಿದ ಕನಸು ) is a 2003 Indian Kannada film directed by T. S. Nagabharana, starring Shiva Rajkumar, Rekha Unnikrishnan and Avinash in pivotal roles.  It is based on a novel of the same name by Shivaram Karanth, a Jnanpith Award winner.  2004 Hindi movie "Swades" was reported to be inspired by this movie.
+Bettada Jeeva | Bettada Jeeva is a National Award-winning (2011) Kannada film directed by P. Sheshadri starring Suchendra Prasad, Rameshwari Varma and H. G. Dattatreya.  The story is based on Jnanpith awardee K. Shivaram Karanth's novel.  It depicts the tradition of people living in remote areas of Western Ghats during pre-Independence days in India.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+A Yakshagana artist combines dance, costum, makeup, and dialogue. The author who wrote the novel Marali Mannige in 2000 is this kind of artist.
+
+[[ ## context ## ]]
+The claim can only be partially verified. 
+
+Verified information:
+- Yakshagana is indeed a traditional theatre form that combines dance, costume, makeup, and dialogue (confirmed in passage [2])
+- Marali Mannige is a Kannada novel written by K. Shivaram Karanth (confirmed in passage [1])
+
+Unverified/Missing information:
+- The passages do NOT confirm that Marali Mannige was written in 2000 - passage [1] provides no publication date
+- **CRITICAL MISSING EVIDENCE: There are NO passages about K. Shivaram Karanth himself.** To verify the claim that "the author who wrote the novel Marali Mannige is a Yakshagana artist," we would need biographical information about K. Shivaram Karanth establishing whether he is or was a Yakshagana artist. The current passages only identify him as a "novelist" but provide no information about any connection to Yakshagana.
+
+**Missing evidence document needed:** K. Shivaram Karanth (to verify his professional background and whether he is a Yakshagana artist)
+
+The claim cannot be fully verified without information about the author K. Shivaram Karanth.
+
+[[ ## passages ## ]]
+[1] «K. Shivaram Karanth | Kota Shivaram Karanth (10 October 1902 – 9 December 1997) was a Kannada writer, social activist, environmentalist, Yakshagana artist, film maker and thinker.  Ramachandra Guha called him the "Rabindranath Tagore of Modern India, who has been one of the finest novelists-activists since independence".  He was the third writer to be decorated with the Jnanpith Award for Kannada, the highest literary honor conferred in India.»
+[2] «Naranappa Uppoor | Naranappa Uppoor (1918–1984) was a famous "bhagavath" (Yakshagana singer) of Yakshagana art during 20th Century.  He was much known for his voice, knowledge of tradition and heritage of Yakshagana.  Dr. Shivarama Karanth, writer and his contemporary opined that "Naranappa Uppoor is one person who is very familiar with the rich heritage of stage traditions (of Yakshagana).  Only he can tell us what we had in the past and what we are losing."»
+[3] «Marali Mannige | Marali Mannige is a Kannada novel by novelist K. Shivaram Karanth.  MaraLi MaNNige meaning return back to Earth or dust.»
+[4] «Chomana Dudi | Chomana Dudi (Kannada: ಚೋಮನ ದುಡಿ , English: "Choma's Drum" ) is a feature film in the Kannada language.  It is based on a novel of the same name, written by Shivaram Karanth.  The film was released in the year 1975 and won the "Swarna Kamal", India's National Award for the best film.»
+[5] «Mookajjiya Kanasugalu | Mookajjiya Kanasugalu (English: Dreams of Mookajji) is a 1968 Kannada epic novel written by K. Shivaram Karanth.  It won Jnaanapeeta award for best novel in the year 1977.  The novel is about the thoughts of human being of today's generation.  It deals with the beliefs, the origin of tradition etc.»
+[6] «Chigurida Kanasu | Chigurida Kanasu (Kannada: ಚಿಗುರಿದ ಕನಸು ) is a 2003 Indian Kannada film directed by T. S. Nagabharana, starring Shiva Rajkumar, Rekha Unnikrishnan and Avinash in pivotal roles.  It is based on a novel of the same name by Shivaram Karanth, a Jnanpith Award winner.  2004 Hindi movie "Swades" was reported to be inspired by this movie.»
+[7] «Bettada Jeeva | Bettada Jeeva is a National Award-winning (2011) Kannada film directed by P. Sheshadri starring Suchendra Prasad, Rameshwari Varma and H. G. Dattatreya.  The story is based on Jnanpith awardee K. Shivaram Karanth's novel.  It depicts the tradition of people living in remote areas of Western Ghats during pre-Independence days in India.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+Let me analyze what the claim requires and what the passages provide:
+
+**Claim Components:**
+1. Yakshagana artists combine dance, costume, makeup, and dialogue
+2. The author of Marali Mannige wrote it in 2000
+3. This author is a Yakshagana artist
+
+**Analysis Against Passages:**
+
+From Passage [1]: K. Shivaram Karanth is explicitly described as "a Kannada writer, social activist, environmentalist, **Yakshagana artist**, film maker and thinker." This directly establishes that K. Shivaram Karanth is indeed a Yakshagana artist.
+
+From Passage [3]: Marali Mannige is confirmed as "a Kannada novel by novelist K. Shivaram Karanth." This establishes the authorship.
+
+**Critical Issue - Publication Date:**
+Passage [3] does NOT provide a publication date for Marali Mannige. The claim states it was written "in 2000," but none of the passages confirm this specific date. The passages provide dates for other works (Mookajjiya Kanasugalu in 1968, Chomana Dudi film adaptation in 1975, etc.) but not for Marali Mannige's publication.
+
+**Definition of Yakshagana:**
+While the passages don't explicitly describe what Yakshagana entails (dance, costume, makeup, dialogue), Passage [2] discusses Yakshagana in detail, referencing "stage traditions of Yakshagana," suggesting it is a performance art form consistent with the claim's description.
+
+The major verification gap is the publication date of 2000 for Marali Mannige - this specific claim cannot be verified from the provided passages.
+
+[[ ## summary ## ]]
+The claim **cannot be fully verified** due to a critical missing piece of information.
+
+**What can be verified:**
+- K. Shivaram Karanth is definitively identified as a Yakshagana artist (Passage [1])
+- K. Shivaram Karanth authored Marali Mannige (Passage [3])
+- Yakshagana is confirmed as a performance art form (Passages [1] and [2])
+
+**What cannot be verified:**
+- The publication date of Marali Mannige as 2000. Passage [3] identifies the novel and provides its meaning ("return back to Earth or dust") but supplies no publication date. While the passages provide publication dates for K. Shivaram Karanth's other works (Mookajjiya Kanasugalu in 1968, film adaptations in 1975, 2003), no source provides the publication year for Marali Mannige specifically.
+
+**Missing evidence needed:** A passage specifically about Marali Mannige that includes its publication date to verify the "2000" claim. The current passages confirm the author's identity as a Yakshagana artist and his authorship of the novel, but lack the temporal verification required by the claim.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+A Yakshagana artist combines dance, costum, makeup, and dialogue. The author who wrote the novel Marali Mannige in 2000 is this kind of artist.
+
+[[ ## summary_1 ## ]]
+The claim can only be partially verified. 
+
+Verified information:
+- Yakshagana is indeed a traditional theatre form that combines dance, costume, makeup, and dialogue (confirmed in passage [2])
+- Marali Mannige is a Kannada novel written by K. Shivaram Karanth (confirmed in passage [1])
+
+Unverified/Missing information:
+- The passages do NOT confirm that Marali Mannige was written in 2000 - passage [1] provides no publication date
+- **CRITICAL MISSING EVIDENCE: There are NO passages about K. Shivaram Karanth himself.** To verify the claim that "the author who wrote the novel Marali Mannige is a Yakshagana artist," we would need biographical information about K. Shivaram Karanth establishing whether he is or was a Yakshagana artist. The current passages only identify him as a "novelist" but provide no information about any connection to Yakshagana.
+
+**Missing evidence document needed:** K. Shivaram Karanth (to verify his professional background and whether he is a Yakshagana artist)
+
+The claim cannot be fully verified without information about the author K. Shivaram Karanth.
+
+[[ ## summary_2 ## ]]
+The claim **cannot be fully verified** due to a critical missing piece of information.
+
+**What can be verified:**
+- K. Shivaram Karanth is definitively identified as a Yakshagana artist (Passage [1])
+- K. Shivaram Karanth authored Marali Mannige (Passage [3])
+- Yakshagana is confirmed as a performance art form (Passages [1] and [2])
+
+**What cannot be verified:**
+- The publication date of Marali Mannige as 2000. Passage [3] identifies the novel and provides its meaning ("return back to Earth or dust") but supplies no publication date. While the passages provide publication dates for K. Shivaram Karanth's other works (Mookajjiya Kanasugalu in 1968, film adaptations in 1975, 2003), no source provides the publication year for Marali Mannige specifically.
+
+**Missing evidence needed:** A passage specifically about Marali Mannige that includes its publication date to verify the "2000" claim. The current passages confirm the author's identity as a Yakshagana artist and his authorship of the novel, but lack the temporal verification required by the claim.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries reach different conclusions about the claim's verifiability, indicating inconsistency in the available evidence or passages being evaluated.
+
+Summary 1 states that the critical missing evidence is biographical information about K. Shivaram Karanth to establish whether he is a Yakshagana artist. It identifies him only as a "novelist" with no confirmed connection to Yakshagana.
+
+Summary 2, conversely, states that K. Shivaram Karanth is "definitively identified as a Yakshagana artist" in Passage [1] and confirms his authorship of Marali Mannige. However, Summary 2 identifies a different gap: the publication date of Marali Mannige is not confirmed as 2000 in any passage.
+
+The key discrepancy is whether the passages establish K. Shivaram Karanth's identity as a Yakshagana artist. To resolve the claim's verifiability, we need clarification on: (1) whether K. Shivaram Karanth is confirmed as a Yakshagana artist in the source material, and (2) whether Marali Mannige was published in 2000.
+
+[[ ## query ## ]]
+What is the publication date of the novel Marali Mannige by K. Shivaram Karanth, and is K. Shivaram Karanth documented as a Yakshagana artist in addition to being a novelist?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Marali Mannige | Marali Mannige is a Kannada novel by novelist K. Shivaram Karanth.  MaraLi MaNNige meaning return back to Earth or dust.
+K. Shivaram Karanth | Kota Shivaram Karanth (10 October 1902 – 9 December 1997) was a Kannada writer, social activist, environmentalist, Yakshagana artist, film maker and thinker.  Ramachandra Guha called him the "Rabindranath Tagore of Modern India, who has been one of the finest novelists-activists since independence".  He was the third writer to be decorated with the Jnanpith Award for Kannada, the highest literary honor conferred in India.
+Mookajjiya Kanasugalu | Mookajjiya Kanasugalu (English: Dreams of Mookajji) is a 1968 Kannada epic novel written by K. Shivaram Karanth.  It won Jnaanapeeta award for best novel in the year 1977.  The novel is about the thoughts of human being of today's generation.  It deals with the beliefs, the origin of tradition etc.
+Chomana Dudi | Chomana Dudi (Kannada: ಚೋಮನ ದುಡಿ , English: "Choma's Drum" ) is a feature film in the Kannada language.  It is based on a novel of the same name, written by Shivaram Karanth.  The film was released in the year 1975 and won the "Swarna Kamal", India's National Award for the best film.
+Chigurida Kanasu | Chigurida Kanasu (Kannada: ಚಿಗುರಿದ ಕನಸು ) is a 2003 Indian Kannada film directed by T. S. Nagabharana, starring Shiva Rajkumar, Rekha Unnikrishnan and Avinash in pivotal roles.  It is based on a novel of the same name by Shivaram Karanth, a Jnanpith Award winner.  2004 Hindi movie "Swades" was reported to be inspired by this movie.
+Bettada Jeeva | Bettada Jeeva is a National Award-winning (2011) Kannada film directed by P. Sheshadri starring Suchendra Prasad, Rameshwari Varma and H. G. Dattatreya.  The story is based on Jnanpith awardee K. Shivaram Karanth's novel.  It depicts the tradition of people living in remote areas of Western Ghats during pre-Independence days in India.
+Naranappa Uppoor | Naranappa Uppoor (1918–1984) was a famous "bhagavath" (Yakshagana singer) of Yakshagana art during 20th Century.  He was much known for his voice, knowledge of tradition and heritage of Yakshagana.  Dr. Shivarama Karanth, writer and his contemporary opined that "Naranappa Uppoor is one person who is very familiar with the rich heritage of stage traditions (of Yakshagana).  Only he can tell us what we had in the past and what we are losing."
+K. R. Karanth | Kota Ramakrishna Karanth (born May 1, 1894) was an Indian lawyer and politician who served as the Minister of Land Revenue for the Madras Presidency from March 1, 1946 to March 23, 1947.  He was the elder brother of noted Kannada novelist K. Shivarama Karanth.
+Prema Karanth | Prema Karanth (15 August 1936 – 29 October 2007) was an Indian theatre personality and the first-ever woman film-maker of Kannada cinema.  She was the wife of B. V. Karanth and was known for the children's plays that she staged.  She became the first ever woman director in Kannada cinema when she directed the film "Phaniyamma" (1983), which was based on a novel by M. K. Indira.
+BV Karanth:Baba | B V Karanth:Baba Kannada: (ಬಿ ವಿ ಕಾರಂತ:ಬಾಬ), is a biographical Kannada-language feature-length documentary film on the life and times of BV Karanth, the man whose influenced Post Independence Modern Indian theater, the most.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Marali Mannige | Marali Mannige is a Kannada novel by novelist K. Shivaram Karanth.  MaraLi MaNNige meaning return back to Earth or dust.
+Yakshagana | Yakshagana ( Kannada : "ಯಕ್ಷಗಾನ", Tulu : "ಆಟ") is a traditional theatre form that combines dance, music, dialogue, costume, make-up, and stage techniques with a unique style and form.  This theatre style is mainly found in Tulunadu and some parts of Malenadu region's of Karnataka and Kerala. Yakshagana is traditionally presented from dusk to dawn.
+Keremane Shivarama Hegde | Keremane Shivarama Hegde is an exponent of Yakshagana, a dance form mostly performed in the state of Karnataka, India.  He is the founder of the troupe, Idagunji Mahaganapathi Yakshagana Mandali which has given performances all over India and abroad.  He is the first Yakshagana artist to receive the Rashtrapati Award (President's Award).  He was given the Sangeet Natak Akademi Award for 1970.
+Yakshagana Tala | Yakshagana Tala (Kannada:ಯಕ್ಷಗಾನ ತಾಳ, pronounced as "yaksha-gaana taala"), is a rhythmical pattern in Yakshagana that is determined by a composition called Yakshagana Padya.  Tala also decides how a composition is enacted by dancers.  It is similar to Tala in other forms of Indian music, but is structurally different from them.  Each composition is set to one or more talas, and as a composition is rendered by Himmela, the percussion artist(s) play supporting the dance performance.  Tala is maintained by the singer using a pair of finger bells.
+Costume designer | A costume designer is a person who designs costumes for a film, stage production or television.  The role of the costume designer is to create the characters and balance the scenes with texture and colour, etc.  The costume designer works alongside the director, scenic, lighting designer, sound designer, and other creative personnel.  The costume designer may also collaborate with hair stylist, wig master, or makeup artist.  In European theatre, the role is different, as the theatre designer usually designs both costume and scenic elements.
+List of Yakshagana artists | Over the centuries, hundreds of Yakshagana artists have performed this semi-classical art form and some of the artists gained star value in coastal areas of Karnataka, India.
+Conor O'Sullivan (make-up artist) | Conor O'Sullivan is a British Prosthetic makeup artist who has been nominated for two Academy Awards, who is perhaps best known for being one of the makeup artists in "The Dark Knight" who was involved in creating The Joker's makeup.
+K. Shivaram Karanth | Kota Shivaram Karanth (10 October 1902 – 9 December 1997) was a Kannada writer, social activist, environmentalist, Yakshagana artist, film maker and thinker.  Ramachandra Guha called him the "Rabindranath Tagore of Modern India, who has been one of the finest novelists-activists since independence".  He was the third writer to be decorated with the Jnanpith Award for Kannada, the highest literary honor conferred in India.
+Naranappa Uppoor | Naranappa Uppoor (1918–1984) was a famous "bhagavath" (Yakshagana singer) of Yakshagana art during 20th Century.  He was much known for his voice, knowledge of tradition and heritage of Yakshagana.  Dr. Shivarama Karanth, writer and his contemporary opined that "Naranappa Uppoor is one person who is very familiar with the rich heritage of stage traditions (of Yakshagana).  Only he can tell us what we had in the past and what we are losing."
+Marali Mannige | Marali Mannige is a Kannada novel by novelist K. Shivaram Karanth.  MaraLi MaNNige meaning return back to Earth or dust.
+Chomana Dudi | Chomana Dudi (Kannada: ಚೋಮನ ದುಡಿ , English: "Choma's Drum" ) is a feature film in the Kannada language.  It is based on a novel of the same name, written by Shivaram Karanth.  The film was released in the year 1975 and won the "Swarna Kamal", India's National Award for the best film.
+Mookajjiya Kanasugalu | Mookajjiya Kanasugalu (English: Dreams of Mookajji) is a 1968 Kannada epic novel written by K. Shivaram Karanth.  It won Jnaanapeeta award for best novel in the year 1977.  The novel is about the thoughts of human being of today's generation.  It deals with the beliefs, the origin of tradition etc.
+Chigurida Kanasu | Chigurida Kanasu (Kannada: ಚಿಗುರಿದ ಕನಸು ) is a 2003 Indian Kannada film directed by T. S. Nagabharana, starring Shiva Rajkumar, Rekha Unnikrishnan and Avinash in pivotal roles.  It is based on a novel of the same name by Shivaram Karanth, a Jnanpith Award winner.  2004 Hindi movie "Swades" was reported to be inspired by this movie.
+Bettada Jeeva | Bettada Jeeva is a National Award-winning (2011) Kannada film directed by P. Sheshadri starring Suchendra Prasad, Rameshwari Varma and H. G. Dattatreya.  The story is based on Jnanpith awardee K. Shivaram Karanth's novel.  It depicts the tradition of people living in remote areas of Western Ghats during pre-Independence days in India.
+Marali Mannige | Marali Mannige is a Kannada novel by novelist K. Shivaram Karanth.  MaraLi MaNNige meaning return back to Earth or dust.
+K. Shivaram Karanth | Kota Shivaram Karanth (10 October 1902 – 9 December 1997) was a Kannada writer, social activist, environmentalist, Yakshagana artist, film maker and thinker.  Ramachandra Guha called him the "Rabindranath Tagore of Modern India, who has been one of the finest novelists-activists since independence".  He was the third writer to be decorated with the Jnanpith Award for Kannada, the highest literary honor conferred in India.
+Mookajjiya Kanasugalu | Mookajjiya Kanasugalu (English: Dreams of Mookajji) is a 1968 Kannada epic novel written by K. Shivaram Karanth.  It won Jnaanapeeta award for best novel in the year 1977.  The novel is about the thoughts of human being of today's generation.  It deals with the beliefs, the origin of tradition etc.
+Chomana Dudi | Chomana Dudi (Kannada: ಚೋಮನ ದುಡಿ , English: "Choma's Drum" ) is a feature film in the Kannada language.  It is based on a novel of the same name, written by Shivaram Karanth.  The film was released in the year 1975 and won the "Swarna Kamal", India's National Award for the best film.
+Chigurida Kanasu | Chigurida Kanasu (Kannada: ಚಿಗುರಿದ ಕನಸು ) is a 2003 Indian Kannada film directed by T. S. Nagabharana, starring Shiva Rajkumar, Rekha Unnikrishnan and Avinash in pivotal roles.  It is based on a novel of the same name by Shivaram Karanth, a Jnanpith Award winner.  2004 Hindi movie "Swades" was reported to be inspired by this movie.
+Bettada Jeeva | Bettada Jeeva is a National Award-winning (2011) Kannada film directed by P. Sheshadri starring Suchendra Prasad, Rameshwari Varma and H. G. Dattatreya.  The story is based on Jnanpith awardee K. Shivaram Karanth's novel.  It depicts the tradition of people living in remote areas of Western Ghats during pre-Independence days in India.
+Naranappa Uppoor | Naranappa Uppoor (1918–1984) was a famous "bhagavath" (Yakshagana singer) of Yakshagana art during 20th Century.  He was much known for his voice, knowledge of tradition and heritage of Yakshagana.  Dr. Shivarama Karanth, writer and his contemporary opined that "Naranappa Uppoor is one person who is very familiar with the rich heritage of stage traditions (of Yakshagana).  Only he can tell us what we had in the past and what we are losing."
+K. R. Karanth | Kota Ramakrishna Karanth (born May 1, 1894) was an Indian lawyer and politician who served as the Minister of Land Revenue for the Madras Presidency from March 1, 1946 to March 23, 1947.  He was the elder brother of noted Kannada novelist K. Shivarama Karanth.
+Prema Karanth | Prema Karanth (15 August 1936 – 29 October 2007) was an Indian theatre personality and the first-ever woman film-maker of Kannada cinema.  She was the wife of B. V. Karanth and was known for the children's plays that she staged.  She became the first ever woman director in Kannada cinema when she directed the film "Phaniyamma" (1983), which was based on a novel by M. K. Indira.
+BV Karanth:Baba | B V Karanth:Baba Kannada: (ಬಿ ವಿ ಕಾರಂತ:ಬಾಬ), is a biographical Kannada-language feature-length documentary film on the life and times of BV Karanth, the man whose influenced Post Independence Modern Indian theater, the most.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Query at hop 3: 'What is the publication date of the novel Marali Mannige by K. Shivaram Karanth, and is K. Shivaram Karanth documented as a Yakshagana artist in addition to being a novelist?' This is a compound multi-part natural-language question bundling two distinct targets (publication date and artist status verification) rather than a focused retrieval query targeting a single entity.
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary 2 explicitly identifies the gap: 'The publication date of Marali Mannige as 2000. Passage [3] identifies the novel and provides its meaning ("return back to Earth or dust") but supplies no publication date... **Missing evidence needed:** A passage specifically about Marali Mannige that includes its publication date to verify the "2000" claim.' The hop 3 query explicitly targets this: 'What
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

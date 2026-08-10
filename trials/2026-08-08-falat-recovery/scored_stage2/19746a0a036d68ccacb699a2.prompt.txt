@@ -1,0 +1,523 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.
+June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.
+Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.
+Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.
+Apollo Heights | Apollo Heights is an American shoegazer band that was formed in New York City in 2002.  Consisting mainly of twin brothers, Daniel and Danny Chavis, they play experimental rock music.  They cite AR Kane and My Bloody Valentine as a major inspiration.  Their debut album "White Music For Black People" was produced by Robin Guthrie of Cocteau Twins and features guest appearances from Mos Def, Lady Kier, David Sitek of TV on the Radio, Mike Ladd and Guthrie himself on guitar.  The Chavis brothers were members of the alternative soul group The Veldt who released three albums on Polygram, Mammoth and Capitol Records.  Although the Veldt is left out of references on the Chapel Hill music scene, they were a key band during the heyday of North Carolina music along with other bands of the time like metal Flake Mother, Superchunk and Dillon Fence.
+The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.
+Superchunk | Superchunk is an American indie rock band from Chapel Hill, North Carolina, consisting of singer-guitarist Mac McCaughan, guitarist Jim Wilbur, bassist Laura Ballance, and drummer Jon Wurster.  Formed in 1989, they were one of the bands that helped define the Chapel Hill music scene of the 1990s.  Their energetic, high-velocity style and do-it-yourself ethics were influenced by punk rock.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina.
+
+[[ ## passages ## ]]
+[1] «Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.»
+[2] «June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.»
+[3] «Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.»
+[4] «Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.»
+[5] «Apollo Heights | Apollo Heights is an American shoegazer band that was formed in New York City in 2002.  Consisting mainly of twin brothers, Daniel and Danny Chavis, they play experimental rock music.  They cite AR Kane and My Bloody Valentine as a major inspiration.  Their debut album "White Music For Black People" was produced by Robin Guthrie of Cocteau Twins and features guest appearances from Mos Def, Lady Kier, David Sitek of TV on the Radio, Mike Ladd and Guthrie himself on guitar.  The Chavis brothers were members of the alternative soul group The Veldt who released three albums on Polygram, Mammoth and Capitol Records.  Although the Veldt is left out of references on the Chapel Hill music scene, they were a key band during the heyday of North Carolina music along with other bands of the time like metal Flake Mother, Superchunk and Dillon Fence.»
+[6] «The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.»
+[7] «Superchunk | Superchunk is an American indie rock band from Chapel Hill, North Carolina, consisting of singer-guitarist Mac McCaughan, guitarist Jim Wilbur, bassist Laura Ballance, and drummer Jon Wurster.  Formed in 1989, they were one of the bands that helped define the Chapel Hill music scene of the 1990s.  Their energetic, high-velocity style and do-it-yourself ethics were influenced by punk rock.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+To verify this claim, I need to:
+
+1. Identify what the "Shapes (album)" is and which band recorded it
+2. Confirm that band is NOT The Black Keys
+3. Verify that the band is American
+4. Verify that the band is from Chapel Hill, North Carolina
+
+The passages provided list several bands from Chapel Hill, North Carolina:
+- Roman Candle
+- June
+- Archers of Loaf
+- Sorry About Dresden
+- The Moaners
+- Superchunk
+
+However, NONE of the passages contain any information about an album called "Shapes" or which band recorded it. The passages do not mention The Black Keys at all. While multiple Chapel Hill bands are described, there is no information in these passages that identifies which specific band recorded the "Shapes" album, nor any information that would allow me to verify this claim about that particular album.
+
+The passages only establish that multiple American rock/indie rock bands exist from Chapel Hill, North Carolina, but they do not provide the critical information needed: the identification of which band recorded "Shapes (album)."
+
+[[ ## summary ## ]]
+The claim cannot be verified from the provided passages. 
+
+The passages identify multiple American rock/indie rock bands from Chapel Hill, North Carolina (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, and Superchunk), but they contain no information about:
+
+1. **The album "Shapes"** - There is no mention of any album with this title in any of the passages
+2. **Which band recorded "Shapes (album)"** - The passages do not identify the recording artist for this album
+3. **The Black Keys** - The passages do not mention The Black Keys or their discography, making it impossible to verify the comparative claim that the band is "not The Black Keys"
+
+To verify this claim, I would need:
+- Information about the album "Shapes" including its title, release date, and recording artist
+- Confirmation that the recording artist is an American rock band from Chapel Hill, North Carolina
+- Information about The Black Keys' discography to verify they did not record "Shapes"
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina.
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified from the provided passages. 
+
+The passages identify multiple American rock/indie rock bands from Chapel Hill, North Carolina (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, and Superchunk), but they contain no information about:
+
+1. **The album "Shapes"** - There is no mention of any album with this title in any of the passages
+2. **Which band recorded "Shapes (album)"** - The passages do not identify the recording artist for this album
+3. **The Black Keys** - The passages do not mention The Black Keys or their discography, making it impossible to verify the comparative claim that the band is "not The Black Keys"
+
+To verify this claim, I would need:
+- Information about the album "Shapes" including its title, release date, and recording artist
+- Confirmation that the recording artist is an American rock band from Chapel Hill, North Carolina
+- Information about The Black Keys' discography to verify they did not record "Shapes"
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that the claim cannot be verified because the passages lack information about three critical elements:
+
+1. The album "Shapes" and its recording artist
+2. Which Chapel Hill, North Carolina band recorded "Shapes"
+3. The Black Keys and their discography
+
+To verify this claim, I need to retrieve documents that specifically identify:
+- What the album "Shapes" is and who recorded it
+- Confirmation that the recording artist is from Chapel Hill, North Carolina
+- The Black Keys' discography to confirm they did not record "Shapes"
+
+The query must target the album "Shapes" as the primary search entity, while also ensuring we can verify the negative claim about The Black Keys.
+
+[[ ## query ## ]]
+What is the album "Shapes" and who is the artist that recorded it? Is the artist that recorded "Shapes" an American rock band from Chapel Hill, North Carolina? What albums did The Black Keys record, and did they record "Shapes"?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+The Shape I'm In (The Band song) | "The Shape I'm In" is a song by The Band, first released on their 1970 album "Stage Fright".  It was written by Robbie Robertson, who did little to disguise the fact that the song's sense of dread and dissolution was about Richard Manuel, the song's principal singer.  It became a regular feature in their concert repertoire, appearing on their live albums "Rock of Ages", "Before the Flood", and "The Last Waltz".  Author Neil Minturn described the song as "straightforward rock."  Along with "The Weight," it is one of the Band's songs most performed by other artists.  It has been recorded by Bo Diddley, The Good Brothers, The Mekons, The Pointer Sisters, She & Him, and Marty Stuart.
+Look at What the Light Did Now | Look at What the Light Did Now is a documentary/live album DVD/CD by Canadian indie pop artist Feist, first released in December 2010.  The DVD comprises an 80-minute documentary directed by Anthony Seck, five music videos from 2007 album The Reminder, and a number of live performances recorded between 2007 and 2009, including covers of songs by artists such as Little River Band and Ron Sexsmith.
+Look What I Did! | Look What I Did!  is the second compilation album by American rock musician Joe Walsh, released on May 23, 1995.  The 2-CD set contains 34 songs from multiple albums spanning from 1968 through 1993, and offers tracks from both Walsh's solo work and when he recorded with the band James Gang.
+26 Years | 26 Years is the ninth studio album by punk rock band The Lurkers.  The CD release of the album by the Street Dogs Record label also has an additional eight tracks, a single release of "Go Ahead Harry" from 1999 with the accompanying B-side and 6 tracks recorded live from their performance in Newcastle in 2003.  The album contains a few re-recordings of old Lurkers tracks including their notable single "Mass Media Believer".  The album spawned what could be somewhat of a modern classic for The Lurkers in the shape of "Go Ahead Harry".  The album art was created by Richard Stone.
+Live from the Underground | Live from the Underground is the debut studio album by American hip hop recording artist and a record producer Big K.R.I.T..  It was released on June 5, 2012, by his record label Cinematic Music Group, distributed by Def Jam Recordings.  As one of the executive producers on the album, Big K.R.I.T. did the production work for the entirety of this project.  The album was supported by four singles: "Money on the Floor" featuring 8Ball & MJG and 2 Chainz, "I Got This", "Yeah Dat's Me", and "What U Mean" featuring Ludacris.
+List of Foo Fighters band members | Foo Fighters is an American alternative rock band formed by multi-instrumentalist and vocalist Dave Grohl in 1994.  After recording the album "Foo Fighters" alone, Grohl enlisted guitarist Pat Smear, bassist Nate Mendel and drummer William Goldsmith to join the band.  This lineup recorded the second Foo Fighters album, 1997's "The Colour and the Shape", although most of Goldsmith's drum recordings were removed and re-recorded by Grohl for the release, after he left the band due to creative tensions.  Goldsmith was replaced by Taylor Hawkins, and Franz Stahl replaced Smear after he also departed, although he only remained in the band for a short period and did not record an album with the group.  The group's third album, "There Is Nothing Left to Lose", featured Hawkins on drums and was released in 1999.
+What Did You Expect? (Michael Cohen album) | What Did You Expect?  is an album by the American singer-songwriter Michael Cohen which was released on Folkways Records (FS 8582 Folkways Records,
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        Your task is to generate a summary that evaluates whether the claim can be verified from the provided passages. Your summary will be used to guide a three-hop retrieval system to find all required evidence documents.
+        
+        **Critical Requirement**: Your summary must be structured to ensure that a retrieval system will identify and retrieve ALL required evidence documents across three retrieval hops. The feedback will indicate which required evidence documents were successfully retrieved and which were missed.
+        
+        **Three-Hop Retrieval Strategy**:
+        - **Hop 1**: The retrieval system will extract key entities and concepts from the claim itself to retrieve initial documents
+        - **Hop 2**: The system will analyze the retrieved documents and context to identify additional entities that need verification
+        - **Hop 3**: The system will retrieve final documents based on connections and relationships discovered in previous hops
+        
+        **Guidelines for Writing Your Summary**:
+        
+        1. **Identify ALL entities in the claim**: Your summary should explicitly mention every specific entity (people, events, organizations, films, tournaments, seasons, locations, etc.) that appears in the claim. This helps the retrieval system identify what documents are needed.
+        
+        2. **Highlight missing information gaps**: When information is missing from the passages, clearly state what specific documents or facts would be needed. Use explicit document titles or entity names when possible (e.g., "Information about the film 'Undiscovered' and its ticket sales", "Gene Mayer's birth date", "who coached the Memphis Grizzlies in 2004-05").
+        
+        3. **Name entities from context that need verification**: If the context identifies specific entities (like "Lionel Hollins" or "Maurice Cheeks") that are relevant but not fully covered in passages, explicitly mention these names in your summary so they can be retrieved.
+        
+        4. **State verification requirements explicitly**: Clearly articulate what information would be needed to verify the claim, using specific entity names and document types (e.g., "the 1980 Lorraine Open results", "Serena Williams' birth date", "the 2004-05 Memphis Grizzlies season coaching staff").
+        
+        5. **Connect multi-hop relationships**: For claims requiring multiple pieces of information (e.g., "the actor from movie X that did Y"), explicitly state each step: identify movie X, identify the actor, verify the actor did Y.
+        
+        6. **Distinguish between similar entities**: When there might be confusion between entities (e.g., Golden Calf vs. Golden Globes, different people with coaching roles), be explicit about which specific entity or fact needs to be verified.
+        
+        7. **Format for retrieval**: Structure your summary to make it easy for a retrieval system to extract search queries. Use phrases like "requires information about [specific entity/document]" or "needs verification of [specific fact from specific source]".
+        
+        Your summary should conclude with a clear statement about whether the claim is verified, cannot be verified, or is false based on available passages, while making it obvious what additional documents would complete the verification chain.
+[STEP 11] (user) [[ ## claim ## ]]
+The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina.
+
+[[ ## context ## ]]
+The claim cannot be verified from the provided passages. 
+
+The passages identify multiple American rock/indie rock bands from Chapel Hill, North Carolina (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, and Superchunk), but they contain no information about:
+
+1. **The album "Shapes"** - There is no mention of any album with this title in any of the passages
+2. **Which band recorded "Shapes (album)"** - The passages do not identify the recording artist for this album
+3. **The Black Keys** - The passages do not mention The Black Keys or their discography, making it impossible to verify the comparative claim that the band is "not The Black Keys"
+
+To verify this claim, I would need:
+- Information about the album "Shapes" including its title, release date, and recording artist
+- Confirmation that the recording artist is an American rock band from Chapel Hill, North Carolina
+- Information about The Black Keys' discography to verify they did not record "Shapes"
+
+[[ ## passages ## ]]
+[1] «The Shape I'm In (The Band song) | "The Shape I'm In" is a song by The Band, first released on their 1970 album "Stage Fright".  It was written by Robbie Robertson, who did little to disguise the fact that the song's sense of dread and dissolution was about Richard Manuel, the song's principal singer.  It became a regular feature in their concert repertoire, appearing on their live albums "Rock of Ages", "Before the Flood", and "The Last Waltz".  Author Neil Minturn described the song as "straightforward rock."  Along with "The Weight," it is one of the Band's songs most performed by other artists.  It has been recorded by Bo Diddley, The Good Brothers, The Mekons, The Pointer Sisters, She & Him, and Marty Stuart.»
+[2] «Look at What the Light Did Now | Look at What the Light Did Now is a documentary/live album DVD/CD by Canadian indie pop artist Feist, first released in December 2010.  The DVD comprises an 80-minute documentary directed by Anthony Seck, five music videos from 2007 album The Reminder, and a number of live performances recorded between 2007 and 2009, including covers of songs by artists such as Little River Band and Ron Sexsmith.»
+[3] «Look What I Did! | Look What I Did!  is the second compilation album by American rock musician Joe Walsh, released on May 23, 1995.  The 2-CD set contains 34 songs from multiple albums spanning from 1968 through 1993, and offers tracks from both Walsh's solo work and when he recorded with the band James Gang.»
+[4] «26 Years | 26 Years is the ninth studio album by punk rock band The Lurkers.  The CD release of the album by the Street Dogs Record label also has an additional eight tracks, a single release of "Go Ahead Harry" from 1999 with the accompanying B-side and 6 tracks recorded live from their performance in Newcastle in 2003.  The album contains a few re-recordings of old Lurkers tracks including their notable single "Mass Media Believer".  The album spawned what could be somewhat of a modern classic for The Lurkers in the shape of "Go Ahead Harry".  The album art was created by Richard Stone.»
+[5] «Live from the Underground | Live from the Underground is the debut studio album by American hip hop recording artist and a record producer Big K.R.I.T..  It was released on June 5, 2012, by his record label Cinematic Music Group, distributed by Def Jam Recordings.  As one of the executive producers on the album, Big K.R.I.T. did the production work for the entirety of this project.  The album was supported by four singles: "Money on the Floor" featuring 8Ball & MJG and 2 Chainz, "I Got This", "Yeah Dat's Me", and "What U Mean" featuring Ludacris.»
+[6] «List of Foo Fighters band members | Foo Fighters is an American alternative rock band formed by multi-instrumentalist and vocalist Dave Grohl in 1994.  After recording the album "Foo Fighters" alone, Grohl enlisted guitarist Pat Smear, bassist Nate Mendel and drummer William Goldsmith to join the band.  This lineup recorded the second Foo Fighters album, 1997's "The Colour and the Shape", although most of Goldsmith's drum recordings were removed and re-recorded by Grohl for the release, after he left the band due to creative tensions.  Goldsmith was replaced by Taylor Hawkins, and Franz Stahl replaced Smear after he also departed, although he only remained in the band for a short period and did not record an album with the group.  The group's third album, "There Is Nothing Left to Lose", featured Hawkins on drums and was released in 1999.»
+[7] «What Did You Expect? (Michael Cohen album) | What Did You Expect?  is an album by the American singer-songwriter Michael Cohen which was released on Folkways Records (FS 8582 Folkways Records,»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim requires verification of three key elements:
+1. Identification of the album "Shapes" and its recording artist
+2. Confirmation that this artist is an American rock band from Chapel Hill, North Carolina
+3. Verification that this artist is NOT The Black Keys
+
+The provided passages contain no information about:
+- An album titled "Shapes" or any variant
+- Which band recorded an album called "Shapes"
+- The Black Keys or their discography
+- Any Chapel Hill, North Carolina bands or their albums (the context mentions such bands exist but the current passages don't include them)
+
+The passages discuss various albums and artists (The Band's "Stage Fright," Feist's "Look at What the Light Did Now," Joe Walsh's "Look What I Did!," The Lurkers' "26 Years," Big K.R.I.T.'s "Live from the Underground," Foo Fighters' albums, and Michael Cohen's "What Did You Expect?"), but none of these are titled "Shapes" and none appear to be from Chapel Hill, North Carolina bands.
+
+To verify this claim through a three-hop retrieval strategy:
+- **Hop 1**: Search for "Shapes album" to identify the recording artist
+- **Hop 2**: Once the artist is identified, retrieve information about that band's origin and genre to verify Chapel Hill, North Carolina location
+- **Hop 3**: Retrieve information about The Black Keys' discography to confirm they did not record "Shapes"
+
+[[ ## summary ## ]]
+The claim cannot be verified from the provided passages. The critical missing information includes:
+
+1. **The album "Shapes"**: No passages contain any reference to an album titled "Shapes" or information about which artist recorded it.
+
+2. **Identity of the recording artist**: The passages do not identify which rock band recorded the album "Shapes."
+
+3. **The Black Keys' discography**: The passages contain no information about The Black Keys or their albums, making it impossible to verify the comparative claim that the band recording "Shapes" is "not The Black Keys."
+
+4. **Chapel Hill, North Carolina band verification**: While the context suggests multiple American rock bands from Chapel Hill, North Carolina exist (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, and Superchunk), the current passages do not contain information about these bands or their recorded albums.
+
+**Required documents for verification:**
+- Information about the album "Shapes," including its recording artist, release date, and genre
+- Information confirming the recording artist is an American rock band from Chapel Hill, North Carolina
+- Information about The Black Keys' complete discography to verify they did not record "Shapes"
+- Information linking the specific Chapel Hill, North Carolina band to the "Shapes" album
+
+Without these documents, the claim cannot be evaluated as true, false, or verified.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina.
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified from the provided passages. 
+
+The passages identify multiple American rock/indie rock bands from Chapel Hill, North Carolina (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, and Superchunk), but they contain no information about:
+
+1. **The album "Shapes"** - There is no mention of any album with this title in any of the passages
+2. **Which band recorded "Shapes (album)"** - The passages do not identify the recording artist for this album
+3. **The Black Keys** - The passages do not mention The Black Keys or their discography, making it impossible to verify the comparative claim that the band is "not The Black Keys"
+
+To verify this claim, I would need:
+- Information about the album "Shapes" including its title, release date, and recording artist
+- Confirmation that the recording artist is an American rock band from Chapel Hill, North Carolina
+- Information about The Black Keys' discography to verify they did not record "Shapes"
+
+[[ ## summary_2 ## ]]
+The claim cannot be verified from the provided passages. The critical missing information includes:
+
+1. **The album "Shapes"**: No passages contain any reference to an album titled "Shapes" or information about which artist recorded it.
+
+2. **Identity of the recording artist**: The passages do not identify which rock band recorded the album "Shapes."
+
+3. **The Black Keys' discography**: The passages contain no information about The Black Keys or their albums, making it impossible to verify the comparative claim that the band recording "Shapes" is "not The Black Keys."
+
+4. **Chapel Hill, North Carolina band verification**: While the context suggests multiple American rock bands from Chapel Hill, North Carolina exist (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, and Superchunk), the current passages do not contain information about these bands or their recorded albums.
+
+**Required documents for verification:**
+- Information about the album "Shapes," including its recording artist, release date, and genre
+- Information confirming the recording artist is an American rock band from Chapel Hill, North Carolina
+- Information about The Black Keys' complete discography to verify they did not record "Shapes"
+- Information linking the specific Chapel Hill, North Carolina band to the "Shapes" album
+
+Without these documents, the claim cannot be evaluated as true, false, or verified.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries correctly identify that the claim cannot be verified from the provided passages. The key issue is that the passages contain no information about:
+1. An album titled "Shapes" or its recording artist
+2. The Black Keys' discography
+3. Any connection between a Chapel Hill, North Carolina band and the album "Shapes"
+
+To verify this claim, we need specific information about which band recorded "Shapes" and confirmation they are from Chapel Hill, North Carolina and are not The Black Keys. The most direct approach is to search for information about the album "Shapes" itself and its recording artist.
+
+[[ ## query ## ]]
+What band recorded the album "Shapes"? Is the recording artist an American rock band from Chapel Hill, North Carolina?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.
+Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.
+Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.
+Icky Mettle | Icky Mettle is the first studio album recorded by the indie rock band Archers of Loaf.  It was produced and engineered by Caleb Southern at Kraptone Studios in Chapel Hill, North Carolina, and released by Alias Records on November 23, 1993.  A deluxe reissue of the album was released by Merge Records in 2011.
+The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.
+June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.
+The 5'11&quot; Record | The 5'11" Record (pronounced "The Five Eleven Record") is an album from Chapel Hill, North Carolina-based band Arrogance, spanning material recorded between 1976 and 1982, before the band's breakup in late 1983.  The 5'11" part of the title is in the English units notation for height, meaning five feet, eleven inches, which refers to the average height of the band members.  The title relates to the name the band sent these songs under back in the 1980s, looking for a new record deal. [] It was released in 2002 in celebration of the band's thirtieth anniversary and temporary reunification.  Its release corresponded with the Arrogance concert at the Regency Park Amphitheatre in Cary, North Carolina, which was organized to promote the new CD, as well as the re-releases of Arrogance's past albums on CD.
+Starpoint Electric | Starpoint Electric was an American alternative rock band from Chapel Hill, North Carolina.  Formed in the fall of 1997, the band consisted of Ted Boyer (guitar/vocals), Clay Boyer (bass/vocals), Steve Galloway (guitar), and Cameron Weeks (drums).  Weeks later founded a new band, the Buttons, with Rafi Goldberg of Grasshopper Highway and David Alston of Sticky.  Their only full-length album, "Bad Directions", was released in 1999 by Plastique Recording Company.  It was recorded and mixed with John Morand, who is known for his work with Cracker and Sparklehorse.  Prior to the release of "Bad Directions", they had released a 7" single and a split EP, and toured with the Archers of Loaf.
+Dillon Fence | Dillon Fence was an American rock band from Chapel Hill, North Carolina.  They were active from the mid-1980s until 1995.  The band released three full-length albums ("Rosemary", "Outside In" and "Living Room Scene") and two CD singles on Mammoth Records.  They also released the EP "Dillon Fence" on their own label, Nocar.  In 2004, MoRisen released their greatest hits CD, which included an EP of new material.  They also released a three-song EP entitled "Christmas" in 1991.
+What If Nothing | What If Nothing is the third studio album by American rock band Walk the Moon.  It will be released on November 10, 2017, by RCA Records.  The first single released from the album was "One Foot" on September 22, 2017.  Walk the Moon will embark on the North American Press Restart Tour in support of the album, beginning on November 19 in Charlotte, North Carolina.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.
+June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.
+Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.
+Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.
+Apollo Heights | Apollo Heights is an American shoegazer band that was formed in New York City in 2002.  Consisting mainly of twin brothers, Daniel and Danny Chavis, they play experimental rock music.  They cite AR Kane and My Bloody Valentine as a major inspiration.  Their debut album "White Music For Black People" was produced by Robin Guthrie of Cocteau Twins and features guest appearances from Mos Def, Lady Kier, David Sitek of TV on the Radio, Mike Ladd and Guthrie himself on guitar.  The Chavis brothers were members of the alternative soul group The Veldt who released three albums on Polygram, Mammoth and Capitol Records.  Although the Veldt is left out of references on the Chapel Hill music scene, they were a key band during the heyday of North Carolina music along with other bands of the time like metal Flake Mother, Superchunk and Dillon Fence.
+The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.
+Superchunk | Superchunk is an American indie rock band from Chapel Hill, North Carolina, consisting of singer-guitarist Mac McCaughan, guitarist Jim Wilbur, bassist Laura Ballance, and drummer Jon Wurster.  Formed in 1989, they were one of the bands that helped define the Chapel Hill music scene of the 1990s.  Their energetic, high-velocity style and do-it-yourself ethics were influenced by punk rock.
+The Shape I'm In (The Band song) | "The Shape I'm In" is a song by The Band, first released on their 1970 album "Stage Fright".  It was written by Robbie Robertson, who did little to disguise the fact that the song's sense of dread and dissolution was about Richard Manuel, the song's principal singer.  It became a regular feature in their concert repertoire, appearing on their live albums "Rock of Ages", "Before the Flood", and "The Last Waltz".  Author Neil Minturn described the song as "straightforward rock."  Along with "The Weight," it is one of the Band's songs most performed by other artists.  It has been recorded by Bo Diddley, The Good Brothers, The Mekons, The Pointer Sisters, She & Him, and Marty Stuart.
+Look at What the Light Did Now | Look at What the Light Did Now is a documentary/live album DVD/CD by Canadian indie pop artist Feist, first released in December 2010.  The DVD comprises an 80-minute documentary directed by Anthony Seck, five music videos from 2007 album The Reminder, and a number of live performances recorded between 2007 and 2009, including covers of songs by artists such as Little River Band and Ron Sexsmith.
+Look What I Did! | Look What I Did!  is the second compilation album by American rock musician Joe Walsh, released on May 23, 1995.  The 2-CD set contains 34 songs from multiple albums spanning from 1968 through 1993, and offers tracks from both Walsh's solo work and when he recorded with the band James Gang.
+26 Years | 26 Years is the ninth studio album by punk rock band The Lurkers.  The CD release of the album by the Street Dogs Record label also has an additional eight tracks, a single release of "Go Ahead Harry" from 1999 with the accompanying B-side and 6 tracks recorded live from their performance in Newcastle in 2003.  The album contains a few re-recordings of old Lurkers tracks including their notable single "Mass Media Believer".  The album spawned what could be somewhat of a modern classic for The Lurkers in the shape of "Go Ahead Harry".  The album art was created by Richard Stone.
+Live from the Underground | Live from the Underground is the debut studio album by American hip hop recording artist and a record producer Big K.R.I.T..  It was released on June 5, 2012, by his record label Cinematic Music Group, distributed by Def Jam Recordings.  As one of the executive producers on the album, Big K.R.I.T. did the production work for the entirety of this project.  The album was supported by four singles: "Money on the Floor" featuring 8Ball & MJG and 2 Chainz, "I Got This", "Yeah Dat's Me", and "What U Mean" featuring Ludacris.
+List of Foo Fighters band members | Foo Fighters is an American alternative rock band formed by multi-instrumentalist and vocalist Dave Grohl in 1994.  After recording the album "Foo Fighters" alone, Grohl enlisted guitarist Pat Smear, bassist Nate Mendel and drummer William Goldsmith to join the band.  This lineup recorded the second Foo Fighters album, 1997's "The Colour and the Shape", although most of Goldsmith's drum recordings were removed and re-recorded by Grohl for the release, after he left the band due to creative tensions.  Goldsmith was replaced by Taylor Hawkins, and Franz Stahl replaced Smear after he also departed, although he only remained in the band for a short period and did not record an album with the group.  The group's third album, "There Is Nothing Left to Lose", featured Hawkins on drums and was released in 1999.
+What Did You Expect? (Michael Cohen album) | What Did You Expect?  is an album by the American singer-songwriter Michael Cohen which was released on Folkways Records (FS 8582 Folkways Records,
+Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.
+Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.
+Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.
+Icky Mettle | Icky Mettle is the first studio album recorded by the indie rock band Archers of Loaf.  It was produced and engineered by Caleb Southern at Kraptone Studios in Chapel Hill, North Carolina, and released by Alias Records on November 23, 1993.  A deluxe reissue of the album was released by Merge Records in 2011.
+The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.
+June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.
+The 5'11&quot; Record | The 5'11" Record (pronounced "The Five Eleven Record") is an album from Chapel Hill, North Carolina-based band Arrogance, spanning material recorded between 1976 and 1982, before the band's breakup in late 1983.  The 5'11" part of the title is in the English units notation for height, meaning five feet, eleven inches, which refers to the average height of the band members.  The title relates to the name the band sent these songs under back in the 1980s, looking for a new record deal. [] It was released in 2002 in celebration of the band's thirtieth anniversary and temporary reunification.  Its release corresponded with the Arrogance concert at the Regency Park Amphitheatre in Cary, North Carolina, which was organized to promote the new CD, as well as the re-releases of Arrogance's past albums on CD.
+Starpoint Electric | Starpoint Electric was an American alternative rock band from Chapel Hill, North Carolina.  Formed in the fall of 1997, the band consisted of Ted Boyer (guitar/vocals), Clay Boyer (bass/vocals), Steve Galloway (guitar), and Cameron Weeks (drums).  Weeks later founded a new band, the Buttons, with Rafi Goldberg of Grasshopper Highway and David Alston of Sticky.  Their only full-length album, "Bad Directions", was released in 1999 by Plastique Recording Company.  It was recorded and mixed with John Morand, who is known for his work with Cracker and Sparklehorse.  Prior to the release of "Bad Directions", they had released a 7" single and a split EP, and toured with the Archers of Loaf.
+Dillon Fence | Dillon Fence was an American rock band from Chapel Hill, North Carolina.  They were active from the mid-1980s until 1995.  The band released three full-length albums ("Rosemary", "Outside In" and "Living Room Scene") and two CD singles on Mammoth Records.  They also released the EP "Dillon Fence" on their own label, Nocar.  In 2004, MoRisen released their greatest hits CD, which included an EP of new material.  They also released a three-song EP entitled "Christmas" in 1991.
+What If Nothing | What If Nothing is the third studio album by American rock band Walk the Moon.  It will be released on November 10, 2017, by RCA Records.  The first single released from the album was "One Foot" on September 22, 2017.  Walk the Moon will embark on the North American Press Restart Tour in support of the album, beginning on November 19 in Charlotte, North Carolina.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Both summary_1 and summary_2 state 'The album "Shapes"' is missing and 'Which band recorded "Shapes (album)"' is not identified, but neither summary names the specific band that recorded Shapes. The summaries list Chapel Hill bands generically (Roman Candle, June, Archers of Loaf, etc.) but never identify which specific entity recorded 'Shapes' that retrieval should target. The claim itself presup
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Query for hop 2: 'Shapes album band recording artist Chapel Hill North Carolina American rock band' - an unstructured keyword soup with no clear target entity. Query for hop 3: 'What band recorded the album "Shapes"? Is the recording artist an American rock band from Chapel Hill, North Carolina?' - a natural-language yes/no question bundling multiple verification targets.
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 query: 'Shapes album band recording artist Chapel Hill North Carolina American rock band'. Hop 3 query: 'What band recorded the album "Shapes"? Is the recording artist an American rock band from Chapel Hill, North Carolina?' Both queries ask for the same core information (which band recorded Shapes, Chapel Hill connection) without advancing based on retrieval results. All three hops returned
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary_2 explicitly names the missing entity: 'Information about the album "Shapes," including its recording artist, release date, and genre' and 'Information linking the specific Chapel Hill, North Carolina band to the "Shapes" album'. The hop 3 query directly targets this: 'What band recorded the album "Shapes"?' Yet across all three retrieval hops (24 total documents), no document about the al
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

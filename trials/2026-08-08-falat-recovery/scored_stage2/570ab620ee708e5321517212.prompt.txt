@@ -1,0 +1,451 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: In the 28th season a Spanish rally driver won the racing series which was competed in by Harri Rovanperä from the 1990's to the 2000's.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Harri Rovanperä | Harri "Rovis" Rovanperä (Jyväskylä, 1966) is a Finnish rally driver who competed in the World Rally Championship from 1993 to 2006.  He drove for SEAT (1997–00), Peugeot (2001–04), Mitsubishi (2005) and Red Bull Škoda Team (2006).  Rovanperä was known as a loose surface specialist.
+2000 World Rally Championship | The 2000 World Rally Championship was the 28th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Marcus Grönholm in a Peugeot 206 WRC, ahead of Richard Burns and Carlos Sainz.  The manufacturers' title was won by Peugeot, ahead of Ford and Subaru.
+Bozian Racing | Bozian Racing is a French auto racing team founded in 1969 by Arthur Bozian.  Although it also run in circuits, the rally represents the principal activity of the team.  It was related to Renault for a long time.  In 2002, Bozian Racing became the satellite team of Peugeot Sport, while engagement in particular, on several rallies of the WRC, running names such as Gilles Panizzi, Harri Rovanperä and Cédric Robert.  In 2006 Bozian Racing took, to some extent, the relay of Peugeot Sport, which was withdrawn from the WRC at the end of the 2005 season, by engaging two Peugeot 307 WRCs in the Manufacturer 2 championship, running with the Austrian Manfred Stohl and the Norwegian Henning Solberg under the name of OMV Peugeot Norway.
+Opel Rally Team | Opel Rally Team was an auto racing team by German car manufacturer Opel.  It competed at the World Rally Championship from 1982 to 1990.  Walter Röhrl won the drivers championship in 1982 with Opel.
+2000 Indy Racing League | The 2000 Indy Racing Northern Light Series was another season that saw a high level of parity, as only one driver, champion Buddy Lazier, won more than a single race.  It also saw the beginning of the jump from CART as Al Unser Jr. moved to the series full-time and Chip Ganassi Racing came over to run the Indy 500, which it won with driver Juan Pablo Montoya.  It was also the final season for the Riley & Scott chassis, which also saw its first series win in 2000.
+Sébastien Loeb | Sébastien Loeb (] ; born 26 February 1974) is a French professional rally, racing, and rallycross driver.  He competed for the Citroën World Rally Team in the World Rally Championship (WRC) and is the most successful driver in WRC history, having won the world championship a record nine times in a row.  He holds several other WRC records, including most wins, most podium finishes and most points.  Loeb announced his retirement from World Rallying at the end of the 2012 season.  Participating in selected events in the 2013 WRC season, he raced a full season in the FIA GT Series driving a McLaren MP4-12C before moving on with Citroën to the FIA World Touring Car Championship in 2014.
+Henrik Lundgaard | Henrik Lundgaard (born 26 February 1969) is a Danish rally driver.  In 2000, he won the European Rally Championship in a Toyota Corolla WRC.  He has also been a driver on the race track as well, competing in one season of the European Touring Car Cup (2007), and also the Danish Touringcar Championship (2nd in 2004, 2008).
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify the factual accuracy of a claim by analyzing provided passages and producing a summary that evaluates the claim's correctness.
+        
+        ## Task Overview
+        You will receive:
+        1. A `claim` - a statement to be verified
+        2. A `passages` - a list of text passages that may contain relevant information
+        
+        You must produce:
+        1. A `summary` - an evaluation of whether the claim is supported, contradicted, or cannot be verified by the passages
+        
+        ## Critical Requirements for Evidence Retrieval
+        
+        **IMPORTANT**: Your analysis must ensure that ALL necessary evidence documents are retrievable through a three-hop retrieval process. This means:
+        
+        1. **Identify ALL entities mentioned in the claim** - Every person, organization, event, concept, or object that is referenced
+        2. **For each entity, determine if passages provide information about it** - Track which entities have supporting evidence
+        3. **Pay special attention to implicit entities** - If the claim mentions "the vocalist on [Album X]" or "the developer of [Technique Y]", you MUST identify WHO that person is from the passages, even if they're not named in the claim directly
+        4. **Ensure chain of evidence is complete** - If the claim connects multiple entities (e.g., Person A → Role B → Entity C), verify that passages provide information for each link in the chain
+        
+        ## Evidence Retrieval Strategy
+        
+        When analyzing claims with implicit references:
+        - If the claim says "the [role] of [thing]", identify the specific person/entity from the passages
+        - Example: "The vocalist on Bone Against Steel" requires identifying that Max Carl is the vocalist, then retrieving evidence about Max Carl
+        - Example: "The developer of wet-folding technique" requires identifying Akira Yoshizawa as the developer, then retrieving evidence about Yoshizawa
+        
+        Track required evidence documents by:
+        1. Listing all entities explicitly named in the claim
+        2. Listing all entities implicitly referenced (roles, positions, relationships)
+        3. Verifying that passages exist for each entity
+        4. If any entity lacks sufficient passage evidence, note this as a missing required evidence document
+        
+        ## Summary Guidelines
+        
+        Your summary should:
+        - Clearly state whether the claim is accurate, partially accurate, or inaccurate
+        - Cite specific passages to support your evaluation
+        - Identify any factual errors or misattributions in the claim
+        - Note if there is insufficient information to verify parts of the claim
+        - Highlight any conflation of different entities or concepts
+        - Be concise but comprehensive in addressing all parts of the claim
+[STEP 4] (user) [[ ## claim ## ]]
+In the 28th season a Spanish rally driver won the racing series which was competed in by Harri Rovanperä from the 1990's to the 2000's.
+
+[[ ## passages ## ]]
+[1] «Harri Rovanperä | Harri "Rovis" Rovanperä (Jyväskylä, 1966) is a Finnish rally driver who competed in the World Rally Championship from 1993 to 2006.  He drove for SEAT (1997–00), Peugeot (2001–04), Mitsubishi (2005) and Red Bull Škoda Team (2006).  Rovanperä was known as a loose surface specialist.»
+[2] «2000 World Rally Championship | The 2000 World Rally Championship was the 28th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Marcus Grönholm in a Peugeot 206 WRC, ahead of Richard Burns and Carlos Sainz.  The manufacturers' title was won by Peugeot, ahead of Ford and Subaru.»
+[3] «Bozian Racing | Bozian Racing is a French auto racing team founded in 1969 by Arthur Bozian.  Although it also run in circuits, the rally represents the principal activity of the team.  It was related to Renault for a long time.  In 2002, Bozian Racing became the satellite team of Peugeot Sport, while engagement in particular, on several rallies of the WRC, running names such as Gilles Panizzi, Harri Rovanperä and Cédric Robert.  In 2006 Bozian Racing took, to some extent, the relay of Peugeot Sport, which was withdrawn from the WRC at the end of the 2005 season, by engaging two Peugeot 307 WRCs in the Manufacturer 2 championship, running with the Austrian Manfred Stohl and the Norwegian Henning Solberg under the name of OMV Peugeot Norway.»
+[4] «Opel Rally Team | Opel Rally Team was an auto racing team by German car manufacturer Opel.  It competed at the World Rally Championship from 1982 to 1990.  Walter Röhrl won the drivers championship in 1982 with Opel.»
+[5] «2000 Indy Racing League | The 2000 Indy Racing Northern Light Series was another season that saw a high level of parity, as only one driver, champion Buddy Lazier, won more than a single race.  It also saw the beginning of the jump from CART as Al Unser Jr. moved to the series full-time and Chip Ganassi Racing came over to run the Indy 500, which it won with driver Juan Pablo Montoya.  It was also the final season for the Riley & Scott chassis, which also saw its first series win in 2000.»
+[6] «Sébastien Loeb | Sébastien Loeb (] ; born 26 February 1974) is a French professional rally, racing, and rallycross driver.  He competed for the Citroën World Rally Team in the World Rally Championship (WRC) and is the most successful driver in WRC history, having won the world championship a record nine times in a row.  He holds several other WRC records, including most wins, most podium finishes and most points.  Loeb announced his retirement from World Rallying at the end of the 2012 season.  Participating in selected events in the 2013 WRC season, he raced a full season in the FIA GT Series driving a McLaren MP4-12C before moving on with Citroën to the FIA World Touring Car Championship in 2014.»
+[7] «Henrik Lundgaard | Henrik Lundgaard (born 26 February 1969) is a Danish rally driver.  In 2000, he won the European Rally Championship in a Toyota Corolla WRC.  He has also been a driver on the race track as well, competing in one season of the European Touring Car Cup (2007), and also the Danish Touringcar Championship (2nd in 2004, 2008).»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze this claim step by step.
+
+The claim states: "In the 28th season a Spanish rally driver won the racing series which was competed in by Harri Rovanperä from the 1990's to the 2000's."
+
+First, I need to identify the entities:
+1. Harri Rovanperä - explicitly named
+2. "The 28th season" - needs identification
+3. "A Spanish rally driver" - implicitly referenced, needs identification
+4. "The racing series" - needs identification
+
+From passage [1]: Harri Rovanperä is a **Finnish** rally driver (not Spanish) who competed in the World Rally Championship from 1993 to 2006. This matches the "1990's to the 2000's" timeframe mentioned in the claim.
+
+From passage [2]: The 2000 World Rally Championship was the 28th season of the FIA World Rally Championship. The drivers' world championship was won by **Marcus Grönholm** in a Peugeot 206 WRC, ahead of Richard Burns and **Carlos Sainz**.
+
+Now I need to identify if Marcus Grönholm or Carlos Sainz is Spanish:
+- Marcus Grönholm is Finnish (the name suggests Finnish heritage, and he won the championship)
+- Carlos Sainz is a Spanish name, but passage [2] shows he came second ("ahead of Richard Burns and Carlos Sainz"), not first
+
+The claim asserts that a Spanish rally driver won the 28th season championship. However, passage [2] clearly shows that Marcus Grönholm won the 28th season (2000 WRC). Grönholm is Finnish, not Spanish. Carlos Sainz, while Spanish, did not win but came second.
+
+The racing series is confirmed to be the World Rally Championship (WRC), which Harri Rovanperä did compete in from 1993-2006, matching the claim's timeframe.
+
+[[ ## summary ## ]]
+
+The claim is **inaccurate**. 
+
+While it is correct that:
+- The 28th season was the 2000 World Rally Championship (passage [2])
+- Harri Rovanperä competed in the WRC from the 1990s to 2000s, specifically 1993-2006 (passage [1])
+
+The claim is factually wrong about who won: According to passage [2], **Marcus Grönholm (Finnish)** won the drivers' championship in the 28th season, not a Spanish driver. Carlos Sainz, who has a Spanish name, finished second, not first. Therefore, the statement that "a Spanish rally driver won the racing series" in the 28th season is false.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+In the 28th season a Spanish rally driver won the racing series which was competed in by Harri Rovanperä from the 1990's to the 2000's.
+
+[[ ## summary_1 ## ]]
+The claim is **inaccurate**. 
+
+While it is correct that:
+- The 28th season was the 2000 World Rally Championship (passage [2])
+- Harri Rovanperä competed in the WRC from the 1990s to 2000s, specifically 1993-2006 (passage [1])
+
+The claim is factually wrong about who won: According to passage [2], **Marcus Grönholm (Finnish)** won the drivers' championship in the 28th season, not a Spanish driver. Carlos Sainz, who has a Spanish name, finished second, not first. Therefore, the statement that "a Spanish rally driver won the racing series" in the 28th season is false.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary correctly identifies that the claim is inaccurate. The claim asserts that a Spanish rally driver won the 28th season of the racing series that Harri Rovanperä competed in during the 1990s-2000s. While the 28th season is correctly identified as the 2000 World Rally Championship, and Harri Rovanperä's participation timeframe (1993-2006) is confirmed, the winner was Marcus Grönholm (Finnish), not a Spanish driver. Carlos Sainz, despite having a Spanish name, finished second. Therefore, the factual error lies in the identity of the champion.
+
+[[ ## query ## ]]
+Who won the drivers' championship in the 2000 World Rally Championship (28th season)?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+2000 World Rally Championship | The 2000 World Rally Championship was the 28th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Marcus Grönholm in a Peugeot 206 WRC, ahead of Richard Burns and Carlos Sainz.  The manufacturers' title was won by Peugeot, ahead of Ford and Subaru.
+2009 World Rally Championship | The 2009 World Rally Championship was the 37th season of the FIA World Rally Championship.  The season consisted of twelve rallies and began on 30 January, with Rally Ireland and ended with Rally GB on 25 October.  Sébastien Loeb won the World Drivers' championship at Rally GB by one point from Mikko Hirvonen, taking his sixth consecutive crown.  Citroën secured their fifth Manufacturers' title, Martin Prokop won the JWRC Drivers' championship and Armindo Araujo won the PWRC Drivers' championship.
+2004 World Rally Championship | The 2004 World Rally Championship was the 32nd season of the FIA World Rally Championship.  The season consisted of 16 rallies.  The drivers' world championship was won by Sébastien Loeb in a Citroën Xsara WRC, ahead of Petter Solberg and Markko Märtin.  The manufacturers' title was won by Citroën, ahead of Ford and Subaru.  The video game "WRC 4: The Official Game of the FIA World Rally Championship" was based on this season.
+2003 World Rally Championship | The 2003 World Rally Championship was the 31st season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Petter Solberg in a Subaru Impreza WRC, ahead of Sébastien Loeb and Carlos Sainz.  The manufacturers' title was won by Citroën, ahead of Peugeot and Subaru.
+Juho Hänninen | Juho Ville Matias Hänninen (born 25 July 1981 in Punkaharju) is a Finnish rally driver.  He is the 2010 Intercontinental Rally Challenge (IRC) champion and 2011 Super 2000 World Rally Championship (S-WRC) champion with co-driver Mikko Markkula driving a works entered Fabia S2000 for Red Bull Škoda.  He also won the 2004 Group N Finnish Rally Championship title, and debuted in the World Rally Championship during the 2006 season.
+1999 World Rally Championship | The 1999 World Rally Championship was the 27th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  Tommi Mäkinen won his fourth drivers' world championship driving for Mitsubishi, ahead of Richard Burns and Didier Auriol.  The manufacturers' title was won by Toyota, ahead of Subaru and Mitsubishi.
+1994 World Rally Championship | The 1994 World Rally Championship was the 22nd season of the FIA World Rally Championship.  The season consisted of 10 rallies.  The drivers' world championship was won by Didier Auriol in a Toyota Celica Turbo 4WD, ahead of Carlos Sainz and Juha Kankkunen.  The manufacturers' title was won by Toyota, ahead of Subaru and Ford.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+In the 28th season a Spanish rally driver won the racing series which was competed in by Harri Rovanperä from the 1990's to the 2000's.
+
+[[ ## context ## ]]
+The claim is **inaccurate**. 
+
+While it is correct that:
+- The 28th season was the 2000 World Rally Championship (passage [2])
+- Harri Rovanperä competed in the WRC from the 1990s to 2000s, specifically 1993-2006 (passage [1])
+
+The claim is factually wrong about who won: According to passage [2], **Marcus Grönholm (Finnish)** won the drivers' championship in the 28th season, not a Spanish driver. Carlos Sainz, who has a Spanish name, finished second, not first. Therefore, the statement that "a Spanish rally driver won the racing series" in the 28th season is false.
+
+[[ ## passages ## ]]
+[1] «2000 World Rally Championship | The 2000 World Rally Championship was the 28th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Marcus Grönholm in a Peugeot 206 WRC, ahead of Richard Burns and Carlos Sainz.  The manufacturers' title was won by Peugeot, ahead of Ford and Subaru.»
+[2] «2009 World Rally Championship | The 2009 World Rally Championship was the 37th season of the FIA World Rally Championship.  The season consisted of twelve rallies and began on 30 January, with Rally Ireland and ended with Rally GB on 25 October.  Sébastien Loeb won the World Drivers' championship at Rally GB by one point from Mikko Hirvonen, taking his sixth consecutive crown.  Citroën secured their fifth Manufacturers' title, Martin Prokop won the JWRC Drivers' championship and Armindo Araujo won the PWRC Drivers' championship.»
+[3] «2004 World Rally Championship | The 2004 World Rally Championship was the 32nd season of the FIA World Rally Championship.  The season consisted of 16 rallies.  The drivers' world championship was won by Sébastien Loeb in a Citroën Xsara WRC, ahead of Petter Solberg and Markko Märtin.  The manufacturers' title was won by Citroën, ahead of Ford and Subaru.  The video game "WRC 4: The Official Game of the FIA World Rally Championship" was based on this season.»
+[4] «2003 World Rally Championship | The 2003 World Rally Championship was the 31st season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Petter Solberg in a Subaru Impreza WRC, ahead of Sébastien Loeb and Carlos Sainz.  The manufacturers' title was won by Citroën, ahead of Peugeot and Subaru.»
+[5] «Juho Hänninen | Juho Ville Matias Hänninen (born 25 July 1981 in Punkaharju) is a Finnish rally driver.  He is the 2010 Intercontinental Rally Challenge (IRC) champion and 2011 Super 2000 World Rally Championship (S-WRC) champion with co-driver Mikko Markkula driving a works entered Fabia S2000 for Red Bull Škoda.  He also won the 2004 Group N Finnish Rally Championship title, and debuted in the World Rally Championship during the 2006 season.»
+[6] «1999 World Rally Championship | The 1999 World Rally Championship was the 27th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  Tommi Mäkinen won his fourth drivers' world championship driving for Mitsubishi, ahead of Richard Burns and Didier Auriol.  The manufacturers' title was won by Toyota, ahead of Subaru and Mitsubishi.»
+[7] «1994 World Rally Championship | The 1994 World Rally Championship was the 22nd season of the FIA World Rally Championship.  The season consisted of 10 rallies.  The drivers' world championship was won by Didier Auriol in a Toyota Celica Turbo 4WD, ahead of Carlos Sainz and Juha Kankkunen.  The manufacturers' title was won by Toyota, ahead of Subaru and Ford.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim states that "in the 28th season a Spanish rally driver won the racing series which was competed in by Harri Rovanperä from the 1990's to the 2000's."
+
+Breaking this down:
+1. The 28th season of the World Rally Championship was 2000 (confirmed in passage [1])
+2. Harri Rovanperä did compete in the WRC during the 1990s-2000s period (the context confirms 1993-2006)
+3. The critical factual error: In the 2000 season (28th), the drivers' championship was won by **Marcus Grönholm**, who is Finnish, not Spanish
+4. Carlos Sainz, who has a Spanish name, finished third (behind Grönholm and Richard Burns), not first
+5. Therefore, the claim is factually incorrect regarding the winner's nationality
+
+[[ ## summary ## ]]
+The claim is **inaccurate**. While the 28th season (2000) is correct and Harri Rovanperä did compete in the WRC during the stated timeframe, the claim falsely asserts that a Spanish rally driver won the championship in that season. In reality, Marcus Grönholm (Finnish) won the 2000 World Rally Championship drivers' title. Carlos Sainz, the only Spanish driver mentioned in the results, finished in third place, not first.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve the key evidence documents needed to verify the claim. The query should be designed to work with a retrieval system that finds Wikipedia articles or similar documents based on entity names and key phrases.
+        
+        ## Key Instructions:
+        
+        1. **Identify the core entities in the claim**: Extract the main subjects, people, places, organizations, events, or concepts mentioned in the claim. These are typically proper nouns.
+        
+        2. **Focus on entity names rather than questions**: The retrieval system works best with specific entity names and key phrases. Instead of asking full questions, structure your query around the specific entities that need to be retrieved as documents.
+        
+        3. **Use simple, direct entity references**: For each key entity in the claim, use its most common or official name. For example:
+           - For a person, use their full name (e.g., "John Woo", "Scott Kelly", "Michael Fincke")
+           - For a specific mission or event, use its official designation (e.g., "Soyuz TMA-4")
+           - For dog breeds, use the breed name (e.g., "Taigan", "Nureongi", "Korean Jindo")
+           - For films, use the film title (e.g., "Vibes film")
+        
+        4. **Include all entities mentioned in the claim**: Even if the summaries suggest some parts are verified or unverified, include queries for ALL key entities in the claim to ensure comprehensive retrieval.
+        
+        5. **Consider related entities**: If the claim compares two things or mentions records being broken, include both the record holder and the person who broke the record as separate entities.
+        
+        6. **Avoid complex question formats**: Instead of "Did John Woo direct films in the 1980s?", prefer a format that targets the entity directly like "John Woo" or lists multiple entities.
+        
+        7. **Structure for multi-hop retrieval**: The query should enable a three-hop retrieval process where documents about related entities can be discovered. This means including all primary entities explicitly.
+        
+        ## Format:
+        Provide a `reasoning` section explaining what entities need to be retrieved and why, then provide a `query` that lists the key entities or uses simple phrases to target those entities.
+        
+        ## Examples of Good Query Structures:
+        - List format: "Entity1, Entity2, Entity3"
+        - Simple phrase format: "Entity1 Entity2 related topic"
+        - Avoid: Long questions with multiple clauses
+[STEP 14] (user) [[ ## claim ## ]]
+In the 28th season a Spanish rally driver won the racing series which was competed in by Harri Rovanperä from the 1990's to the 2000's.
+
+[[ ## summary_1 ## ]]
+The claim is **inaccurate**. 
+
+While it is correct that:
+- The 28th season was the 2000 World Rally Championship (passage [2])
+- Harri Rovanperä competed in the WRC from the 1990s to 2000s, specifically 1993-2006 (passage [1])
+
+The claim is factually wrong about who won: According to passage [2], **Marcus Grönholm (Finnish)** won the drivers' championship in the 28th season, not a Spanish driver. Carlos Sainz, who has a Spanish name, finished second, not first. Therefore, the statement that "a Spanish rally driver won the racing series" in the 28th season is false.
+
+[[ ## summary_2 ## ]]
+The claim is **inaccurate**. While the 28th season (2000) is correct and Harri Rovanperä did compete in the WRC during the stated timeframe, the claim falsely asserts that a Spanish rally driver won the championship in that season. In reality, Marcus Grönholm (Finnish) won the 2000 World Rally Championship drivers' title. Carlos Sainz, the only Spanish driver mentioned in the results, finished in third place, not first.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The claim discusses the 28th season of a racing series (identified as the 2000 World Rally Championship), mentions a Spanish rally driver winning, and references Harri Rovanperä's participation from the 1990s to 2000s. To verify this claim comprehensively, I need to retrieve documents about:
+
+1. **Harri Rovanperä** - to confirm his participation timeline in the WRC (1990s-2000s)
+2. **2000 World Rally Championship** - to verify who won the championship in the 28th season
+3. **Marcus Grönholm** - the actual winner according to the summaries, to confirm his nationality and victory
+4. **Carlos Sainz** - mentioned as a Spanish driver who competed in the WRC, to clarify his finishing position in 2000
+5. **World Rally Championship** - general information about the racing series
+
+These entities will allow verification of whether a Spanish driver actually won the 28th season championship.
+
+[[ ## query ## ]]
+Harri Rovanperä, 2000 World Rally Championship, Marcus Grönholm, Carlos Sainz, World Rally Championship
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+2000 World Rally Championship | The 2000 World Rally Championship was the 28th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Marcus Grönholm in a Peugeot 206 WRC, ahead of Richard Burns and Carlos Sainz.  The manufacturers' title was won by Peugeot, ahead of Ford and Subaru.
+2002 World Rally Championship | The 2002 World Rally Championship was the 30th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  Marcus Grönholm won his second drivers' world championship in a Peugeot 206 WRC, ahead of Petter Solberg and Carlos Sainz.  The manufacturers' title was won by Peugeot, ahead of Ford and Subaru.
+2000 Rallye de Portugal | The 34º TAP Rallye de Portugal was the fourth round of 2000 FIA World Rally Championship.  The event took place between 16 and 19 March 2000.  Subaru driver Richard Burns won his second rally in a row and took the championship lead after the event.  Marcus Grönholm finished second and Carlos Sainz third.
+2007 Rally New Zealand | The 2007 Rally New Zealand ("37th Propecia Rally New Zealand"), 11th round of 2007 World Rally Championship, was run on 31 August to 2 September.  After a tight battle for three days, Marcus Grönholm beat Sébastien Loeb for the win by 0.3 seconds, making it the second-closest finish in WRC history (after 2011 Jordan Rally's 0.2s).  This was the closest finish in the history of the World Rally Championship.  The previous record was held by the 1998 Rally de Portugal, in which Colin McRae took the win 2.1 seconds ahead of Carlos Sainz.
+Marcus Grönholm | Marcus Ulf Johan Grönholm (born February 5, 1968 in Kauniainen) is a Finnish former rally and rallycross driver, being part of a family of the Swedish-speaking population of Finland lineage.  His son, Niclas Grönholm, is an upcoming FIA World Rallycross Championship driver.  Marcus' nicknames are either "Bosse" (mainly in his native Finland and the Scandinavian countries) or "Magic Marcus".  Driving for Peugeot, he won the World Rally Championship in 2000 and 2002.  After Peugeot withdrew from the World Rally Championship, Grönholm moved to Ford for the 2006 season and placed second in the drivers' world championship, losing the title to Sébastien Loeb by one point.  The next year he again placed second, four points behind Loeb.  He and his co-driver Timo Rautiainen retired from rallying after the 2007 season but returned to the championship in 2009 driving a private Subaru for a short period of time.
+2007 World Rally Championship | The 2007 World Rally Championship was the 35th season in the FIA World Rally Championship.  The season began on 19 January, with the 75ème Rallye Automobile de Monte-Carlo and ended on 2 December, with the 63rd Wales Rally of Great Britain.  Citroën's Sébastien Loeb won his fourth consecutive drivers' world championship ahead of Ford's Marcus Grönholm and Mikko Hirvonen.  Ford took the manufacturers' title.
+Timo Rautiainen (co-driver) | Timo Rautiainen (born in Espoo, 13 November 1964) is a Finnish former rally co-driver.  He is best known for co-driving for Marcus Grönholm from 1995 to 2007.  Rautiainen and Grönholm drove for Peugeot (2000–05) and Ford (2006-07) in the World Rally Championship, and won 30 world rallies and two drivers' world championship titles together.  Rautiainen is married to Grönholm's sister.
+2000 Swedish Rally | The 49th International Swedish Rally was the second round of 2000 FIA World Rally Championship.  The event took place between 11 and 13 February 2000.  Marcus Grönholm won his first WRC rally.  Tommi Mäkinen finished second and continued in the lead of the championship after two rounds.
+2004 Rally Finland | The 2004 Rally Finland (formally the 54th Neste Rally Finland was the ninth round of the 2004 World Rally Championship season and was held between 6 and 8 August 2004.  The rally was based in Jyväskylä.  Peugeot's Marcus Grönholm won the race, his 16th win in the World Rally Championship.
+2006 World Rally Championship | The 2006 World Rally Championship began on January 20 with the 74th Monte Carlo Rally.  Finland's Marcus Grönholm, in a Ford Focus RS WRC, took the win ahead of France's Sébastien Loeb.  After the Swedish Rally ended with the same top-two, Loeb and Kronos Citroën went on to win five rallies in a row.  Despite an injury in a mountain-biking accident before the Rally of Turkey, Loeb secured his third drivers' title, whereas Ford won their first manufacturers' title since 1979.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Harri Rovanperä | Harri "Rovis" Rovanperä (Jyväskylä, 1966) is a Finnish rally driver who competed in the World Rally Championship from 1993 to 2006.  He drove for SEAT (1997–00), Peugeot (2001–04), Mitsubishi (2005) and Red Bull Škoda Team (2006).  Rovanperä was known as a loose surface specialist.
+2000 World Rally Championship | The 2000 World Rally Championship was the 28th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Marcus Grönholm in a Peugeot 206 WRC, ahead of Richard Burns and Carlos Sainz.  The manufacturers' title was won by Peugeot, ahead of Ford and Subaru.
+Bozian Racing | Bozian Racing is a French auto racing team founded in 1969 by Arthur Bozian.  Although it also run in circuits, the rally represents the principal activity of the team.  It was related to Renault for a long time.  In 2002, Bozian Racing became the satellite team of Peugeot Sport, while engagement in particular, on several rallies of the WRC, running names such as Gilles Panizzi, Harri Rovanperä and Cédric Robert.  In 2006 Bozian Racing took, to some extent, the relay of Peugeot Sport, which was withdrawn from the WRC at the end of the 2005 season, by engaging two Peugeot 307 WRCs in the Manufacturer 2 championship, running with the Austrian Manfred Stohl and the Norwegian Henning Solberg under the name of OMV Peugeot Norway.
+Opel Rally Team | Opel Rally Team was an auto racing team by German car manufacturer Opel.  It competed at the World Rally Championship from 1982 to 1990.  Walter Röhrl won the drivers championship in 1982 with Opel.
+2000 Indy Racing League | The 2000 Indy Racing Northern Light Series was another season that saw a high level of parity, as only one driver, champion Buddy Lazier, won more than a single race.  It also saw the beginning of the jump from CART as Al Unser Jr. moved to the series full-time and Chip Ganassi Racing came over to run the Indy 500, which it won with driver Juan Pablo Montoya.  It was also the final season for the Riley & Scott chassis, which also saw its first series win in 2000.
+Sébastien Loeb | Sébastien Loeb (] ; born 26 February 1974) is a French professional rally, racing, and rallycross driver.  He competed for the Citroën World Rally Team in the World Rally Championship (WRC) and is the most successful driver in WRC history, having won the world championship a record nine times in a row.  He holds several other WRC records, including most wins, most podium finishes and most points.  Loeb announced his retirement from World Rallying at the end of the 2012 season.  Participating in selected events in the 2013 WRC season, he raced a full season in the FIA GT Series driving a McLaren MP4-12C before moving on with Citroën to the FIA World Touring Car Championship in 2014.
+Henrik Lundgaard | Henrik Lundgaard (born 26 February 1969) is a Danish rally driver.  In 2000, he won the European Rally Championship in a Toyota Corolla WRC.  He has also been a driver on the race track as well, competing in one season of the European Touring Car Cup (2007), and also the Danish Touringcar Championship (2nd in 2004, 2008).
+2000 World Rally Championship | The 2000 World Rally Championship was the 28th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Marcus Grönholm in a Peugeot 206 WRC, ahead of Richard Burns and Carlos Sainz.  The manufacturers' title was won by Peugeot, ahead of Ford and Subaru.
+2009 World Rally Championship | The 2009 World Rally Championship was the 37th season of the FIA World Rally Championship.  The season consisted of twelve rallies and began on 30 January, with Rally Ireland and ended with Rally GB on 25 October.  Sébastien Loeb won the World Drivers' championship at Rally GB by one point from Mikko Hirvonen, taking his sixth consecutive crown.  Citroën secured their fifth Manufacturers' title, Martin Prokop won the JWRC Drivers' championship and Armindo Araujo won the PWRC Drivers' championship.
+2004 World Rally Championship | The 2004 World Rally Championship was the 32nd season of the FIA World Rally Championship.  The season consisted of 16 rallies.  The drivers' world championship was won by Sébastien Loeb in a Citroën Xsara WRC, ahead of Petter Solberg and Markko Märtin.  The manufacturers' title was won by Citroën, ahead of Ford and Subaru.  The video game "WRC 4: The Official Game of the FIA World Rally Championship" was based on this season.
+2003 World Rally Championship | The 2003 World Rally Championship was the 31st season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Petter Solberg in a Subaru Impreza WRC, ahead of Sébastien Loeb and Carlos Sainz.  The manufacturers' title was won by Citroën, ahead of Peugeot and Subaru.
+Juho Hänninen | Juho Ville Matias Hänninen (born 25 July 1981 in Punkaharju) is a Finnish rally driver.  He is the 2010 Intercontinental Rally Challenge (IRC) champion and 2011 Super 2000 World Rally Championship (S-WRC) champion with co-driver Mikko Markkula driving a works entered Fabia S2000 for Red Bull Škoda.  He also won the 2004 Group N Finnish Rally Championship title, and debuted in the World Rally Championship during the 2006 season.
+1999 World Rally Championship | The 1999 World Rally Championship was the 27th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  Tommi Mäkinen won his fourth drivers' world championship driving for Mitsubishi, ahead of Richard Burns and Didier Auriol.  The manufacturers' title was won by Toyota, ahead of Subaru and Mitsubishi.
+1994 World Rally Championship | The 1994 World Rally Championship was the 22nd season of the FIA World Rally Championship.  The season consisted of 10 rallies.  The drivers' world championship was won by Didier Auriol in a Toyota Celica Turbo 4WD, ahead of Carlos Sainz and Juha Kankkunen.  The manufacturers' title was won by Toyota, ahead of Subaru and Ford.
+2000 World Rally Championship | The 2000 World Rally Championship was the 28th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  The drivers' world championship was won by Marcus Grönholm in a Peugeot 206 WRC, ahead of Richard Burns and Carlos Sainz.  The manufacturers' title was won by Peugeot, ahead of Ford and Subaru.
+2002 World Rally Championship | The 2002 World Rally Championship was the 30th season of the FIA World Rally Championship.  The season consisted of 14 rallies.  Marcus Grönholm won his second drivers' world championship in a Peugeot 206 WRC, ahead of Petter Solberg and Carlos Sainz.  The manufacturers' title was won by Peugeot, ahead of Ford and Subaru.
+2000 Rallye de Portugal | The 34º TAP Rallye de Portugal was the fourth round of 2000 FIA World Rally Championship.  The event took place between 16 and 19 March 2000.  Subaru driver Richard Burns won his second rally in a row and took the championship lead after the event.  Marcus Grönholm finished second and Carlos Sainz third.
+2007 Rally New Zealand | The 2007 Rally New Zealand ("37th Propecia Rally New Zealand"), 11th round of 2007 World Rally Championship, was run on 31 August to 2 September.  After a tight battle for three days, Marcus Grönholm beat Sébastien Loeb for the win by 0.3 seconds, making it the second-closest finish in WRC history (after 2011 Jordan Rally's 0.2s).  This was the closest finish in the history of the World Rally Championship.  The previous record was held by the 1998 Rally de Portugal, in which Colin McRae took the win 2.1 seconds ahead of Carlos Sainz.
+Marcus Grönholm | Marcus Ulf Johan Grönholm (born February 5, 1968 in Kauniainen) is a Finnish former rally and rallycross driver, being part of a family of the Swedish-speaking population of Finland lineage.  His son, Niclas Grönholm, is an upcoming FIA World Rallycross Championship driver.  Marcus' nicknames are either "Bosse" (mainly in his native Finland and the Scandinavian countries) or "Magic Marcus".  Driving for Peugeot, he won the World Rally Championship in 2000 and 2002.  After Peugeot withdrew from the World Rally Championship, Grönholm moved to Ford for the 2006 season and placed second in the drivers' world championship, losing the title to Sébastien Loeb by one point.  The next year he again placed second, four points behind Loeb.  He and his co-driver Timo Rautiainen retired from rallying after the 2007 season but returned to the championship in 2009 driving a private Subaru for a short period of time.
+2007 World Rally Championship | The 2007 World Rally Championship was the 35th season in the FIA World Rally Championship.  The season began on 19 January, with the 75ème Rallye Automobile de Monte-Carlo and ended on 2 December, with the 63rd Wales Rally of Great Britain.  Citroën's Sébastien Loeb won his fourth consecutive drivers' world championship ahead of Ford's Marcus Grönholm and Mikko Hirvonen.  Ford took the manufacturers' title.
+Timo Rautiainen (co-driver) | Timo Rautiainen (born in Espoo, 13 November 1964) is a Finnish former rally co-driver.  He is best known for co-driving for Marcus Grönholm from 1995 to 2007.  Rautiainen and Grönholm drove for Peugeot (2000–05) and Ford (2006-07) in the World Rally Championship, and won 30 world rallies and two drivers' world championship titles together.  Rautiainen is married to Grönholm's sister.
+2000 Swedish Rally | The 49th International Swedish Rally was the second round of 2000 FIA World Rally Championship.  The event took place between 11 and 13 February 2000.  Marcus Grönholm won his first WRC rally.  Tommi Mäkinen finished second and continued in the lead of the championship after two rounds.
+2004 Rally Finland | The 2004 Rally Finland (formally the 54th Neste Rally Finland was the ninth round of the 2004 World Rally Championship season and was held between 6 and 8 August 2004.  The rally was based in Jyväskylä.  Peugeot's Marcus Grönholm won the race, his 16th win in the World Rally Championship.
+2006 World Rally Championship | The 2006 World Rally Championship began on January 20 with the 74th Monte Carlo Rally.  Finland's Marcus Grönholm, in a Ford Focus RS WRC, took the win ahead of France's Sébastien Loeb.  After the Swedish Rally ended with the same top-two, Loeb and Kronos Citroën went on to win five rallies in a row.  Despite an injury in a mountain-biking accident before the Rally of Turkey, Loeb secured his third drivers' title, whereas Ford won their first manufacturers' title since 1979.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 query: 'Who won the drivers' championship in the 2000 World Rally Championship (28th season)?' Hop 3 query: 'Harri Rovanperä, 2000 World Rally Championship, Marcus Grönholm, Carlos Sainz, World Rally Championship'. Both queries target the same information already retrieved in hop 1, which explicitly stated 'The 2000 World Rally Championship was the 28th season... won by Marcus Grönholm... ah
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: The solver summaries in both hop 1 and hop 2 state the claim is 'inaccurate' based on Marcus Grönholm being Finnish rather than Spanish. However, no solver summary explicitly requests or names the missing evidence needed to verify this: namely, Carlos Sainz's nationality. Summary 1: 'Carlos Sainz, who has a Spanish name, finished second' (inference from name, not verified fact). Summary 2: 'Carlos
+- code B.12 (Verdict_Despite_Insufficiency), anchored near step UNKNOWN: evidence: Summary 1 renders definitive verdict: 'The claim is **inaccurate**... Carlos Sainz, who has a Spanish name, finished second, not first.' Summary 2 similarly: 'The claim is **inaccurate**... Carlos Sainz, the only Spanish driver mentioned in the results, finished in third place, not first.' Both verdicts rely on an unverified assumption about Carlos Sainz's nationality based solely on his name ('ha
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

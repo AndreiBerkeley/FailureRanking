@@ -1,0 +1,513 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Brian Yorkey made the musical Janet Krupin was a swing in, which has a theatrical score by a man who won the 2007 Tony Award and 2008 Outer Critics Circle Award.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Tom Kitt (musician) | Thomas Robert "Tom" Kitt (born February 28, 1974) is an American composer, conductor, orchestrator and musician.  For his score for the musical "Next to Normal", he shared the 2010 Pulitzer Prize for Drama with Brian Yorkey.  He also won the Tony Award and 2008 Outer Critics Circle Award, and was nominated for a Drama Desk Award for "American Idiot" and "Everyday Rapture".
+Brian Yorkey | Brian Yorkey is an American playwright, lyricist, librettist, screenwriter, and theatre director known best for writing the musical "Next to Normal" with composer Tom Kitt as well as being the co-showrunner on 13 Reasons Why.  The work won the 2010 Pulitzer Prize for Drama and the 2009 Tony Awards for Best Original Score, and Best Orchestrations, as well as a win for the musical's leading actress, Alice Ripley.
+Paulo Szot | Paulo Szot ( ; born July 7, 1969 ) is a Brazilian operatic baritone singer and actor.  He made his opera debut in 1997 and his international career has included performances with the Metropolitan Opera.  In 2008, he made his Broadway debut as Emile De Becque in a revival of "South Pacific", and for his performance in this musical he won the Tony Award for Best Performance by a Leading Actor in a Musical, the Drama Desk Award, the Outer Critics Circle Award, the Theatre World Award.  In 2012 he was nominated for a Laurence Olivier Award for best actor in a musical, and in 2014 was nominated for the MAC Award for best Celebrity Artist becoming the first Brazilian to receive such honors.
+Brian Flemming | Brian Flemming is an American film director, playwright and activist.  His films include "Hang Your Dog in the Wind", "Nothing So Strange", and "The God Who Wasn't There".  His musicals include "", which won the LA Weekly Theater Award, Lucille Lortel Award, and Outer Critics Circle Award.  He advocates for the Free culture movement and is an outspoken atheist.
+Heidi Ettinger | Heidi Ettinger (married name "Landesman") is an American theatre producer and set designer.  She studied at Occidental College and the Yale School of Drama.  She was the first woman to win a Tony Award for set design, which she won for the musical "Big River".  She has also won the Drama Desk Award and Outer Critics Circle awards and an Obie Award.
+Lynn Ahrens | Lynn Ahrens (born October 1, 1948) is an American writer and lyricist for the musical theatre, television and film.  She has collaborated with Stephen Flaherty for many years.  She won the Tony Award, Drama Desk Award, and Outer Critics Circle Award for the Broadway musical "Ragtime".  Together with Flaherty, they have written many musicals, including "Lucky Stiff", "Once on This Island", "My Favorite Year", "Ragtime", "Seussical", "A Man of No Importance", "Dessa Rose", "The Glorious Ones", and most recently seen on Broadway, "Rocky the Musical".
+Victoria Clark | Victoria Clark (born October 10, 1959) is an American musical theatre singer and actress.  Clark has performed in numerous Broadway musicals and in other theatre, film and television works.  Her soprano voice can also be heard on innumerable cast albums and several animated films.  In 2008, she released her first solo album titled "Fifteen Seconds of Grace".  In 2005, she won a Tony Award for Best Leading Actress in a Musical for her role in "The Light in the Piazza".  She also won the Drama Desk Award, Outer Critics Circle Award, and the Joseph Jefferson Award for her performances in the same show.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+[STEP 4] (user) [[ ## claim ## ]]
+Brian Yorkey made the musical Janet Krupin was a swing in, which has a theatrical score by a man who won the 2007 Tony Award and 2008 Outer Critics Circle Award.
+
+[[ ## passages ## ]]
+[1] «Tom Kitt (musician) | Thomas Robert "Tom" Kitt (born February 28, 1974) is an American composer, conductor, orchestrator and musician.  For his score for the musical "Next to Normal", he shared the 2010 Pulitzer Prize for Drama with Brian Yorkey.  He also won the Tony Award and 2008 Outer Critics Circle Award, and was nominated for a Drama Desk Award for "American Idiot" and "Everyday Rapture".»
+[2] «Brian Yorkey | Brian Yorkey is an American playwright, lyricist, librettist, screenwriter, and theatre director known best for writing the musical "Next to Normal" with composer Tom Kitt as well as being the co-showrunner on 13 Reasons Why.  The work won the 2010 Pulitzer Prize for Drama and the 2009 Tony Awards for Best Original Score, and Best Orchestrations, as well as a win for the musical's leading actress, Alice Ripley.»
+[3] «Paulo Szot | Paulo Szot ( ; born July 7, 1969 ) is a Brazilian operatic baritone singer and actor.  He made his opera debut in 1997 and his international career has included performances with the Metropolitan Opera.  In 2008, he made his Broadway debut as Emile De Becque in a revival of "South Pacific", and for his performance in this musical he won the Tony Award for Best Performance by a Leading Actor in a Musical, the Drama Desk Award, the Outer Critics Circle Award, the Theatre World Award.  In 2012 he was nominated for a Laurence Olivier Award for best actor in a musical, and in 2014 was nominated for the MAC Award for best Celebrity Artist becoming the first Brazilian to receive such honors.»
+[4] «Brian Flemming | Brian Flemming is an American film director, playwright and activist.  His films include "Hang Your Dog in the Wind", "Nothing So Strange", and "The God Who Wasn't There".  His musicals include "", which won the LA Weekly Theater Award, Lucille Lortel Award, and Outer Critics Circle Award.  He advocates for the Free culture movement and is an outspoken atheist.»
+[5] «Heidi Ettinger | Heidi Ettinger (married name "Landesman") is an American theatre producer and set designer.  She studied at Occidental College and the Yale School of Drama.  She was the first woman to win a Tony Award for set design, which she won for the musical "Big River".  She has also won the Drama Desk Award and Outer Critics Circle awards and an Obie Award.»
+[6] «Lynn Ahrens | Lynn Ahrens (born October 1, 1948) is an American writer and lyricist for the musical theatre, television and film.  She has collaborated with Stephen Flaherty for many years.  She won the Tony Award, Drama Desk Award, and Outer Critics Circle Award for the Broadway musical "Ragtime".  Together with Flaherty, they have written many musicals, including "Lucky Stiff", "Once on This Island", "My Favorite Year", "Ragtime", "Seussical", "A Man of No Importance", "Dessa Rose", "The Glorious Ones", and most recently seen on Broadway, "Rocky the Musical".»
+[7] «Victoria Clark | Victoria Clark (born October 10, 1959) is an American musical theatre singer and actress.  Clark has performed in numerous Broadway musicals and in other theatre, film and television works.  Her soprano voice can also be heard on innumerable cast albums and several animated films.  In 2008, she released her first solo album titled "Fifteen Seconds of Grace".  In 2005, she won a Tony Award for Best Leading Actress in a Musical for her role in "The Light in the Piazza".  She also won the Drama Desk Award, Outer Critics Circle Award, and the Joseph Jefferson Award for her performances in the same show.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me break down the claim and verify each component:
+
+The claim states: "Brian Yorkey made the musical Janet Krupin was a swing in, which has a theatrical score by a man who won the 2007 Tony Award and 2008 Outer Critics Circle Award."
+
+Key components to verify:
+1. Janet Krupin was a swing in a musical made by Brian Yorkey
+2. That musical has a score by someone who won the 2007 Tony Award
+3. That same person won the 2008 Outer Critics Circle Award
+
+From the passages:
+- Passage [2] confirms Brian Yorkey wrote the musical "Next to Normal" with composer Tom Kitt
+- Passage [1] states Tom Kitt won "the Tony Award and 2008 Outer Critics Circle Award" for "Next to Normal"
+- However, Passage [1] says Tom Kitt won the 2010 Pulitzer Prize, not specific information about 2007 Tony Award
+- Passage [2] clarifies that "Next to Normal" won "2009 Tony Awards for Best Original Score"
+
+The issue: The passages state Tom Kitt won a Tony Award and 2008 Outer Critics Circle Award, but the specific year of the Tony Award is not clearly stated as 2007 in these passages. Passage [2] indicates "Next to Normal" won Tony Awards in 2009.
+
+Critical missing information:
+- There is NO mention of Janet Krupin anywhere in the provided passages
+- No information about whether Janet Krupin was a swing performer in "Next to Normal" or any other Yorkey musical
+- The award years don't align: the claim specifies 2007 Tony Award, but passages indicate 2009 Tony Awards for "Next to Normal"
+
+[[ ## summary ## ]]
+The claim cannot be verified with the provided passages. While the passages confirm that Brian Yorkey created "Next to Normal" with composer Tom Kitt, and that Tom Kitt won a Tony Award and 2008 Outer Critics Circle Award, critical information is missing:
+
+1. **Janet Krupin is not mentioned**: The passages contain no information about Janet Krupin or whether she was a swing performer in any musical. Evidence document needed: Biography of Janet Krupin or cast/personnel records for "Next to Normal" or other Yorkey musicals.
+
+2. **Award year discrepancy**: The claim specifies a "2007 Tony Award," but Passage [2] indicates "Next to Normal" won Tony Awards in 2009. Clarification needed on whether Tom Kitt won a separate Tony Award in 2007, or whether this is an error in the claim.
+
+3. **Insufficient documentation**: The passages do not definitively establish that Janet Krupin was involved in "Next to Normal" or confirm her role as a swing performer.
+
+To fully verify this claim, evidence documents would be needed that specifically identify Janet Krupin's theatrical work, her role as a swing performer, and in which musical production she performed.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Brian Yorkey made the musical Janet Krupin was a swing in, which has a theatrical score by a man who won the 2007 Tony Award and 2008 Outer Critics Circle Award.
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified with the provided passages. While the passages confirm that Brian Yorkey created "Next to Normal" with composer Tom Kitt, and that Tom Kitt won a Tony Award and 2008 Outer Critics Circle Award, critical information is missing:
+
+1. **Janet Krupin is not mentioned**: The passages contain no information about Janet Krupin or whether she was a swing performer in any musical. Evidence document needed: Biography of Janet Krupin or cast/personnel records for "Next to Normal" or other Yorkey musicals.
+
+2. **Award year discrepancy**: The claim specifies a "2007 Tony Award," but Passage [2] indicates "Next to Normal" won Tony Awards in 2009. Clarification needed on whether Tom Kitt won a separate Tony Award in 2007, or whether this is an error in the claim.
+
+3. **Insufficient documentation**: The passages do not definitively establish that Janet Krupin was involved in "Next to Normal" or confirm her role as a swing performer.
+
+To fully verify this claim, evidence documents would be needed that specifically identify Janet Krupin's theatrical work, her role as a swing performer, and in which musical production she performed.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary identifies three key gaps in verification:
+1. No information about Janet Krupin or her involvement as a swing performer
+2. A discrepancy in the Tony Award year (claim states 2007, but passages indicate 2009 for "Next to Normal")
+3. Lack of documentation connecting Janet Krupin to any Brian Yorkey musical
+
+To verify this claim, we need to establish: (a) Janet Krupin's theatrical career and roles, (b) confirmation of her work as a swing in a Brian Yorkey musical, (c) clarification of the correct Tony Award year for the composer, and (d) whether the 2007 Tony Award refers to a different award or composer than previously identified.
+
+[[ ## query ## ]]
+What is Janet Krupin's theatrical background, and was she a swing performer in "Next to Normal" or another Brian Yorkey musical? Additionally, did Tom Kitt win a Tony Award in 2007, or was the "Next to Normal" Tony Award in a different year?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Brian Yorkey | Brian Yorkey is an American playwright, lyricist, librettist, screenwriter, and theatre director known best for writing the musical "Next to Normal" with composer Tom Kitt as well as being the co-showrunner on 13 Reasons Why.  The work won the 2010 Pulitzer Prize for Drama and the 2009 Tony Awards for Best Original Score, and Best Orchestrations, as well as a win for the musical's leading actress, Alice Ripley.
+Tom Kitt (musician) | Thomas Robert "Tom" Kitt (born February 28, 1974) is an American composer, conductor, orchestrator and musician.  For his score for the musical "Next to Normal", he shared the 2010 Pulitzer Prize for Drama with Brian Yorkey.  He also won the Tony Award and 2008 Outer Critics Circle Award, and was nominated for a Drama Desk Award for "American Idiot" and "Everyday Rapture".
+Next to Normal | Next to Normal (stylized as next to normal) is a 2008 American rock musical with book and lyrics by Brian Yorkey and music by Tom Kitt.  The story centers around a mother who struggles with worsening bipolar disorder and the effects that her illness and its management have had on her family.  The musical also addresses the issues of grief, suicide, drug abuse, ethics in modern psychiatry and the underbelly of suburban life.
+Michael Starobin | Michael Starobin is an orchestrator, arranger, and musical director, primarily for the stage, film and television.  He won Tony awards for the orchestrations of "Assassins" (2004) and "Next to Normal" (2009 with Tom Kitt).
+Martin Koch (orchestrator) | Martin Koch is a British music supervisor, orchestrator, conductor, and composer who won the 2009 Drama Desk Award for Outstanding Orchestrations and was a co-winner of the 2009 Tony Award for Best Orchestrations for "Billy Elliot the Musical", sharing the honor with Michael Starobin and Tom Kitt of "Next to Normal".
+Jennifer Damiano | Jennifer "Jenn" Damiano (born May 12, 1991) is an American actress and singer, most known for originating the role of Natalie Goodman in "Next to Normal" on Broadway.  She was nominated for the 2009 Tony Award for Best Performance by a Featured Actress in a Musical for her performance.  She appeared in "" on Broadway as Mary Jane Watson; the musical opened officially on June 14, 2011.  She returned to Broadway in March 2016 in the musical adaptation of "American Psycho".
+J. Robert Spencer | Robert John Spencer (known as J. Robert Spencer) is an American actor and singer, who was nominated for a Tony Award for his work in the Broadway musical "Next to Normal".
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+Brian Yorkey made the musical Janet Krupin was a swing in, which has a theatrical score by a man who won the 2007 Tony Award and 2008 Outer Critics Circle Award.
+
+[[ ## context ## ]]
+The claim cannot be verified with the provided passages. While the passages confirm that Brian Yorkey created "Next to Normal" with composer Tom Kitt, and that Tom Kitt won a Tony Award and 2008 Outer Critics Circle Award, critical information is missing:
+
+1. **Janet Krupin is not mentioned**: The passages contain no information about Janet Krupin or whether she was a swing performer in any musical. Evidence document needed: Biography of Janet Krupin or cast/personnel records for "Next to Normal" or other Yorkey musicals.
+
+2. **Award year discrepancy**: The claim specifies a "2007 Tony Award," but Passage [2] indicates "Next to Normal" won Tony Awards in 2009. Clarification needed on whether Tom Kitt won a separate Tony Award in 2007, or whether this is an error in the claim.
+
+3. **Insufficient documentation**: The passages do not definitively establish that Janet Krupin was involved in "Next to Normal" or confirm her role as a swing performer.
+
+To fully verify this claim, evidence documents would be needed that specifically identify Janet Krupin's theatrical work, her role as a swing performer, and in which musical production she performed.
+
+[[ ## passages ## ]]
+[1] «Brian Yorkey | Brian Yorkey is an American playwright, lyricist, librettist, screenwriter, and theatre director known best for writing the musical "Next to Normal" with composer Tom Kitt as well as being the co-showrunner on 13 Reasons Why.  The work won the 2010 Pulitzer Prize for Drama and the 2009 Tony Awards for Best Original Score, and Best Orchestrations, as well as a win for the musical's leading actress, Alice Ripley.»
+[2] «Tom Kitt (musician) | Thomas Robert "Tom" Kitt (born February 28, 1974) is an American composer, conductor, orchestrator and musician.  For his score for the musical "Next to Normal", he shared the 2010 Pulitzer Prize for Drama with Brian Yorkey.  He also won the Tony Award and 2008 Outer Critics Circle Award, and was nominated for a Drama Desk Award for "American Idiot" and "Everyday Rapture".»
+[3] «Next to Normal | Next to Normal (stylized as next to normal) is a 2008 American rock musical with book and lyrics by Brian Yorkey and music by Tom Kitt.  The story centers around a mother who struggles with worsening bipolar disorder and the effects that her illness and its management have had on her family.  The musical also addresses the issues of grief, suicide, drug abuse, ethics in modern psychiatry and the underbelly of suburban life.»
+[4] «Michael Starobin | Michael Starobin is an orchestrator, arranger, and musical director, primarily for the stage, film and television.  He won Tony awards for the orchestrations of "Assassins" (2004) and "Next to Normal" (2009 with Tom Kitt).»
+[5] «Martin Koch (orchestrator) | Martin Koch is a British music supervisor, orchestrator, conductor, and composer who won the 2009 Drama Desk Award for Outstanding Orchestrations and was a co-winner of the 2009 Tony Award for Best Orchestrations for "Billy Elliot the Musical", sharing the honor with Michael Starobin and Tom Kitt of "Next to Normal".»
+[6] «Jennifer Damiano | Jennifer "Jenn" Damiano (born May 12, 1991) is an American actress and singer, most known for originating the role of Natalie Goodman in "Next to Normal" on Broadway.  She was nominated for the 2009 Tony Award for Best Performance by a Featured Actress in a Musical for her performance.  She appeared in "" on Broadway as Mary Jane Watson; the musical opened officially on June 14, 2011.  She returned to Broadway in March 2016 in the musical adaptation of "American Psycho".»
+[7] «J. Robert Spencer | Robert John Spencer (known as J. Robert Spencer) is an American actor and singer, who was nominated for a Tony Award for his work in the Broadway musical "Next to Normal".»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze this claim systematically:
+
+**Claim breakdown:**
+- Brian Yorkey made a musical
+- Janet Krupin was a swing performer in this musical
+- The musical has a theatrical score by a composer
+- This composer won the 2007 Tony Award AND 2008 Outer Critics Circle Award
+
+**What the passages establish:**
+1. Brian Yorkey created "Next to Normal" with composer Tom Kitt (Passages 1, 3)
+2. Tom Kitt won a Tony Award and 2008 Outer Critics Circle Award (Passage 2)
+3. "Next to Normal" won 2009 Tony Awards for Best Original Score and Best Orchestrations (Passages 1, 4, 5)
+
+**Critical gaps and issues:**
+
+1. **Janet Krupin completely absent**: None of the seven passages mention Janet Krupin by name or identify her as a swing performer in any production. There is no documentation of her involvement with "Next to Normal" or any other Yorkey musical. This is a fundamental missing piece.
+
+2. **Award year discrepancy**: The claim specifies "2007 Tony Award," but Passage 2 states Tom Kitt won "the Tony Award" without specifying 2007. Passage 1 indicates "Next to Normal" won Tony Awards in 2009. There is no evidence in the passages that Tom Kitt won a Tony Award specifically in 2007. The passages confirm the 2008 Outer Critics Circle Award for Tom Kitt, but the 2007 Tony Award claim is unverified.
+
+3. **Cast/swing documentation missing**: Even though the passages list several performers associated with "Next to Normal" (Alice Ripley, Jennifer Damiano, J. Robert Spencer), Janet Krupin is not among them, and there is no comprehensive cast list showing swing performers.
+
+**What would be needed to verify:**
+- A passage documenting Janet Krupin's theatrical career and her specific role as a swing performer
+- A passage about "Next to Normal" cast or personnel that includes Janet Krupin
+- Clarification on Tom Kitt's 2007 Tony Award (if such an award exists separate from his 2009 wins)
+- Confirmation that the musical being referenced is indeed "Next to Normal"
+
+[[ ## summary ## ]]
+
+**Verification Status:** Cannot be verified with provided passages; contains a potentially contradicted element.
+
+**What is established in the passages:**
+- Brian Yorkey created the musical "Next to Normal" with composer Tom Kitt
+- Tom Kitt won a Tony Award and the 2008 Outer Critics Circle Award
+- "Next to Normal" is a theatrical score/musical with documented cast members
+
+**Critical missing information:**
+
+1. **Janet Krupin is completely absent**: The passages contain no mention of Janet Krupin or any documentation of her involvement in "Next to Normal" or any other Brian Yorkey musical. Required evidence: A passage documenting Janet Krupin's theatrical work or a comprehensive cast/personnel list for "Next to Normal" that includes swing performers.
+
+2. **2007 Tony Award claim is unverified**: The claim specifies Tom Kitt won a "2007 Tony Award," but Passage 2 does not specify the year of his Tony Award win. Passage 1 indicates "Next to Normal" won Tony Awards in 2009. No evidence exists in the passages of a 2007 Tony Award for Tom Kitt. Required evidence: A passage specifically identifying any 2007 Tony Award won by Tom Kitt.
+
+3. **Swing performer status unconfirmed**: While the passages name several performers associated with "Next to Normal," they do not list swing performers or confirm Janet Krupin's role as one. Required evidence: Cast records or personnel documentation for "Next to Normal" that specifically identifies swing performers.
+
+To fully verify this claim, evidence documents are needed that: (1) identify Janet Krupin and her role as a swing performer in a musical, (2) confirm Tom Kitt won a Tony Award in 2007 (not 2009), and (3) establish the connection between Janet Krupin and the Yorkey musical in question.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Brian Yorkey made the musical Janet Krupin was a swing in, which has a theatrical score by a man who won the 2007 Tony Award and 2008 Outer Critics Circle Award.
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified with the provided passages. While the passages confirm that Brian Yorkey created "Next to Normal" with composer Tom Kitt, and that Tom Kitt won a Tony Award and 2008 Outer Critics Circle Award, critical information is missing:
+
+1. **Janet Krupin is not mentioned**: The passages contain no information about Janet Krupin or whether she was a swing performer in any musical. Evidence document needed: Biography of Janet Krupin or cast/personnel records for "Next to Normal" or other Yorkey musicals.
+
+2. **Award year discrepancy**: The claim specifies a "2007 Tony Award," but Passage [2] indicates "Next to Normal" won Tony Awards in 2009. Clarification needed on whether Tom Kitt won a separate Tony Award in 2007, or whether this is an error in the claim.
+
+3. **Insufficient documentation**: The passages do not definitively establish that Janet Krupin was involved in "Next to Normal" or confirm her role as a swing performer.
+
+To fully verify this claim, evidence documents would be needed that specifically identify Janet Krupin's theatrical work, her role as a swing performer, and in which musical production she performed.
+
+[[ ## summary_2 ## ]]
+**Verification Status:** Cannot be verified with provided passages; contains a potentially contradicted element.
+
+**What is established in the passages:**
+- Brian Yorkey created the musical "Next to Normal" with composer Tom Kitt
+- Tom Kitt won a Tony Award and the 2008 Outer Critics Circle Award
+- "Next to Normal" is a theatrical score/musical with documented cast members
+
+**Critical missing information:**
+
+1. **Janet Krupin is completely absent**: The passages contain no mention of Janet Krupin or any documentation of her involvement in "Next to Normal" or any other Brian Yorkey musical. Required evidence: A passage documenting Janet Krupin's theatrical work or a comprehensive cast/personnel list for "Next to Normal" that includes swing performers.
+
+2. **2007 Tony Award claim is unverified**: The claim specifies Tom Kitt won a "2007 Tony Award," but Passage 2 does not specify the year of his Tony Award win. Passage 1 indicates "Next to Normal" won Tony Awards in 2009. No evidence exists in the passages of a 2007 Tony Award for Tom Kitt. Required evidence: A passage specifically identifying any 2007 Tony Award won by Tom Kitt.
+
+3. **Swing performer status unconfirmed**: While the passages name several performers associated with "Next to Normal," they do not list swing performers or confirm Janet Krupin's role as one. Required evidence: Cast records or personnel documentation for "Next to Normal" that specifically identifies swing performers.
+
+To fully verify this claim, evidence documents are needed that: (1) identify Janet Krupin and her role as a swing performer in a musical, (2) confirm Tom Kitt won a Tony Award in 2007 (not 2009), and (3) establish the connection between Janet Krupin and the Yorkey musical in question.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries reach the same conclusion: the claim cannot be verified with the provided passages. Both identify three critical gaps:
+
+1. **Janet Krupin is not mentioned in any passages** - there is no documentation of her involvement in any Brian Yorkey musical or confirmation of her role as a swing performer.
+
+2. **Year discrepancy on the Tony Award** - the claim states "2007 Tony Award" but the passages indicate Tom Kitt won Tony Awards in 2009 for "Next to Normal." There is no evidence of a 2007 Tony Award for Tom Kitt.
+
+3. **Missing documentation** - while the passages confirm Brian Yorkey created "Next to Normal" with Tom Kitt (who won a Tony Award and 2008 Outer Critics Circle Award), they do not establish Janet Krupin's participation or her specific role as a swing performer.
+
+The summaries agree on what needs to be verified: Janet Krupin's theatrical work history, her specific involvement with a Yorkey musical, confirmation of her swing performer status, and clarification of when Tom Kitt won his Tony Award.
+
+[[ ## query ## ]]
+Was Janet Krupin a swing performer in "Next to Normal" or another Brian Yorkey musical? Did Tom Kitt win a Tony Award in 2007 or 2009?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Brian Yorkey | Brian Yorkey is an American playwright, lyricist, librettist, screenwriter, and theatre director known best for writing the musical "Next to Normal" with composer Tom Kitt as well as being the co-showrunner on 13 Reasons Why.  The work won the 2010 Pulitzer Prize for Drama and the 2009 Tony Awards for Best Original Score, and Best Orchestrations, as well as a win for the musical's leading actress, Alice Ripley.
+Tom Kitt (musician) | Thomas Robert "Tom" Kitt (born February 28, 1974) is an American composer, conductor, orchestrator and musician.  For his score for the musical "Next to Normal", he shared the 2010 Pulitzer Prize for Drama with Brian Yorkey.  He also won the Tony Award and 2008 Outer Critics Circle Award, and was nominated for a Drama Desk Award for "American Idiot" and "Everyday Rapture".
+Next to Normal | Next to Normal (stylized as next to normal) is a 2008 American rock musical with book and lyrics by Brian Yorkey and music by Tom Kitt.  The story centers around a mother who struggles with worsening bipolar disorder and the effects that her illness and its management have had on her family.  The musical also addresses the issues of grief, suicide, drug abuse, ethics in modern psychiatry and the underbelly of suburban life.
+Martin Koch (orchestrator) | Martin Koch is a British music supervisor, orchestrator, conductor, and composer who won the 2009 Drama Desk Award for Outstanding Orchestrations and was a co-winner of the 2009 Tony Award for Best Orchestrations for "Billy Elliot the Musical", sharing the honor with Michael Starobin and Tom Kitt of "Next to Normal".
+Michael Starobin | Michael Starobin is an orchestrator, arranger, and musical director, primarily for the stage, film and television.  He won Tony awards for the orchestrations of "Assassins" (2004) and "Next to Normal" (2009 with Tom Kitt).
+Janet Krupin | Janet Krupin (born October 7, 1987) is an American actress, singer, writer, and producer.  She is best known as a Broadway performer and the original host of the popular web-series "The Click Clique."  On Broadway, she originated the role of Kylar in Bring It On the Musical, and was a swing in the musical "If/Then" on Broadway.  As a musician, released her debut EP, Aurora EP, as part of the musical duo Trillium, and is currently performing as a founding member of The Jackson Massive.
+If/Then | If/Then is a musical with a libretto by Brian Yorkey and a theatrical score by Tom Kitt, directed by Michael Greif.  It tells the story of a 38-year-old woman named Elizabeth who moves back to New York City for a fresh start.
+Freaky Friday (musical) | Freaky Friday is a musical with music and lyrics by Tom Kitt and Brian Yorkey, and a book by Bridget Carpenter.  Based on the 1972 book of the same name, the musical is an adaptation of the 1976 and 2003 films.  When an overworked mother and her teenage daughter magically swap bodies, they have just one day to put things right again before mom’s big wedding.
+Tom Spahn | Thomas G. ("Tom") Spahn (born July 30, 1955) is a three-time Emmy Award winning composer, Synthesizer Programmer for the 1996 Grammy Award nominated album by Earth Kitt, "Back in Business", another Emmy Nomination in 2001 for Mastering Dizzy South America Tour, is an American musician born in Park Forest, Illinois and currently residing in New York City.  Spahn is a longtime musical director and arranger and has worked with numerous musicians and composers on a myriad projects, performances and recordings.
+Jennifer Damiano | Jennifer "Jenn" Damiano (born May 12, 1991) is an American actress and singer, most known for originating the role of Natalie Goodman in "Next to Normal" on Broadway.  She was nominated for the 2009 Tony Award for Best Performance by a Featured Actress in a Musical for her performance.  She appeared in "" on Broadway as Mary Jane Watson; the musical opened officially on June 14, 2011.  She returned to Broadway in March 2016 in the musical adaptation of "American Psycho".
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Tom Kitt (musician) | Thomas Robert "Tom" Kitt (born February 28, 1974) is an American composer, conductor, orchestrator and musician.  For his score for the musical "Next to Normal", he shared the 2010 Pulitzer Prize for Drama with Brian Yorkey.  He also won the Tony Award and 2008 Outer Critics Circle Award, and was nominated for a Drama Desk Award for "American Idiot" and "Everyday Rapture".
+Brian Yorkey | Brian Yorkey is an American playwright, lyricist, librettist, screenwriter, and theatre director known best for writing the musical "Next to Normal" with composer Tom Kitt as well as being the co-showrunner on 13 Reasons Why.  The work won the 2010 Pulitzer Prize for Drama and the 2009 Tony Awards for Best Original Score, and Best Orchestrations, as well as a win for the musical's leading actress, Alice Ripley.
+Paulo Szot | Paulo Szot ( ; born July 7, 1969 ) is a Brazilian operatic baritone singer and actor.  He made his opera debut in 1997 and his international career has included performances with the Metropolitan Opera.  In 2008, he made his Broadway debut as Emile De Becque in a revival of "South Pacific", and for his performance in this musical he won the Tony Award for Best Performance by a Leading Actor in a Musical, the Drama Desk Award, the Outer Critics Circle Award, the Theatre World Award.  In 2012 he was nominated for a Laurence Olivier Award for best actor in a musical, and in 2014 was nominated for the MAC Award for best Celebrity Artist becoming the first Brazilian to receive such honors.
+Brian Flemming | Brian Flemming is an American film director, playwright and activist.  His films include "Hang Your Dog in the Wind", "Nothing So Strange", and "The God Who Wasn't There".  His musicals include "", which won the LA Weekly Theater Award, Lucille Lortel Award, and Outer Critics Circle Award.  He advocates for the Free culture movement and is an outspoken atheist.
+Heidi Ettinger | Heidi Ettinger (married name "Landesman") is an American theatre producer and set designer.  She studied at Occidental College and the Yale School of Drama.  She was the first woman to win a Tony Award for set design, which she won for the musical "Big River".  She has also won the Drama Desk Award and Outer Critics Circle awards and an Obie Award.
+Lynn Ahrens | Lynn Ahrens (born October 1, 1948) is an American writer and lyricist for the musical theatre, television and film.  She has collaborated with Stephen Flaherty for many years.  She won the Tony Award, Drama Desk Award, and Outer Critics Circle Award for the Broadway musical "Ragtime".  Together with Flaherty, they have written many musicals, including "Lucky Stiff", "Once on This Island", "My Favorite Year", "Ragtime", "Seussical", "A Man of No Importance", "Dessa Rose", "The Glorious Ones", and most recently seen on Broadway, "Rocky the Musical".
+Victoria Clark | Victoria Clark (born October 10, 1959) is an American musical theatre singer and actress.  Clark has performed in numerous Broadway musicals and in other theatre, film and television works.  Her soprano voice can also be heard on innumerable cast albums and several animated films.  In 2008, she released her first solo album titled "Fifteen Seconds of Grace".  In 2005, she won a Tony Award for Best Leading Actress in a Musical for her role in "The Light in the Piazza".  She also won the Drama Desk Award, Outer Critics Circle Award, and the Joseph Jefferson Award for her performances in the same show.
+Brian Yorkey | Brian Yorkey is an American playwright, lyricist, librettist, screenwriter, and theatre director known best for writing the musical "Next to Normal" with composer Tom Kitt as well as being the co-showrunner on 13 Reasons Why.  The work won the 2010 Pulitzer Prize for Drama and the 2009 Tony Awards for Best Original Score, and Best Orchestrations, as well as a win for the musical's leading actress, Alice Ripley.
+Tom Kitt (musician) | Thomas Robert "Tom" Kitt (born February 28, 1974) is an American composer, conductor, orchestrator and musician.  For his score for the musical "Next to Normal", he shared the 2010 Pulitzer Prize for Drama with Brian Yorkey.  He also won the Tony Award and 2008 Outer Critics Circle Award, and was nominated for a Drama Desk Award for "American Idiot" and "Everyday Rapture".
+Next to Normal | Next to Normal (stylized as next to normal) is a 2008 American rock musical with book and lyrics by Brian Yorkey and music by Tom Kitt.  The story centers around a mother who struggles with worsening bipolar disorder and the effects that her illness and its management have had on her family.  The musical also addresses the issues of grief, suicide, drug abuse, ethics in modern psychiatry and the underbelly of suburban life.
+Michael Starobin | Michael Starobin is an orchestrator, arranger, and musical director, primarily for the stage, film and television.  He won Tony awards for the orchestrations of "Assassins" (2004) and "Next to Normal" (2009 with Tom Kitt).
+Martin Koch (orchestrator) | Martin Koch is a British music supervisor, orchestrator, conductor, and composer who won the 2009 Drama Desk Award for Outstanding Orchestrations and was a co-winner of the 2009 Tony Award for Best Orchestrations for "Billy Elliot the Musical", sharing the honor with Michael Starobin and Tom Kitt of "Next to Normal".
+Jennifer Damiano | Jennifer "Jenn" Damiano (born May 12, 1991) is an American actress and singer, most known for originating the role of Natalie Goodman in "Next to Normal" on Broadway.  She was nominated for the 2009 Tony Award for Best Performance by a Featured Actress in a Musical for her performance.  She appeared in "" on Broadway as Mary Jane Watson; the musical opened officially on June 14, 2011.  She returned to Broadway in March 2016 in the musical adaptation of "American Psycho".
+J. Robert Spencer | Robert John Spencer (known as J. Robert Spencer) is an American actor and singer, who was nominated for a Tony Award for his work in the Broadway musical "Next to Normal".
+Brian Yorkey | Brian Yorkey is an American playwright, lyricist, librettist, screenwriter, and theatre director known best for writing the musical "Next to Normal" with composer Tom Kitt as well as being the co-showrunner on 13 Reasons Why.  The work won the 2010 Pulitzer Prize for Drama and the 2009 Tony Awards for Best Original Score, and Best Orchestrations, as well as a win for the musical's leading actress, Alice Ripley.
+Tom Kitt (musician) | Thomas Robert "Tom" Kitt (born February 28, 1974) is an American composer, conductor, orchestrator and musician.  For his score for the musical "Next to Normal", he shared the 2010 Pulitzer Prize for Drama with Brian Yorkey.  He also won the Tony Award and 2008 Outer Critics Circle Award, and was nominated for a Drama Desk Award for "American Idiot" and "Everyday Rapture".
+Next to Normal | Next to Normal (stylized as next to normal) is a 2008 American rock musical with book and lyrics by Brian Yorkey and music by Tom Kitt.  The story centers around a mother who struggles with worsening bipolar disorder and the effects that her illness and its management have had on her family.  The musical also addresses the issues of grief, suicide, drug abuse, ethics in modern psychiatry and the underbelly of suburban life.
+Martin Koch (orchestrator) | Martin Koch is a British music supervisor, orchestrator, conductor, and composer who won the 2009 Drama Desk Award for Outstanding Orchestrations and was a co-winner of the 2009 Tony Award for Best Orchestrations for "Billy Elliot the Musical", sharing the honor with Michael Starobin and Tom Kitt of "Next to Normal".
+Michael Starobin | Michael Starobin is an orchestrator, arranger, and musical director, primarily for the stage, film and television.  He won Tony awards for the orchestrations of "Assassins" (2004) and "Next to Normal" (2009 with Tom Kitt).
+Janet Krupin | Janet Krupin (born October 7, 1987) is an American actress, singer, writer, and producer.  She is best known as a Broadway performer and the original host of the popular web-series "The Click Clique."  On Broadway, she originated the role of Kylar in Bring It On the Musical, and was a swing in the musical "If/Then" on Broadway.  As a musician, released her debut EP, Aurora EP, as part of the musical duo Trillium, and is currently performing as a founding member of The Jackson Massive.
+If/Then | If/Then is a musical with a libretto by Brian Yorkey and a theatrical score by Tom Kitt, directed by Michael Greif.  It tells the story of a 38-year-old woman named Elizabeth who moves back to New York City for a fresh start.
+Freaky Friday (musical) | Freaky Friday is a musical with music and lyrics by Tom Kitt and Brian Yorkey, and a book by Bridget Carpenter.  Based on the 1972 book of the same name, the musical is an adaptation of the 1976 and 2003 films.  When an overworked mother and her teenage daughter magically swap bodies, they have just one day to put things right again before mom’s big wedding.
+Tom Spahn | Thomas G. ("Tom") Spahn (born July 30, 1955) is a three-time Emmy Award winning composer, Synthesizer Programmer for the 1996 Grammy Award nominated album by Earth Kitt, "Back in Business", another Emmy Nomination in 2001 for Mastering Dizzy South America Tour, is an American musician born in Park Forest, Illinois and currently residing in New York City.  Spahn is a longtime musical director and arranger and has worked with numerous musicians and composers on a myriad projects, performances and recordings.
+Jennifer Damiano | Jennifer "Jenn" Damiano (born May 12, 1991) is an American actress and singer, most known for originating the role of Natalie Goodman in "Next to Normal" on Broadway.  She was nominated for the 2009 Tony Award for Best Performance by a Featured Actress in a Musical for her performance.  She appeared in "" on Broadway as Mary Jane Watson; the musical opened officially on June 14, 2011.  She returned to Broadway in March 2016 in the musical adaptation of "American Psycho".
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.6 (Solver_Passage_Content_Misreading), anchored near step UNKNOWN: evidence: In hop 1 reasoning, solver states 'Passage [1] says Tom Kitt won "the Tony Award and 2008 Outer Critics Circle Award" for "Next to Normal"' but Passage [1] does not specify the award was for Next to Normal. In hop 2 reasoning, solver claims 'Passage 2 states Tom Kitt won "the Tony Award" without specifying 2007' and 'Passage 1 indicates "Next to Normal" won Tony Awards in 2009' — but Passage 1 mak
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: In hop 3 final output, the Janet Krupin passage states 'was a swing in the musical "If/Then" on Broadway' and the If/Then passage confirms 'If/Then is a musical with a libretto by Brian Yorkey and a theatrical score by Tom Kitt'. Both summaries (hop 1 and hop 2) claim 'Janet Krupin is not mentioned' and 'passages contain no mention of Janet Krupin', yet hop 3 retrieval includes the Janet Krupin pa
+- code B.12 (Verdict_Despite_Insufficiency), anchored near step UNKNOWN: evidence: The claim states Tom Kitt won '2007 Tony Award and 2008 Outer Critics Circle Award.' Passages confirm only 2008 Outer Critics Circle Award and 2009 Tony Awards for Next to Normal. No passage mentions a 2007 Tony Award. Despite this temporal mismatch being a factual error in the claim, the solver in both summaries states 'cannot be verified' rather than identifying the claim as refuted by the evide
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 query: 'Janet Krupin Broadway swing performer career musical theatre'. Hop 3 query: 'Was Janet Krupin a swing performer in "Next to Normal" or another Brian Yorkey musical? Did Tom Kitt win a Tony Award in 2007 or 2009?' Both queries target Janet Krupin as a swing performer in Yorkey musicals. The hop 3 query adds the Tony Award year question but fundamentally re-asks the same Janet Krupin q
+- code A.8 (Downstream_Handoff_Failure), anchored near step UNKNOWN: evidence: The agent's final output is labeled 'FINAL OUTPUT — concatenation of all retrieved documents:' followed by raw passage text with no verification analysis, verdict, or structured conclusion. This format does not provide downstream systems with: (1) whether the claim is supported/refuted/insufficient, (2) which passages are relevant, or (3) how the evidence maps to claim components. The output is si
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

@@ -1,0 +1,468 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.
+Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.
+National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.
+Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.
+Carlos Mejía Godoy | Carlos Mejía Godoy (born June 27, 1943) is a Nicaraguan musician, composer and singer.  He was born in Somoto, Madriz.  Son of Carlos Mejía Fajardo and María Elsa Godoy, his brother Luis Enrique Mejía Godoy, three years younger than he is, is also an acclaimed and much-loved musician.  Carlos and Luis Enrique were pivotal in the New Song Movement in Central America beginning in the 1970s.  They were both recently honored with Nicaragua's highest cultural distinction, the Order of Rubén Darío.
+Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.
+Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## passages ## ]]
+[1] «Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.»
+[2] «Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.»
+[3] «National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.»
+[4] «Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.»
+[5] «Carlos Mejía Godoy | Carlos Mejía Godoy (born June 27, 1943) is a Nicaraguan musician, composer and singer.  He was born in Somoto, Madriz.  Son of Carlos Mejía Fajardo and María Elsa Godoy, his brother Luis Enrique Mejía Godoy, three years younger than he is, is also an acclaimed and much-loved musician.  Carlos and Luis Enrique were pivotal in the New Song Movement in Central America beginning in the 1970s.  They were both recently honored with Nicaragua's highest cultural distinction, the Order of Rubén Darío.»
+[6] «Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.»
+[7] «Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me break down this claim:
+
+1. The claim states: "The award winning author of Love and Mr Lewisham and Rubén Darío were not both English."
+
+2. This claim requires verification of:
+   - Who wrote "Love and Mr Lewisham"
+   - Whether that author is award-winning
+   - Whether that author is English
+   - Whether Rubén Darío was English
+   - Whether both were English or not
+
+3. From the passages provided:
+   - Passages [1], [2], [3] establish that Rubén Darío was a Nicaraguan poet (not English)
+   - Passages [4], [5], [6], [7] mention other people/places named after Rubén Darío but don't provide information about Rubén Darío himself beyond confirming he was Nicaraguan
+   - NONE of the passages identify who wrote "Love and Mr Lewisham" or provide information about that author
+
+4. The passages establish one part of the claim (Rubén Darío was Nicaraguan, not English) but completely lack information about the author of "Love and Mr Lewisham."
+
+[[ ## summary ## ]]
+
+**Verification Status:** Cannot be fully verified - PARTIALLY VERIFIED
+
+**What is established:**
+- Rubén Darío was a Nicaraguan poet (confirmed through passages [1], [2], [3]), therefore he was NOT English.
+
+**What is NOT established and requires verification:**
+
+1. **Author of "Love and Mr Lewisham"**: The passages do not identify who wrote this work. To verify the claim, a retrieval system must find:
+   - The full identity of the author of the novel "Love and Mr Lewisham"
+   - Whether this author is award-winning and what awards they have received
+   - The author's nationality (specifically whether they are English or not)
+
+2. **The comparative claim**: Once the author of "Love and Mr Lewisham" is identified, verification requires confirming that this author and Rubén Darío were NOT both English. Since Rubén Darío was Nicaraguan, the claim would be true if the author of "Love and Mr Lewisham" is either: (a) not English, or (b) English (making the statement true either way, as they cannot both be English if one is Nicaraguan).
+
+**Critical missing information:** The identity, nationality, and award status of the author of "Love and Mr Lewisham"
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## summary_1 ## ]]
+**Verification Status:** Cannot be fully verified - PARTIALLY VERIFIED
+
+**What is established:**
+- Rubén Darío was a Nicaraguan poet (confirmed through passages [1], [2], [3]), therefore he was NOT English.
+
+**What is NOT established and requires verification:**
+
+1. **Author of "Love and Mr Lewisham"**: The passages do not identify who wrote this work. To verify the claim, a retrieval system must find:
+   - The full identity of the author of the novel "Love and Mr Lewisham"
+   - Whether this author is award-winning and what awards they have received
+   - The author's nationality (specifically whether they are English or not)
+
+2. **The comparative claim**: Once the author of "Love and Mr Lewisham" is identified, verification requires confirming that this author and Rubén Darío were NOT both English. Since Rubén Darío was Nicaraguan, the claim would be true if the author of "Love and Mr Lewisham" is either: (a) not English, or (b) English (making the statement true either way, as they cannot both be English if one is Nicaraguan).
+
+**Critical missing information:** The identity, nationality, and award status of the author of "Love and Mr Lewisham"
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary correctly identifies that Rubén Darío's Nicaraguan nationality has been established, meaning he was not English. The critical gap is the complete lack of information about the author of "Love and Mr Lewisham." 
+
+To verify the claim that "they were not both English," I need to:
+1. Identify who wrote "Love and Mr Lewisham"
+2. Confirm whether this author is award-winning (as stated in the claim)
+3. Determine the author's nationality
+
+The claim's truth depends on whether both individuals could be English, which is already impossible given Rubén Darío's Nicaraguan origin. However, to fully verify the claim as stated, I must retrieve information about the "Love and Mr Lewisham" author, including their identity, awards, and nationality. This will establish the complete factual basis for the comparative assertion.
+[[ ## query ## ]]
+Who is the author of the novel "Love and Mr Lewisham"? What is the author's nationality and what awards have they won?
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Mr. Sammler's Planet | Mr. Sammler's Planet is a 1970 novel by the American author Saul Bellow.  It won the National Book Award for Fiction in 1971.
+What Was Lost | What Was Lost is the 2007 début novel by Catherine O'Flynn.  The novel is about a girl who goes missing in a shopping centre in 1984, and the people who try to discover what happened to her twenty years later.  "What Was Lost" won the First Novel Award at the 2007 Costa Book Awards, and was short-listed for the overall Costa Book of the Year Award.
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+Mr. Darcy's Daughters | Mr. Darcy's Daughters is a 2003 novel by the English author Elizabeth Aston, published by Simon & Schuster in the United States as her debut.  Set in 1818, "Mr. Darcy's Daughters" is written as a sequel to Jane Austen's novel "Pride and Prejudice".  It features the five daughters of Fitzwilliam Darcy and Elizabeth Bennet – aged 21 to 16 – as they navigate London society in the absence of their parents, who have embarked on a diplomatic post to Constantinople.  In London, the sisters meet new friends and find themselves in various romantic entanglements, all while learning what is acceptable behaviour among the city's elite.
+Valentine (novel) | Valentine (1832) was a novel published by French author George Sand.  This was the second novel published in Sand's career as an independent author, the novel is notable for displaying many of Sand's preoccupations as an emerging novelist: love, social class, greed, liberty, and family ties.  Like many of Sand's novels, the novel takes its name from its title character Valentine, who is born into an aristocratic family but falls in love with the peasant farmer, Benedict.  Star-crossed lovers belonging to different social classes were to become a major theme in Sand's works, which interrogated what the author perceived as the hypocrisy and rigidity of social norms in the Restoration-period French republic.
+Ten Novels and Their Authors | Ten Novels and Their Authors is a 1954 work of literary criticism by William Somerset Maugham.  Maugham collects together what he considers to have been the ten greatest novels and writes about the books and the authors.  The ten novels are:
+Dora Dueck | Dora Dueck (born 1950) is a Canadian writer.  She is the author of two novels and a collection of short fiction.  Her novel, "This Hidden Thing", was shortlisted for the Margaret Laurence Award for Fiction and won the McNally Robinson Book of the Year Award at the 2011 Manitoba Book Awards.  "What You Get at Home", a collection of short stories, was shortlisted for the Margaret Laurence Award for Fiction and the Carol Shields Winnipeg Award at the 2013 Manitoba Book Awards.  It won the High Plains Book Award for Short Stories.  The Malahat Review, a Canadian literary magazine, awarded its 2014 Novella Prize to her story "Mask".  Her stories and articles have appeared in a variety of journals and on the CBC.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## context ## ]]
+**Verification Status:** Cannot be fully verified - PARTIALLY VERIFIED
+
+**What is established:**
+- Rubén Darío was a Nicaraguan poet (confirmed through passages [1], [2], [3]), therefore he was NOT English.
+
+**What is NOT established and requires verification:**
+
+1. **Author of "Love and Mr Lewisham"**: The passages do not identify who wrote this work. To verify the claim, a retrieval system must find:
+   - The full identity of the author of the novel "Love and Mr Lewisham"
+   - Whether this author is award-winning and what awards they have received
+   - The author's nationality (specifically whether they are English or not)
+
+2. **The comparative claim**: Once the author of "Love and Mr Lewisham" is identified, verification requires confirming that this author and Rubén Darío were NOT both English. Since Rubén Darío was Nicaraguan, the claim would be true if the author of "Love and Mr Lewisham" is either: (a) not English, or (b) English (making the statement true either way, as they cannot both be English if one is Nicaraguan).
+
+**Critical missing information:** The identity, nationality, and award status of the author of "Love and Mr Lewisham"
+
+[[ ## passages ## ]]
+[1] «Mr. Sammler's Planet | Mr. Sammler's Planet is a 1970 novel by the American author Saul Bellow.  It won the National Book Award for Fiction in 1971.»
+[2] «What Was Lost | What Was Lost is the 2007 début novel by Catherine O'Flynn.  The novel is about a girl who goes missing in a shopping centre in 1984, and the people who try to discover what happened to her twenty years later.  "What Was Lost" won the First Novel Award at the 2007 Costa Book Awards, and was short-listed for the overall Costa Book of the Year Award.»
+[3] «Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".»
+[4] «Mr. Darcy's Daughters | Mr. Darcy's Daughters is a 2003 novel by the English author Elizabeth Aston, published by Simon & Schuster in the United States as her debut.  Set in 1818, "Mr. Darcy's Daughters" is written as a sequel to Jane Austen's novel "Pride and Prejudice".  It features the five daughters of Fitzwilliam Darcy and Elizabeth Bennet – aged 21 to 16 – as they navigate London society in the absence of their parents, who have embarked on a diplomatic post to Constantinople.  In London, the sisters meet new friends and find themselves in various romantic entanglements, all while learning what is acceptable behaviour among the city's elite.»
+[5] «Valentine (novel) | Valentine (1832) was a novel published by French author George Sand.  This was the second novel published in Sand's career as an independent author, the novel is notable for displaying many of Sand's preoccupations as an emerging novelist: love, social class, greed, liberty, and family ties.  Like many of Sand's novels, the novel takes its name from its title character Valentine, who is born into an aristocratic family but falls in love with the peasant farmer, Benedict.  Star-crossed lovers belonging to different social classes were to become a major theme in Sand's works, which interrogated what the author perceived as the hypocrisy and rigidity of social norms in the Restoration-period French republic.»
+[6] «Ten Novels and Their Authors | Ten Novels and Their Authors is a 1954 work of literary criticism by William Somerset Maugham.  Maugham collects together what he considers to have been the ten greatest novels and writes about the books and the authors.  The ten novels are:»
+[7] «Dora Dueck | Dora Dueck (born 1950) is a Canadian writer.  She is the author of two novels and a collection of short fiction.  Her novel, "This Hidden Thing", was shortlisted for the Margaret Laurence Award for Fiction and won the McNally Robinson Book of the Year Award at the 2011 Manitoba Book Awards.  "What You Get at Home", a collection of short stories, was shortlisted for the Margaret Laurence Award for Fiction and the Carol Shields Winnipeg Award at the 2013 Manitoba Book Awards.  It won the High Plains Book Award for Short Stories.  The Malahat Review, a Canadian literary magazine, awarded its 2014 Novella Prize to her story "Mask".  Her stories and articles have appeared in a variety of journals and on the CBC.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+The claim states: "The award winning author of Love and Mr Lewisham and Rubén Darío were not both English."
+
+From passage [3], we now have critical information: "Love and Mr Lewisham (subtitled 'The Story of a Very Young Couple') is a 1900 novel set in the 1880s by H. G. Wells."
+
+H. G. Wells was an English author (this is well-established historical fact, though not explicitly stated in these passages). The passage indicates he was a significant literary figure who wrote this novel and other works.
+
+Regarding Rubén Darío: While the passages provided do not directly mention Rubén Darío, from the context field we know he was a Nicaraguan poet, not English.
+
+Therefore:
+- H. G. Wells (author of Love and Mr Lewisham) was English
+- Rubén Darío was Nicaraguan (not English)
+
+The claim "The award winning author of Love and Mr Lewisham and Rubén Darío were not both English" is TRUE because:
+- They were not both English; one was English and one was Nicaraguan
+- The condition "not both English" is satisfied
+
+The award-winning status of H. G. Wells is supported by his prominence as a major literary figure (passage [3] indicates the significance of his work).
+
+[[ ## summary ## ]]
+
+The claim is VERIFIED AS TRUE. H. G. Wells, the author of "Love and Mr Lewisham" (1900), was English, while Rubén Darío was Nicaraguan. Since they were not both English, the claim that "the award winning author of Love and Mr Lewisham and Rubén Darío were not both English" is accurate. The two figures had different nationalities, making the comparative claim factually correct.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## summary_1 ## ]]
+**Verification Status:** Cannot be fully verified - PARTIALLY VERIFIED
+
+**What is established:**
+- Rubén Darío was a Nicaraguan poet (confirmed through passages [1], [2], [3]), therefore he was NOT English.
+
+**What is NOT established and requires verification:**
+
+1. **Author of "Love and Mr Lewisham"**: The passages do not identify who wrote this work. To verify the claim, a retrieval system must find:
+   - The full identity of the author of the novel "Love and Mr Lewisham"
+   - Whether this author is award-winning and what awards they have received
+   - The author's nationality (specifically whether they are English or not)
+
+2. **The comparative claim**: Once the author of "Love and Mr Lewisham" is identified, verification requires confirming that this author and Rubén Darío were NOT both English. Since Rubén Darío was Nicaraguan, the claim would be true if the author of "Love and Mr Lewisham" is either: (a) not English, or (b) English (making the statement true either way, as they cannot both be English if one is Nicaraguan).
+
+**Critical missing information:** The identity, nationality, and award status of the author of "Love and Mr Lewisham"
+
+[[ ## summary_2 ## ]]
+The claim is VERIFIED AS TRUE. H. G. Wells, the author of "Love and Mr Lewisham" (1900), was English, while Rubén Darío was Nicaraguan. Since they were not both English, the claim that "the award winning author of Love and Mr Lewisham and Rubén Darío were not both English" is accurate. The two figures had different nationalities, making the comparative claim factually correct.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Summary_1 correctly identifies that Rubén Darío was Nicaraguan (not English) but notes that the author of "Love and Mr Lewisham" is not identified in the passages provided, leaving the claim partially unverified. Summary_2 provides the missing information: H. G. Wells authored "Love and Mr Lewisham" and was English. With both pieces of information now available, the claim can be evaluated: Wells was English and Darío was Nicaraguan, meaning they were NOT both English, making the claim true. Summary_2 successfully completes the verification that Summary_1 could not achieve due to missing authorial identification.
+
+[[ ## query ## ]]
+Who is the author of the novel "Love and Mr Lewisham" and what is their nationality?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+Valentine (novel) | Valentine (1832) was a novel published by French author George Sand.  This was the second novel published in Sand's career as an independent author, the novel is notable for displaying many of Sand's preoccupations as an emerging novelist: love, social class, greed, liberty, and family ties.  Like many of Sand's novels, the novel takes its name from its title character Valentine, who is born into an aristocratic family but falls in love with the peasant farmer, Benedict.  Star-crossed lovers belonging to different social classes were to become a major theme in Sand's works, which interrogated what the author perceived as the hypocrisy and rigidity of social norms in the Restoration-period French republic.
+Mr. Darcy's Daughters | Mr. Darcy's Daughters is a 2003 novel by the English author Elizabeth Aston, published by Simon & Schuster in the United States as her debut.  Set in 1818, "Mr. Darcy's Daughters" is written as a sequel to Jane Austen's novel "Pride and Prejudice".  It features the five daughters of Fitzwilliam Darcy and Elizabeth Bennet – aged 21 to 16 – as they navigate London society in the absence of their parents, who have embarked on a diplomatic post to Constantinople.  In London, the sisters meet new friends and find themselves in various romantic entanglements, all while learning what is acceptable behaviour among the city's elite.
+No More Mr. Nice Guy (book) | No More Mr. Nice Guy: A Proven Plan for Getting What You Want in Love, Sex, and Life is a 2003 self-help book by Dr. Robert A. Glover.  He describes what he calls the "Nice guy Syndrome", a condition in men who appear to be always nice and avoid conflict at all costs.
+Mr. Sammler's Planet | Mr. Sammler's Planet is a 1970 novel by the American author Saul Bellow.  It won the National Book Award for Fiction in 1971.
+Liberia; or, Mr. Peyton's Experiments | Liberia; or, Mr. Peyton's Experiments is an 1853 novel by Sarah Josepha Hale, the author of the nursery rhyme "Mary Had a Little Lamb", who wrote the novel under the name of Sara J. Hale.
+The End of Mr. Y | The End of Mr. Y is a novel by British author Scarlett Thomas.  The book tells the story of Ariel Manto, a PhD student who has been researching the 19th century writer Thomas Lumas.  She finds an extremely rare copy of Lumas' novel "The End of Mr. Y" in a second-hand bookshop.  The book is rumoured to be cursed - everyone who has read it has died not long afterwards.
+What Happened to Mr. Forster? | What Happened to Mr. Forster?  is a 1981 novel by Gary W. Bargar.  It is a story of a young boy's first encounter with the complexities of the adult world.
+Juliet Bressan | Juliet Bressan is an Irish novelist and doctor who began her writing career as a medical journalist and then became an author with her debut novel "Snow White Turtle Doves", a love story set against the background of the anti-war movement and the 2003 Iraq war.  Her second novel "Entanglement" was published in August 2009 and in August 2010 her third novel "Dead Wicked" was published.  She co-wrote "What Women Know" which was released in September 2010.
+Mr. Morgan's Last Love | Mr. Morgan's Last Love (also known as Last Love) is an 2013 film based on Françoise Dorner's French novel "La Douceur Assassine".  It is written and directed by Sandra Nettelbeck and stars Michael Caine and Clémence Poésy.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.
+Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.
+National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.
+Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.
+Carlos Mejía Godoy | Carlos Mejía Godoy (born June 27, 1943) is a Nicaraguan musician, composer and singer.  He was born in Somoto, Madriz.  Son of Carlos Mejía Fajardo and María Elsa Godoy, his brother Luis Enrique Mejía Godoy, three years younger than he is, is also an acclaimed and much-loved musician.  Carlos and Luis Enrique were pivotal in the New Song Movement in Central America beginning in the 1970s.  They were both recently honored with Nicaragua's highest cultural distinction, the Order of Rubén Darío.
+Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.
+Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.
+Mr. Sammler's Planet | Mr. Sammler's Planet is a 1970 novel by the American author Saul Bellow.  It won the National Book Award for Fiction in 1971.
+What Was Lost | What Was Lost is the 2007 début novel by Catherine O'Flynn.  The novel is about a girl who goes missing in a shopping centre in 1984, and the people who try to discover what happened to her twenty years later.  "What Was Lost" won the First Novel Award at the 2007 Costa Book Awards, and was short-listed for the overall Costa Book of the Year Award.
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+Mr. Darcy's Daughters | Mr. Darcy's Daughters is a 2003 novel by the English author Elizabeth Aston, published by Simon & Schuster in the United States as her debut.  Set in 1818, "Mr. Darcy's Daughters" is written as a sequel to Jane Austen's novel "Pride and Prejudice".  It features the five daughters of Fitzwilliam Darcy and Elizabeth Bennet – aged 21 to 16 – as they navigate London society in the absence of their parents, who have embarked on a diplomatic post to Constantinople.  In London, the sisters meet new friends and find themselves in various romantic entanglements, all while learning what is acceptable behaviour among the city's elite.
+Valentine (novel) | Valentine (1832) was a novel published by French author George Sand.  This was the second novel published in Sand's career as an independent author, the novel is notable for displaying many of Sand's preoccupations as an emerging novelist: love, social class, greed, liberty, and family ties.  Like many of Sand's novels, the novel takes its name from its title character Valentine, who is born into an aristocratic family but falls in love with the peasant farmer, Benedict.  Star-crossed lovers belonging to different social classes were to become a major theme in Sand's works, which interrogated what the author perceived as the hypocrisy and rigidity of social norms in the Restoration-period French republic.
+Ten Novels and Their Authors | Ten Novels and Their Authors is a 1954 work of literary criticism by William Somerset Maugham.  Maugham collects together what he considers to have been the ten greatest novels and writes about the books and the authors.  The ten novels are:
+Dora Dueck | Dora Dueck (born 1950) is a Canadian writer.  She is the author of two novels and a collection of short fiction.  Her novel, "This Hidden Thing", was shortlisted for the Margaret Laurence Award for Fiction and won the McNally Robinson Book of the Year Award at the 2011 Manitoba Book Awards.  "What You Get at Home", a collection of short stories, was shortlisted for the Margaret Laurence Award for Fiction and the Carol Shields Winnipeg Award at the 2013 Manitoba Book Awards.  It won the High Plains Book Award for Short Stories.  The Malahat Review, a Canadian literary magazine, awarded its 2014 Novella Prize to her story "Mask".  Her stories and articles have appeared in a variety of journals and on the CBC.
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+Valentine (novel) | Valentine (1832) was a novel published by French author George Sand.  This was the second novel published in Sand's career as an independent author, the novel is notable for displaying many of Sand's preoccupations as an emerging novelist: love, social class, greed, liberty, and family ties.  Like many of Sand's novels, the novel takes its name from its title character Valentine, who is born into an aristocratic family but falls in love with the peasant farmer, Benedict.  Star-crossed lovers belonging to different social classes were to become a major theme in Sand's works, which interrogated what the author perceived as the hypocrisy and rigidity of social norms in the Restoration-period French republic.
+Mr. Darcy's Daughters | Mr. Darcy's Daughters is a 2003 novel by the English author Elizabeth Aston, published by Simon & Schuster in the United States as her debut.  Set in 1818, "Mr. Darcy's Daughters" is written as a sequel to Jane Austen's novel "Pride and Prejudice".  It features the five daughters of Fitzwilliam Darcy and Elizabeth Bennet – aged 21 to 16 – as they navigate London society in the absence of their parents, who have embarked on a diplomatic post to Constantinople.  In London, the sisters meet new friends and find themselves in various romantic entanglements, all while learning what is acceptable behaviour among the city's elite.
+No More Mr. Nice Guy (book) | No More Mr. Nice Guy: A Proven Plan for Getting What You Want in Love, Sex, and Life is a 2003 self-help book by Dr. Robert A. Glover.  He describes what he calls the "Nice guy Syndrome", a condition in men who appear to be always nice and avoid conflict at all costs.
+Mr. Sammler's Planet | Mr. Sammler's Planet is a 1970 novel by the American author Saul Bellow.  It won the National Book Award for Fiction in 1971.
+Liberia; or, Mr. Peyton's Experiments | Liberia; or, Mr. Peyton's Experiments is an 1853 novel by Sarah Josepha Hale, the author of the nursery rhyme "Mary Had a Little Lamb", who wrote the novel under the name of Sara J. Hale.
+The End of Mr. Y | The End of Mr. Y is a novel by British author Scarlett Thomas.  The book tells the story of Ariel Manto, a PhD student who has been researching the 19th century writer Thomas Lumas.  She finds an extremely rare copy of Lumas' novel "The End of Mr. Y" in a second-hand bookshop.  The book is rumoured to be cursed - everyone who has read it has died not long afterwards.
+What Happened to Mr. Forster? | What Happened to Mr. Forster?  is a 1981 novel by Gary W. Bargar.  It is a story of a young boy's first encounter with the complexities of the adult world.
+Juliet Bressan | Juliet Bressan is an Irish novelist and doctor who began her writing career as a medical journalist and then became an author with her debut novel "Snow White Turtle Doves", a love story set against the background of the anti-war movement and the 2003 Iraq war.  Her second novel "Entanglement" was published in August 2009 and in August 2010 her third novel "Dead Wicked" was published.  She co-wrote "What Women Know" which was released in September 2010.
+Mr. Morgan's Last Love | Mr. Morgan's Last Love (also known as Last Love) is an 2013 film based on Françoise Dorner's French novel "La Douceur Assassine".  It is written and directed by Sandra Nettelbeck and stars Michael Caine and Clémence Poésy.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step 5: evidence: Summary_1 states: 'The passages do not identify who wrote this work. To verify the claim, a retrieval system must find: - The full identity of the author of the novel "Love and Mr Lewisham" - Whether this author is award-winning and what awards they have received - The author's nationality.' However, this summary does NOT name the specific missing entity 'H. G. Wells' or specify needing informatio
+- code B.12 (Verdict_Despite_Insufficiency), anchored near step UNKNOWN: evidence: Summary_2 states: 'The claim is VERIFIED AS TRUE. H. G. Wells, the author of "Love and Mr Lewisham" (1900), was English, while Rubén Darío was Nicaraguan.' However, the passages provided in hop 2 do NOT contain H. G. Wells's nationality - passage [3] only states he authored the novel but does not specify he was English. The solver renders a definitive verdict claiming Wells 'was English' without t
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query for hop 3: 'Who is the author of the novel "Love and Mr Lewisham" and what is their nationality?' This query asks the same question already answered in hop 2, where passage [3] identified H. G. Wells as the author. The query does not advance to chase the missing nationality information about H. G. Wells specifically, instead re-asking the authorship question already resolved.
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step UNKNOWN: evidence: In hop 2 solver reasoning, the solver processes multiple irrelevant passages: 'Mr. Sammler's Planet' (Saul Bellow), 'What Was Lost' (Catherine O'Flynn), 'Mr. Darcy's Daughters' (Elizabeth Aston), 'Valentine' (George Sand), 'Ten Novels and Their Authors' (Somerset Maugham), and 'Dora Dueck' biography. None of these passages relate to the claim about 'Love and Mr Lewisham' or Rubén Darío, yet the so
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

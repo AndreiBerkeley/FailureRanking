@@ -1,0 +1,436 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.
+Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.
+List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## passages ## ]]
+[1] «Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.»
+[2] «Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.»
+[3] «The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.»
+[4] «Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.»
+[5] «List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.»
+[6] «Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.»
+[7] «Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze the claim: "Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera 'I puritani'."
+
+First, I need to identify Mikhail Glinka's nationality:
+- From passage [7]: Mikhail Glinka was Russian ("was the first Russian composer to gain wide recognition within his own country")
+
+Next, I need to identify who wrote "I puritani":
+- From passage [1]: Vincenzo Bellini wrote "I puritani" ("Bellini's contribution being the hugely-successful 'I puritani'")
+
+Now I need to determine Vincenzo Bellini's nationality:
+- Passage [1] mentions Bellini among "the outstanding Italian composers of the day" - this indicates Bellini is Italian
+
+The claim states that Glinka is NOT the same nationality as the composer of "I puritani":
+- Glinka: Russian
+- Bellini (composer of "I puritani"): Italian
+- Russian ≠ Italian, so the claim appears to be TRUE
+
+However, I need to verify Bellini's nationality explicitly from the passages provided. Passage [1] strongly implies he is Italian by contextualizing him among "the outstanding Italian composers," but does not explicitly state "Vincenzo Bellini was Italian" with certainty.
+
+[[ ## summary ## ]]
+The claim can be PARTIALLY VERIFIED based on the provided passages.
+
+From the passages, I can confirm:
+- Mikhail Glinka was Russian (passage [7] explicitly states he "was the first Russian composer")
+- Vincenzo Bellini wrote the opera "I puritani" (passage [1] confirms this)
+
+However, to fully verify the claim, the following information is needed:
+1. EXPLICIT CONFIRMATION OF VINCENZO BELLINI'S NATIONALITY: While passage [1] contextualizes Bellini among "the outstanding Italian composers of the day," it does not explicitly state Vincenzo Bellini's nationality or country of origin. Verification would require a passage that directly states Vincenzo Bellini was Italian (or any other specific nationality).
+
+Once Bellini's nationality is confirmed, the comparison can be fully verified: if Bellini is Italian (different from Glinka's Russian nationality), the claim is TRUE; if Bellini is also Russian, the claim is FALSE.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## summary_1 ## ]]
+The claim can be PARTIALLY VERIFIED based on the provided passages.
+
+From the passages, I can confirm:
+- Mikhail Glinka was Russian (passage [7] explicitly states he "was the first Russian composer")
+- Vincenzo Bellini wrote the opera "I puritani" (passage [1] confirms this)
+
+However, to fully verify the claim, the following information is needed:
+1. EXPLICIT CONFIRMATION OF VINCENZO BELLINI'S NATIONALITY: While passage [1] contextualizes Bellini among "the outstanding Italian composers of the day," it does not explicitly state Vincenzo Bellini's nationality or country of origin. Verification would require a passage that directly states Vincenzo Bellini was Italian (or any other specific nationality).
+
+Once Bellini's nationality is confirmed, the comparison can be fully verified: if Bellini is Italian (different from Glinka's Russian nationality), the claim is TRUE; if Bellini is also Russian, the claim is FALSE.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that Mikhail Glinka's Russian nationality has been confirmed, and Vincenzo Bellini's authorship of "I puritani" has been confirmed. However, the critical missing piece is explicit confirmation of Vincenzo Bellini's nationality. While the summary mentions he was contextualized among "outstanding Italian composers," this is not a direct statement of his nationality. To fully verify the claim that Glinka and Bellini have different nationalities, I need to retrieve a document that explicitly states Bellini's nationality or country of origin. Additionally, I should ensure I have complete foundational information about both composers to make the comparison definitive.
+[[ ## query ## ]]
+What is Vincenzo Bellini's nationality? Was Vincenzo Bellini Italian? What country was Vincenzo Bellini from? Provide biographical information about Vincenzo Bellini including his place of birth and nationality.
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Catania–Fontanarossa Airport | Catania–Fontanarossa Airport (Italian: "aeroporto internazionale Vincenzo Bellini di Catania-Fontanarossa" , English: Catania International Airport) (IATA: CTA, ICAO: LICC) also named as Vincenzo Bellini Airport, is an international airport 2.3 NM southwest of Catania, the second largest city on the Italian island of Sicily.  It is named after the opera composer Vincenzo Bellini who was born in Catania.
+Vincenzo Bellini | Vincenzo Salvatore Carmelo Francesco Bellini (] ; 3 November 1801 – 23 September 1835) was an Italian opera composer, who was known for his long-flowing melodic lines for which he was named "the Swan of Catania".
+Bellini (Italian band) | Bellini is an international indie rock/math rock band, composed of members from Girls Against Boys, Soulside and Uzeda.  This band was named after the Italian composer, Vincenzo Bellini.
+Composizioni da Camera (Bellini) | The Composizioni da Camera is a set of fifteen collected compositions for voice and piano by the Italian opera composer, Vincenzo Bellini.  They were likely composed in the 1820s while Bellini was in the Italian cities of Naples and Milan, before his departure for Paris.
+Teatro Bellini, Naples | The Teatro Bellini (Bellini Theatre) is a private theatre and opera stage located in the centre of Naples on the Via Vincenzo Bellini at the corner of Via Conte di Ruo.  It is across the street from the Academy of Fine Arts of Naples.
+Oboe Concerto (Bellini) | The Oboe Concerto in E-flat major is an oboe concerto by Vincenzo Bellini, most likely composed in 1823.  Bellini's only surviving concerto, the piece is also an important part of his limited instrumental output.  Performances typically last between seven and eight minutes.
+Teatro Massimo Bellini | The Teatro Massimo Bellini is an opera house in Catania, Sicily, southern Italy.  Named after the local-born composer Vincenzo Bellini, it was inaugurated on 31 May 1890 with a performance of the composer's masterwork, "Norma".  It seats 1,200.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## context ## ]]
+The claim can be PARTIALLY VERIFIED based on the provided passages.
+
+From the passages, I can confirm:
+- Mikhail Glinka was Russian (passage [7] explicitly states he "was the first Russian composer")
+- Vincenzo Bellini wrote the opera "I puritani" (passage [1] confirms this)
+
+However, to fully verify the claim, the following information is needed:
+1. EXPLICIT CONFIRMATION OF VINCENZO BELLINI'S NATIONALITY: While passage [1] contextualizes Bellini among "the outstanding Italian composers of the day," it does not explicitly state Vincenzo Bellini's nationality or country of origin. Verification would require a passage that directly states Vincenzo Bellini was Italian (or any other specific nationality).
+
+Once Bellini's nationality is confirmed, the comparison can be fully verified: if Bellini is Italian (different from Glinka's Russian nationality), the claim is TRUE; if Bellini is also Russian, the claim is FALSE.
+
+[[ ## passages ## ]]
+[1] «Catania–Fontanarossa Airport | Catania–Fontanarossa Airport (Italian: "aeroporto internazionale Vincenzo Bellini di Catania-Fontanarossa" , English: Catania International Airport) (IATA: CTA, ICAO: LICC) also named as Vincenzo Bellini Airport, is an international airport 2.3 NM southwest of Catania, the second largest city on the Italian island of Sicily.  It is named after the opera composer Vincenzo Bellini who was born in Catania.»
+[2] «Vincenzo Bellini | Vincenzo Salvatore Carmelo Francesco Bellini (] ; 3 November 1801 – 23 September 1835) was an Italian opera composer, who was known for his long-flowing melodic lines for which he was named "the Swan of Catania".»
+[3] «Bellini (Italian band) | Bellini is an international indie rock/math rock band, composed of members from Girls Against Boys, Soulside and Uzeda.  This band was named after the Italian composer, Vincenzo Bellini.»
+[4] «Composizioni da Camera (Bellini) | The Composizioni da Camera is a set of fifteen collected compositions for voice and piano by the Italian opera composer, Vincenzo Bellini.  They were likely composed in the 1820s while Bellini was in the Italian cities of Naples and Milan, before his departure for Paris.»
+[5] «Teatro Bellini, Naples | The Teatro Bellini (Bellini Theatre) is a private theatre and opera stage located in the centre of Naples on the Via Vincenzo Bellini at the corner of Via Conte di Ruo.  It is across the street from the Academy of Fine Arts of Naples.»
+[6] «Oboe Concerto (Bellini) | The Oboe Concerto in E-flat major is an oboe concerto by Vincenzo Bellini, most likely composed in 1823.  Bellini's only surviving concerto, the piece is also an important part of his limited instrumental output.  Performances typically last between seven and eight minutes.»
+[7] «Teatro Massimo Bellini | The Teatro Massimo Bellini is an opera house in Catania, Sicily, southern Italy.  Named after the local-born composer Vincenzo Bellini, it was inaugurated on 31 May 1890 with a performance of the composer's masterwork, "Norma".  It seats 1,200.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim states that Mikhail Glinka is not the same nationality as another opera composer who wrote "I puritani."
+
+From the passages provided:
+1. Vincenzo Bellini wrote the opera "I puritani" - this is established in the context section, though not explicitly shown in these specific passages.
+2. Vincenzo Bellini's nationality is confirmed multiple times in the passages:
+   - Passage [2]: "Vincenzo Salvatore Carmelo Francesco Bellini...was an Italian opera composer"
+   - Passage [1]: He "was born in Catania" (on the Italian island of Sicily)
+   - Passage [4]: References him as "the Italian opera composer, Vincenzo Bellini"
+
+3. From the context, Mikhail Glinka was Russian (confirmed as "the first Russian composer").
+
+Therefore, the comparison is:
+- Mikhail Glinka: Russian
+- Vincenzo Bellini (composer of "I puritani"): Italian
+
+Since Russian ≠ Italian, the nationalities are indeed different.
+[[ ## summary ## ]]
+The claim is TRUE. Mikhail Glinka was Russian, while Vincenzo Bellini, who composed the opera "I puritani," was Italian. These are different nationalities, confirming that Glinka is not the same nationality as the composer who wrote "I puritani."
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## summary_1 ## ]]
+The claim can be PARTIALLY VERIFIED based on the provided passages.
+
+From the passages, I can confirm:
+- Mikhail Glinka was Russian (passage [7] explicitly states he "was the first Russian composer")
+- Vincenzo Bellini wrote the opera "I puritani" (passage [1] confirms this)
+
+However, to fully verify the claim, the following information is needed:
+1. EXPLICIT CONFIRMATION OF VINCENZO BELLINI'S NATIONALITY: While passage [1] contextualizes Bellini among "the outstanding Italian composers of the day," it does not explicitly state Vincenzo Bellini's nationality or country of origin. Verification would require a passage that directly states Vincenzo Bellini was Italian (or any other specific nationality).
+
+Once Bellini's nationality is confirmed, the comparison can be fully verified: if Bellini is Italian (different from Glinka's Russian nationality), the claim is TRUE; if Bellini is also Russian, the claim is FALSE.
+
+[[ ## summary_2 ## ]]
+The claim is TRUE. Mikhail Glinka was Russian, while Vincenzo Bellini, who composed the opera "I puritani," was Italian. These are different nationalities, confirming that Glinka is not the same nationality as the composer who wrote "I puritani."
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Summary_1 provides a cautious, evidence-based analysis that identifies Mikhail Glinka as Russian and Vincenzo Bellini as the composer of "I puritani," but notes that Bellini's nationality is not explicitly stated in the provided passages, only contextually suggested as Italian.
+
+Summary_2 makes a definitive claim that the statement is TRUE, asserting that Bellini was Italian without the same qualification about evidence limitations.
+
+The key difference is that Summary_1 distinguishes between what can be explicitly verified versus what is contextually implied, while Summary_2 treats contextual information as sufficient for confirmation. To resolve the discrepancy and verify the claim, we need to establish Vincenzo Bellini's nationality with certainty.
+
+[[ ## query ## ]]
+What was Vincenzo Bellini's nationality or country of origin?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Catania–Fontanarossa Airport | Catania–Fontanarossa Airport (Italian: "aeroporto internazionale Vincenzo Bellini di Catania-Fontanarossa" , English: Catania International Airport) (IATA: CTA, ICAO: LICC) also named as Vincenzo Bellini Airport, is an international airport 2.3 NM southwest of Catania, the second largest city on the Italian island of Sicily.  It is named after the opera composer Vincenzo Bellini who was born in Catania.
+Vincenzo Bellini | Vincenzo Salvatore Carmelo Francesco Bellini (] ; 3 November 1801 – 23 September 1835) was an Italian opera composer, who was known for his long-flowing melodic lines for which he was named "the Swan of Catania".
+Teatro Bellini, Naples | The Teatro Bellini (Bellini Theatre) is a private theatre and opera stage located in the centre of Naples on the Via Vincenzo Bellini at the corner of Via Conte di Ruo.  It is across the street from the Academy of Fine Arts of Naples.
+Bellini (Italian band) | Bellini is an international indie rock/math rock band, composed of members from Girls Against Boys, Soulside and Uzeda.  This band was named after the Italian composer, Vincenzo Bellini.
+Teatro Massimo Bellini | The Teatro Massimo Bellini is an opera house in Catania, Sicily, southern Italy.  Named after the local-born composer Vincenzo Bellini, it was inaugurated on 31 May 1890 with a performance of the composer's masterwork, "Norma".  It seats 1,200.
+I puritani | I puritani ("The Puritans") is an opera in by Vincenzo Bellini.  It was originally written in two acts and later changed to three acts on the advice of Gioachino Rossini, with whom the young composer had become friends.  The music was set to a libretto by Count Carlo Pepoli, an Italian émigré poet whom Bellini had met at a salon run by the exile Princess Belgiojoso, which became a meeting place for many Italian revolutionaries.
+Composizioni da Camera (Bellini) | The Composizioni da Camera is a set of fifteen collected compositions for voice and piano by the Italian opera composer, Vincenzo Bellini.  They were likely composed in the 1820s while Bellini was in the Italian cities of Naples and Milan, before his departure for Paris.
+Oboe Concerto (Bellini) | The Oboe Concerto in E-flat major is an oboe concerto by Vincenzo Bellini, most likely composed in 1823.  Bellini's only surviving concerto, the piece is also an important part of his limited instrumental output.  Performances typically last between seven and eight minutes.
+Vaga luna, che inargenti | "Vaga luna, che inargenti " (Beautiful moon, dappling with silver) is an arietta composed by Vincenzo Bellini to an anonymous Italian text and dedicated to Giulietta Pezzi.  It was published in 1838 by Casa Ricordi in "Tre ariette inedite " along with two other Bellini songs, "Il fervido desiderio " and "Dolente immagine di Fille mia ".  It was also amongst the fifteen Bellini songs published by Ricordi under the title "Composizioni da Camera " in 1935, the centenary of the composer's death.  Composed in the bel canto style, it is a frequent recital piece, and has often been recorded.  Its original key is in A-flat major with a tempo of andante cantabile.
+Bianca e Fernando | Bianca e Fernando ("Bianca and Fernando") is an opera in two acts by Vincenzo Bellini.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.
+Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.
+List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+Catania–Fontanarossa Airport | Catania–Fontanarossa Airport (Italian: "aeroporto internazionale Vincenzo Bellini di Catania-Fontanarossa" , English: Catania International Airport) (IATA: CTA, ICAO: LICC) also named as Vincenzo Bellini Airport, is an international airport 2.3 NM southwest of Catania, the second largest city on the Italian island of Sicily.  It is named after the opera composer Vincenzo Bellini who was born in Catania.
+Vincenzo Bellini | Vincenzo Salvatore Carmelo Francesco Bellini (] ; 3 November 1801 – 23 September 1835) was an Italian opera composer, who was known for his long-flowing melodic lines for which he was named "the Swan of Catania".
+Bellini (Italian band) | Bellini is an international indie rock/math rock band, composed of members from Girls Against Boys, Soulside and Uzeda.  This band was named after the Italian composer, Vincenzo Bellini.
+Composizioni da Camera (Bellini) | The Composizioni da Camera is a set of fifteen collected compositions for voice and piano by the Italian opera composer, Vincenzo Bellini.  They were likely composed in the 1820s while Bellini was in the Italian cities of Naples and Milan, before his departure for Paris.
+Teatro Bellini, Naples | The Teatro Bellini (Bellini Theatre) is a private theatre and opera stage located in the centre of Naples on the Via Vincenzo Bellini at the corner of Via Conte di Ruo.  It is across the street from the Academy of Fine Arts of Naples.
+Oboe Concerto (Bellini) | The Oboe Concerto in E-flat major is an oboe concerto by Vincenzo Bellini, most likely composed in 1823.  Bellini's only surviving concerto, the piece is also an important part of his limited instrumental output.  Performances typically last between seven and eight minutes.
+Teatro Massimo Bellini | The Teatro Massimo Bellini is an opera house in Catania, Sicily, southern Italy.  Named after the local-born composer Vincenzo Bellini, it was inaugurated on 31 May 1890 with a performance of the composer's masterwork, "Norma".  It seats 1,200.
+Catania–Fontanarossa Airport | Catania–Fontanarossa Airport (Italian: "aeroporto internazionale Vincenzo Bellini di Catania-Fontanarossa" , English: Catania International Airport) (IATA: CTA, ICAO: LICC) also named as Vincenzo Bellini Airport, is an international airport 2.3 NM southwest of Catania, the second largest city on the Italian island of Sicily.  It is named after the opera composer Vincenzo Bellini who was born in Catania.
+Vincenzo Bellini | Vincenzo Salvatore Carmelo Francesco Bellini (] ; 3 November 1801 – 23 September 1835) was an Italian opera composer, who was known for his long-flowing melodic lines for which he was named "the Swan of Catania".
+Teatro Bellini, Naples | The Teatro Bellini (Bellini Theatre) is a private theatre and opera stage located in the centre of Naples on the Via Vincenzo Bellini at the corner of Via Conte di Ruo.  It is across the street from the Academy of Fine Arts of Naples.
+Bellini (Italian band) | Bellini is an international indie rock/math rock band, composed of members from Girls Against Boys, Soulside and Uzeda.  This band was named after the Italian composer, Vincenzo Bellini.
+Teatro Massimo Bellini | The Teatro Massimo Bellini is an opera house in Catania, Sicily, southern Italy.  Named after the local-born composer Vincenzo Bellini, it was inaugurated on 31 May 1890 with a performance of the composer's masterwork, "Norma".  It seats 1,200.
+I puritani | I puritani ("The Puritans") is an opera in by Vincenzo Bellini.  It was originally written in two acts and later changed to three acts on the advice of Gioachino Rossini, with whom the young composer had become friends.  The music was set to a libretto by Count Carlo Pepoli, an Italian émigré poet whom Bellini had met at a salon run by the exile Princess Belgiojoso, which became a meeting place for many Italian revolutionaries.
+Composizioni da Camera (Bellini) | The Composizioni da Camera is a set of fifteen collected compositions for voice and piano by the Italian opera composer, Vincenzo Bellini.  They were likely composed in the 1820s while Bellini was in the Italian cities of Naples and Milan, before his departure for Paris.
+Oboe Concerto (Bellini) | The Oboe Concerto in E-flat major is an oboe concerto by Vincenzo Bellini, most likely composed in 1823.  Bellini's only surviving concerto, the piece is also an important part of his limited instrumental output.  Performances typically last between seven and eight minutes.
+Vaga luna, che inargenti | "Vaga luna, che inargenti " (Beautiful moon, dappling with silver) is an arietta composed by Vincenzo Bellini to an anonymous Italian text and dedicated to Giulietta Pezzi.  It was published in 1838 by Casa Ricordi in "Tre ariette inedite " along with two other Bellini songs, "Il fervido desiderio " and "Dolente immagine di Fille mia ".  It was also amongst the fifteen Bellini songs published by Ricordi under the title "Composizioni da Camera " in 1935, the centenary of the composer's death.  Composed in the bel canto style, it is a frequent recital piece, and has often been recorded.  Its original key is in A-flat major with a tempo of andante cantabile.
+Bianca e Fernando | Bianca e Fernando ("Bianca and Fernando") is an opera in two acts by Vincenzo Bellini.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 coordinator query: 'What is Vincenzo Bellini's nationality? Was Vincenzo Bellini Italian? What country was Vincenzo Bellini from? Provide biographical information about Vincenzo Bellini including his place of birth and nationality.' Hop 3 coordinator query: 'What was Vincenzo Bellini's nationality or country of origin?' Both queries ask the same question about Bellini's nationality with near
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

@@ -1,0 +1,529 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.
+June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.
+Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.
+Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.
+Apollo Heights | Apollo Heights is an American shoegazer band that was formed in New York City in 2002.  Consisting mainly of twin brothers, Daniel and Danny Chavis, they play experimental rock music.  They cite AR Kane and My Bloody Valentine as a major inspiration.  Their debut album "White Music For Black People" was produced by Robin Guthrie of Cocteau Twins and features guest appearances from Mos Def, Lady Kier, David Sitek of TV on the Radio, Mike Ladd and Guthrie himself on guitar.  The Chavis brothers were members of the alternative soul group The Veldt who released three albums on Polygram, Mammoth and Capitol Records.  Although the Veldt is left out of references on the Chapel Hill music scene, they were a key band during the heyday of North Carolina music along with other bands of the time like metal Flake Mother, Superchunk and Dillon Fence.
+The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.
+Superchunk | Superchunk is an American indie rock band from Chapel Hill, North Carolina, consisting of singer-guitarist Mac McCaughan, guitarist Jim Wilbur, bassist Laura Ballance, and drummer Jon Wurster.  Formed in 1989, they were one of the bands that helped define the Chapel Hill music scene of the 1990s.  Their energetic, high-velocity style and do-it-yourself ethics were influenced by punk rock.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        5. **CRITICAL: For every distinct entity mentioned in the claim (whether explicitly named or referenced indirectly), ensure that passages about that specific entity are available. If passages are missing for any entity in the claim, identify those missing evidence documents.**
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        **Critical requirement for identifying missing evidence documents**:
+        - **If a claim mentions multiple distinct entities (e.g., "Entity A is X. Entity B is not X."), you must have passages about EACH entity mentioned**
+        - **Even if the claim can be partially verified, if any entity in the claim lacks corresponding passages, you must identify that entity's evidence document as missing**
+        - **For comparison claims (e.g., "A is perennial. B is not perennial"), you need passages about both A and B, even if one can be verified**
+        - **When a claim mentions an entity only to negate something about it (e.g., "Duranta is not a perennial"), that entity still requires evidence documents**
+        - **The fact that you can verify part of a claim does not mean you should ignore entities that lack passages - explicitly identify all entities that need but lack evidence documents**
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - **List ALL entities from the claim that lack corresponding passages, even if other parts of the claim are verifiable**
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+        - **When identifying missing evidence documents, use the entity name or subject matter that would be the title/topic of the needed passage (e.g., if the claim mentions "Duranta" but no passages discuss it, identify "duranta" as a missing evidence document)**
+[STEP 4] (user) [[ ## claim ## ]]
+The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina.
+
+[[ ## passages ## ]]
+[1] «Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.»
+[2] «June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.»
+[3] «Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.»
+[4] «Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.»
+[5] «Apollo Heights | Apollo Heights is an American shoegazer band that was formed in New York City in 2002.  Consisting mainly of twin brothers, Daniel and Danny Chavis, they play experimental rock music.  They cite AR Kane and My Bloody Valentine as a major inspiration.  Their debut album "White Music For Black People" was produced by Robin Guthrie of Cocteau Twins and features guest appearances from Mos Def, Lady Kier, David Sitek of TV on the Radio, Mike Ladd and Guthrie himself on guitar.  The Chavis brothers were members of the alternative soul group The Veldt who released three albums on Polygram, Mammoth and Capitol Records.  Although the Veldt is left out of references on the Chapel Hill music scene, they were a key band during the heyday of North Carolina music along with other bands of the time like metal Flake Mother, Superchunk and Dillon Fence.»
+[6] «The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.»
+[7] «Superchunk | Superchunk is an American indie rock band from Chapel Hill, North Carolina, consisting of singer-guitarist Mac McCaughan, guitarist Jim Wilbur, bassist Laura Ballance, and drummer Jon Wurster.  Formed in 1989, they were one of the bands that helped define the Chapel Hill music scene of the 1990s.  Their energetic, high-velocity style and do-it-yourself ethics were influenced by punk rock.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze this claim step by step:
+
+1. The claim states: "The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina."
+
+2. This claim has two main components:
+   - There is a rock band that recorded an album called "Shapes"
+   - This band is NOT The Black Keys
+   - This band IS an American rock band from Chapel Hill, North Carolina
+
+3. What I need to verify:
+   - Which band recorded the album "Shapes"?
+   - Is that band from Chapel Hill, North Carolina?
+   - Is that band NOT The Black Keys?
+
+4. Analysis of provided passages:
+   - Passages [1-7] provide information about various bands from Chapel Hill, North Carolina: Roman Candle, June, Archers of Loaf, Sorry About Dresden, Apollo Heights, The Moaners, and Superchunk
+   - However, NONE of these passages mention an album called "Shapes"
+   - None of the passages discuss which band recorded "Shapes"
+   - There is no mention of The Black Keys in any passage
+   - There is no verification that any of these Chapel Hill bands recorded "Shapes"
+
+5. Missing evidence:
+   - The critical missing evidence is information about the album "Shapes" itself - which band recorded it
+   - Passages about The Black Keys would also be needed to verify the negative claim that The Black Keys did not record it
+   - Without knowing which band recorded "Shapes," I cannot verify that the band is from Chapel Hill
+
+[[ ## summary ## ]]
+
+The provided passages are INSUFFICIENT to verify this claim. 
+
+**Missing critical evidence documents:**
+- "Shapes (album)" - The passages provide no information about which band recorded this album. This is the core fact needed to verify the claim.
+- "The Black Keys" - While the claim states the band is "not The Black Keys," there are no passages discussing The Black Keys for comparison.
+
+**What can be partially verified:**
+The passages do confirm that multiple American rock bands from Chapel Hill, North Carolina exist (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, and Superchunk). However, without knowing which band recorded "Shapes," it is impossible to determine if the claim is accurate.
+
+**To complete verification, you would need:**
+1. Information about the album "Shapes" and which band recorded it
+2. Confirmation that this band is indeed from Chapel Hill, North Carolina
+3. Information about The Black Keys to verify the negative claim
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina.
+
+[[ ## summary_1 ## ]]
+The provided passages are INSUFFICIENT to verify this claim. 
+
+**Missing critical evidence documents:**
+- "Shapes (album)" - The passages provide no information about which band recorded this album. This is the core fact needed to verify the claim.
+- "The Black Keys" - While the claim states the band is "not The Black Keys," there are no passages discussing The Black Keys for comparison.
+
+**What can be partially verified:**
+The passages do confirm that multiple American rock bands from Chapel Hill, North Carolina exist (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, and Superchunk). However, without knowing which band recorded "Shapes," it is impossible to determine if the claim is accurate.
+
+**To complete verification, you would need:**
+1. Information about the album "Shapes" and which band recorded it
+2. Confirmation that this band is indeed from Chapel Hill, North Carolina
+3. Information about The Black Keys to verify the negative claim
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim makes a specific assertion about a band that recorded an album called "Shapes" - stating it is an American rock band from Chapel Hill, North Carolina, and importantly, that it is NOT The Black Keys. However, the summary indicates that the critical missing information is the identity of which band actually recorded the "Shapes" album. Without this foundational fact, the claim cannot be verified. To resolve this, we need to identify the band that recorded "Shapes" and confirm its origin location and that it is distinct from The Black Keys.
+[[ ## query ## ]]
+Which band recorded the album "Shapes"? Is this band from Chapel Hill, North Carolina?
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.
+The 5'11&quot; Record | The 5'11" Record (pronounced "The Five Eleven Record") is an album from Chapel Hill, North Carolina-based band Arrogance, spanning material recorded between 1976 and 1982, before the band's breakup in late 1983.  The 5'11" part of the title is in the English units notation for height, meaning five feet, eleven inches, which refers to the average height of the band members.  The title relates to the name the band sent these songs under back in the 1980s, looking for a new record deal. [] It was released in 2002 in celebration of the band's thirtieth anniversary and temporary reunification.  Its release corresponded with the Arrogance concert at the Regency Park Amphitheatre in Cary, North Carolina, which was organized to promote the new CD, as well as the re-releases of Arrogance's past albums on CD.
+Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.
+The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.
+June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.
+Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.
+Give Us a Break (Arrogance album) | Give Us A Break is the first album by the North Carolina band Arrogance, released in 1973 (see 1973 in music).  Only 300 copies of this album were pressed on Sugarbush Records, based in Chapel Hill.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina.
+
+[[ ## context ## ]]
+The provided passages are INSUFFICIENT to verify this claim. 
+
+**Missing critical evidence documents:**
+- "Shapes (album)" - The passages provide no information about which band recorded this album. This is the core fact needed to verify the claim.
+- "The Black Keys" - While the claim states the band is "not The Black Keys," there are no passages discussing The Black Keys for comparison.
+
+**What can be partially verified:**
+The passages do confirm that multiple American rock bands from Chapel Hill, North Carolina exist (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, and Superchunk). However, without knowing which band recorded "Shapes," it is impossible to determine if the claim is accurate.
+
+**To complete verification, you would need:**
+1. Information about the album "Shapes" and which band recorded it
+2. Confirmation that this band is indeed from Chapel Hill, North Carolina
+3. Information about The Black Keys to verify the negative claim
+
+[[ ## passages ## ]]
+[1] «Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.»
+[2] «The 5'11&quot; Record | The 5'11" Record (pronounced "The Five Eleven Record") is an album from Chapel Hill, North Carolina-based band Arrogance, spanning material recorded between 1976 and 1982, before the band's breakup in late 1983.  The 5'11" part of the title is in the English units notation for height, meaning five feet, eleven inches, which refers to the average height of the band members.  The title relates to the name the band sent these songs under back in the 1980s, looking for a new record deal. [] It was released in 2002 in celebration of the band's thirtieth anniversary and temporary reunification.  Its release corresponded with the Arrogance concert at the Regency Park Amphitheatre in Cary, North Carolina, which was organized to promote the new CD, as well as the re-releases of Arrogance's past albums on CD.»
+[3] «Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.»
+[4] «The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.»
+[5] «June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.»
+[6] «Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.»
+[7] «Give Us a Break (Arrogance album) | Give Us A Break is the first album by the North Carolina band Arrogance, released in 1973 (see 1973 in music).  Only 300 copies of this album were pressed on Sugarbush Records, based in Chapel Hill.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze what is needed to verify this claim:
+
+**The Claim Structure:**
+The claim makes two assertions:
+1. A rock band recorded an album called "Shapes"
+2. This band (not The Black Keys) is an American rock band from Chapel Hill, North Carolina
+
+**What the passages provide:**
+The passages list multiple American rock bands from Chapel Hill, North Carolina:
+- Roman Candle
+- Archers of Loaf
+- The Moaners
+- June
+- Sorry About Dresden
+- Arrogance
+
+However, the passages contain NO information about:
+- An album titled "Shapes"
+- Which band recorded "Shapes"
+- The Black Keys or any information about them
+- Any connection between any of the listed Chapel Hill bands and an album called "Shapes"
+
+**Critical Missing Evidence:**
+The core verification requirement is determining which band recorded the album "Shapes." Without a passage explicitly stating "Band X recorded the album Shapes," there is no way to:
+1. Identify which Chapel Hill band recorded it
+2. Verify it is NOT The Black Keys
+3. Confirm the band is from Chapel Hill
+
+The passages prove that multiple Chapel Hill rock bands exist, but this is insufficient because the claim requires identifying a SPECIFIC band that recorded a SPECIFIC album, and then confirming that band's origin city.
+
+[[ ## summary ## ]]
+
+**Verification Status:** Cannot be verified
+
+**What is present in passages:**
+The passages confirm that multiple American rock bands originate from Chapel Hill, North Carolina (Roman Candle, Archers of Loaf, The Moaners, June, Sorry About Dresden, and Arrogance), demonstrating the existence of a Chapel Hill rock band community.
+
+**What is critically missing:**
+1. **Shapes (album)** - No passages mention an album titled "Shapes" or identify which band recorded it. This is the essential piece of evidence required to verify the claim.
+2. **The Black Keys** - No passages provide information about The Black Keys, preventing verification of the negative comparison in the claim.
+3. **Connection between album and band** - Without knowing which band recorded "Shapes," the claim cannot be matched against the listed Chapel Hill bands.
+
+**To verify this claim, you would need:**
+- A passage about the album "Shapes" that explicitly names which band recorded it
+- Confirmation that this band is indeed from Chapel Hill, North Carolina (or that they moved there)
+- Information about The Black Keys to verify they did NOT record this album
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The rock band that recorded Shapes (album), not The Black Keys, is an American rock band from Chapel Hill, North Carolina.
+
+[[ ## summary_1 ## ]]
+The provided passages are INSUFFICIENT to verify this claim. 
+
+**Missing critical evidence documents:**
+- "Shapes (album)" - The passages provide no information about which band recorded this album. This is the core fact needed to verify the claim.
+- "The Black Keys" - While the claim states the band is "not The Black Keys," there are no passages discussing The Black Keys for comparison.
+
+**What can be partially verified:**
+The passages do confirm that multiple American rock bands from Chapel Hill, North Carolina exist (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, and Superchunk). However, without knowing which band recorded "Shapes," it is impossible to determine if the claim is accurate.
+
+**To complete verification, you would need:**
+1. Information about the album "Shapes" and which band recorded it
+2. Confirmation that this band is indeed from Chapel Hill, North Carolina
+3. Information about The Black Keys to verify the negative claim
+
+[[ ## summary_2 ## ]]
+**Verification Status:** Cannot be verified
+
+**What is present in passages:**
+The passages confirm that multiple American rock bands originate from Chapel Hill, North Carolina (Roman Candle, Archers of Loaf, The Moaners, June, Sorry About Dresden, and Arrogance), demonstrating the existence of a Chapel Hill rock band community.
+
+**What is critically missing:**
+1. **Shapes (album)** - No passages mention an album titled "Shapes" or identify which band recorded it. This is the essential piece of evidence required to verify the claim.
+2. **The Black Keys** - No passages provide information about The Black Keys, preventing verification of the negative comparison in the claim.
+3. **Connection between album and band** - Without knowing which band recorded "Shapes," the claim cannot be matched against the listed Chapel Hill bands.
+
+**To verify this claim, you would need:**
+- A passage about the album "Shapes" that explicitly names which band recorded it
+- Confirmation that this band is indeed from Chapel Hill, North Carolina (or that they moved there)
+- Information about The Black Keys to verify they did NOT record this album
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries identify the same critical gap in verification: the passages do not contain information about which band recorded the album "Shapes." This is the foundational fact needed to evaluate the claim. While the passages confirm that multiple American rock bands exist from Chapel Hill, North Carolina, they do not identify which of these bands (if any) recorded "Shapes," nor do they provide information about The Black Keys for comparison. To verify this claim, we need direct evidence linking a specific band to the "Shapes" album and confirmation of that band's origin.
+
+[[ ## query ## ]]
+Which band recorded the album "Shapes"? Is this band an American rock band from Chapel Hill, North Carolina? Did The Black Keys record the album "Shapes"?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.
+Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.
+The 5'11&quot; Record | The 5'11" Record (pronounced "The Five Eleven Record") is an album from Chapel Hill, North Carolina-based band Arrogance, spanning material recorded between 1976 and 1982, before the band's breakup in late 1983.  The 5'11" part of the title is in the English units notation for height, meaning five feet, eleven inches, which refers to the average height of the band members.  The title relates to the name the band sent these songs under back in the 1980s, looking for a new record deal. [] It was released in 2002 in celebration of the band's thirtieth anniversary and temporary reunification.  Its release corresponded with the Arrogance concert at the Regency Park Amphitheatre in Cary, North Carolina, which was organized to promote the new CD, as well as the re-releases of Arrogance's past albums on CD.
+Apollo Heights | Apollo Heights is an American shoegazer band that was formed in New York City in 2002.  Consisting mainly of twin brothers, Daniel and Danny Chavis, they play experimental rock music.  They cite AR Kane and My Bloody Valentine as a major inspiration.  Their debut album "White Music For Black People" was produced by Robin Guthrie of Cocteau Twins and features guest appearances from Mos Def, Lady Kier, David Sitek of TV on the Radio, Mike Ladd and Guthrie himself on guitar.  The Chavis brothers were members of the alternative soul group The Veldt who released three albums on Polygram, Mammoth and Capitol Records.  Although the Veldt is left out of references on the Chapel Hill music scene, they were a key band during the heyday of North Carolina music along with other bands of the time like metal Flake Mother, Superchunk and Dillon Fence.
+Icky Mettle | Icky Mettle is the first studio album recorded by the indie rock band Archers of Loaf.  It was produced and engineered by Caleb Southern at Kraptone Studios in Chapel Hill, North Carolina, and released by Alias Records on November 23, 1993.  A deluxe reissue of the album was released by Merge Records in 2011.
+Genesis (Genesis album) | Genesis is the twelfth studio album by the English rock band Genesis, released on 3 October 1983 on Charisma Records.  The band decided on its title as each of the album's nine tracks were written as a group.  The album cover depicts the shapes from a Shape-O, a children's toy made by Tupperware.  For this reason, some fans refer to this album in conversation as "Shapes".  Mike Rutherford referred to this album as his favourite Genesis album.  According to AllMusic, the album established that Genesis were "now primarily a pop band", although "art rock functions as coloring to the pop songs".
+The Covering | The Covering is the seventh release and eighth studio album by American Christian heavy metal/hard rock band Stryper, released by Big 3 Records/Sony on February 15, 2011.  The album is a collection of twelve cover songs from bands that inspired Stryper and helped to shape the band's sound and musical identity.  The album also includes "God", a new original recording.
+List of Foo Fighters band members | Foo Fighters is an American alternative rock band formed by multi-instrumentalist and vocalist Dave Grohl in 1994.  After recording the album "Foo Fighters" alone, Grohl enlisted guitarist Pat Smear, bassist Nate Mendel and drummer William Goldsmith to join the band.  This lineup recorded the second Foo Fighters album, 1997's "The Colour and the Shape", although most of Goldsmith's drum recordings were removed and re-recorded by Grohl for the release, after he left the band due to creative tensions.  Goldsmith was replaced by Taylor Hawkins, and Franz Stahl replaced Smear after he also departed, although he only remained in the band for a short period and did not record an album with the group.  The group's third album, "There Is Nothing Left to Lose", featured Hawkins on drums and was released in 1999.
+Dillon Fence | Dillon Fence was an American rock band from Chapel Hill, North Carolina.  They were active from the mid-1980s until 1995.  The band released three full-length albums ("Rosemary", "Outside In" and "Living Room Scene") and two CD singles on Mammoth Records.  They also released the EP "Dillon Fence" on their own label, Nocar.  In 2004, MoRisen released their greatest hits CD, which included an EP of new material.  They also released a three-song EP entitled "Christmas" in 1991.
+Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.
+June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.
+Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.
+Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.
+Apollo Heights | Apollo Heights is an American shoegazer band that was formed in New York City in 2002.  Consisting mainly of twin brothers, Daniel and Danny Chavis, they play experimental rock music.  They cite AR Kane and My Bloody Valentine as a major inspiration.  Their debut album "White Music For Black People" was produced by Robin Guthrie of Cocteau Twins and features guest appearances from Mos Def, Lady Kier, David Sitek of TV on the Radio, Mike Ladd and Guthrie himself on guitar.  The Chavis brothers were members of the alternative soul group The Veldt who released three albums on Polygram, Mammoth and Capitol Records.  Although the Veldt is left out of references on the Chapel Hill music scene, they were a key band during the heyday of North Carolina music along with other bands of the time like metal Flake Mother, Superchunk and Dillon Fence.
+The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.
+Superchunk | Superchunk is an American indie rock band from Chapel Hill, North Carolina, consisting of singer-guitarist Mac McCaughan, guitarist Jim Wilbur, bassist Laura Ballance, and drummer Jon Wurster.  Formed in 1989, they were one of the bands that helped define the Chapel Hill music scene of the 1990s.  Their energetic, high-velocity style and do-it-yourself ethics were influenced by punk rock.
+Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.
+The 5'11&quot; Record | The 5'11" Record (pronounced "The Five Eleven Record") is an album from Chapel Hill, North Carolina-based band Arrogance, spanning material recorded between 1976 and 1982, before the band's breakup in late 1983.  The 5'11" part of the title is in the English units notation for height, meaning five feet, eleven inches, which refers to the average height of the band members.  The title relates to the name the band sent these songs under back in the 1980s, looking for a new record deal. [] It was released in 2002 in celebration of the band's thirtieth anniversary and temporary reunification.  Its release corresponded with the Arrogance concert at the Regency Park Amphitheatre in Cary, North Carolina, which was organized to promote the new CD, as well as the re-releases of Arrogance's past albums on CD.
+Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.
+The Moaners | The Moaners are a Chapel Hill, North Carolina-based Indie rock band.  They were previously signed to Yep Roc Records.  In 2004, Melissa Swingle's band Trailer Bride broke up, and she formed The Moaners with drummer Laura King, formerly of the Chapel Hill band Grand National.
+June (North Carolina band) | June was an American indie rock band from Chapel Hill, North Carolina.
+Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.
+Give Us a Break (Arrogance album) | Give Us A Break is the first album by the North Carolina band Arrogance, released in 1973 (see 1973 in music).  Only 300 copies of this album were pressed on Sugarbush Records, based in Chapel Hill.
+Roman Candle (band) | Roman Candle is an indie rock band from Chapel Hill, North Carolina, composed of Skip Matheny, Logan Matheny and Timshel Matheny.  They have released three studio albums, several touring EP's, toured extensively throughout the U.S. and Europe, and played in various other bands / live acts.  Roman Candle was founded in 1997 in Chapel Hill, North Carolina.  The band, who all attended UNC-Chapel Hill, recorded and performed there for 10 years before moving to Nashville, TN in 2008.
+Archers of Loaf | Archers of Loaf is an American indie rock band originally formed in Chapel Hill, North Carolina in 1991.  The group toured extensively and released four studio albums, one compilation, numerous singles and EPs, and a live album which was released after the band broke up in 1998.  In 2011 the band began a reunion tour that coincided with the reissue of four of its albums by Merge Records.
+The 5'11&quot; Record | The 5'11" Record (pronounced "The Five Eleven Record") is an album from Chapel Hill, North Carolina-based band Arrogance, spanning material recorded between 1976 and 1982, before the band's breakup in late 1983.  The 5'11" part of the title is in the English units notation for height, meaning five feet, eleven inches, which refers to the average height of the band members.  The title relates to the name the band sent these songs under back in the 1980s, looking for a new record deal. [] It was released in 2002 in celebration of the band's thirtieth anniversary and temporary reunification.  Its release corresponded with the Arrogance concert at the Regency Park Amphitheatre in Cary, North Carolina, which was organized to promote the new CD, as well as the re-releases of Arrogance's past albums on CD.
+Apollo Heights | Apollo Heights is an American shoegazer band that was formed in New York City in 2002.  Consisting mainly of twin brothers, Daniel and Danny Chavis, they play experimental rock music.  They cite AR Kane and My Bloody Valentine as a major inspiration.  Their debut album "White Music For Black People" was produced by Robin Guthrie of Cocteau Twins and features guest appearances from Mos Def, Lady Kier, David Sitek of TV on the Radio, Mike Ladd and Guthrie himself on guitar.  The Chavis brothers were members of the alternative soul group The Veldt who released three albums on Polygram, Mammoth and Capitol Records.  Although the Veldt is left out of references on the Chapel Hill music scene, they were a key band during the heyday of North Carolina music along with other bands of the time like metal Flake Mother, Superchunk and Dillon Fence.
+Icky Mettle | Icky Mettle is the first studio album recorded by the indie rock band Archers of Loaf.  It was produced and engineered by Caleb Southern at Kraptone Studios in Chapel Hill, North Carolina, and released by Alias Records on November 23, 1993.  A deluxe reissue of the album was released by Merge Records in 2011.
+Genesis (Genesis album) | Genesis is the twelfth studio album by the English rock band Genesis, released on 3 October 1983 on Charisma Records.  The band decided on its title as each of the album's nine tracks were written as a group.  The album cover depicts the shapes from a Shape-O, a children's toy made by Tupperware.  For this reason, some fans refer to this album in conversation as "Shapes".  Mike Rutherford referred to this album as his favourite Genesis album.  According to AllMusic, the album established that Genesis were "now primarily a pop band", although "art rock functions as coloring to the pop songs".
+The Covering | The Covering is the seventh release and eighth studio album by American Christian heavy metal/hard rock band Stryper, released by Big 3 Records/Sony on February 15, 2011.  The album is a collection of twelve cover songs from bands that inspired Stryper and helped to shape the band's sound and musical identity.  The album also includes "God", a new original recording.
+List of Foo Fighters band members | Foo Fighters is an American alternative rock band formed by multi-instrumentalist and vocalist Dave Grohl in 1994.  After recording the album "Foo Fighters" alone, Grohl enlisted guitarist Pat Smear, bassist Nate Mendel and drummer William Goldsmith to join the band.  This lineup recorded the second Foo Fighters album, 1997's "The Colour and the Shape", although most of Goldsmith's drum recordings were removed and re-recorded by Grohl for the release, after he left the band due to creative tensions.  Goldsmith was replaced by Taylor Hawkins, and Franz Stahl replaced Smear after he also departed, although he only remained in the band for a short period and did not record an album with the group.  The group's third album, "There Is Nothing Left to Lose", featured Hawkins on drums and was released in 1999.
+Dillon Fence | Dillon Fence was an American rock band from Chapel Hill, North Carolina.  They were active from the mid-1980s until 1995.  The band released three full-length albums ("Rosemary", "Outside In" and "Living Room Scene") and two CD singles on Mammoth Records.  They also released the EP "Dillon Fence" on their own label, Nocar.  In 2004, MoRisen released their greatest hits CD, which included an EP of new material.  They also released a three-song EP entitled "Christmas" in 1991.
+Sorry About Dresden | Sorry About Dresden was an indie rock band from Chapel Hill, North Carolina.  The band formed in 1997 and was signed to Saddle Creek Records.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Hop 2 query: 'Which band recorded the album "Shapes"? Is this band from Chapel Hill, North Carolina?' Hop 3 query: 'Which band recorded the album "Shapes"? Is this band an American rock band from Chapel Hill, North Carolina? Did The Black Keys record the album "Shapes"?' Both queries are formulated as natural-language yes/no questions and compound multi-part asks bundling several targets, rather t
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 query asks 'Which band recorded the album "Shapes"?' and hop 3 query repeats 'Which band recorded the album "Shapes"?' with only minor additions. Both queries target the same core information without substantive evolution despite the summaries identifying the gap repeatedly.
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: Hop 3 retrieval includes: 'Genesis (Genesis album) | Genesis is the twelfth studio album by the English rock band Genesis... The album cover depicts the shapes from a Shape-O, a children's toy made by Tupperware. For this reason, some fans refer to this album in conversation as "Shapes".' The solver repeatedly claims the album 'Shapes' and which band recorded it cannot be found, yet this passage e
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Summary 1 states 'Missing critical evidence documents: "The Black Keys" - While the claim states the band is "not The Black Keys," there are no passages discussing The Black Keys for comparison.' Summary 2 repeats '**The Black Keys** - No passages provide information about The Black Keys, preventing verification of the negative comparison in the claim.' However, neither summary names a specific fa
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step UNKNOWN: evidence: Multiple solver summaries enumerate and process passages about Chapel Hill bands (Roman Candle, June, Archers of Loaf, Sorry About Dresden, The Moaners, Superchunk, Arrogance, Dillon Fence) that are clearly irrelevant once it's established none mention 'Shapes,' diverting attention from the actual evidence gap and the Genesis passage that does mention 'Shapes.'
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

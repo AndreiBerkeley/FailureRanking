@@ -1,0 +1,463 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Leafcutter John handles digital devices in the British experimental jazz band that released the seminal album Same as You.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Polar Bear (British band) | Polar Bear is a British experimental jazz band led by drummer Seb Rochford with Pete Wareham and Mark Lockheart on tenor saxophone, Tom Herbert on double bass and Leafcutter John on electronics and occasionally guitar or mandolin.
+Same as You | Same as You is the sixth studio album by British jazz band Polar Bear.  It was released on 30 March 2015 by The Leaf Label.
+Device (Device album) | Device is the eponymous debut album from American industrial metal band Device, featuring David Draiman of Disturbed and former Filter guitarist Geno Lenardo.  It was released on April 9, 2013, with their first single, "Vilify", out on digital download in February 19, 2013.  Their second single, "You Think You Know", was released in June 11, 2013.
+You &amp; I (One Direction song) | "You & I" is a song recorded by boy-band One Direction, taken from their third studio album "Midnight Memories" (2013).  It was written by Julian Bunetta, John Ryan and Jamie Scott, with production being handled by Julian Bunetta and John Ryan.  "You & I" was released as the album's fourth and final single, first impacting US contemporary hit radio on 15 April 2014 by Columbia Records and later being released in Europe on 23 May 2014.  An EP containing a remix created by band member Liam Payne was also released.
+Waiter: &quot;You Vultures!&quot; | Waiter: "You Vultures!"  is the debut full length album by the Alaskan experimental rock band Portugal.  The Man.  It is lead singer John Gourley's first album released after leaving the band Anatomy of a Ghost.  It is the band's only album before 2009's "The Satanic Satanist" to use a heavy amount of electronic drums and synthesizers.
+Back to You (Louis Tomlinson song) | "Back to You" is a song recorded by English singer and songwriter Louis Tomlinson, featuring American singer and songwriter Bebe Rexha and British DJ and Producer Digital Farm Animals.  It was written by Tomlinson, Digital Farm Animals, Pablo Bowman, Richard Boardman, and Sarah Blanchard, while the production was handled by Digital Farm Animals and Tommy Danvers.  The single was released on 21 July 2017; its accompanying music video premiered the same date.
+Who You Are (Jessie J song) | "Who You Are" is a song by British singer and songwriter Jessie J, released as the sixth overall single from her debut studio album of the same name.  The song was written by Jessica Cornish (Jessie J), Toby Gad and Shelly Peiken, while the production was handled by Gad.  The single was released via digital download on 13 November 2011.  The song's lyrics address the importance of staying true to one's identity.  According to Cornish, she wrote the song after a three-month lonely trip.  The song received very positive reviews from music critics, who complimented her strong vocals in the song and considered a highlight on the album.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+Leafcutter John handles digital devices in the British experimental jazz band that released the seminal album Same as You.
+
+[[ ## passages ## ]]
+[1] «Polar Bear (British band) | Polar Bear is a British experimental jazz band led by drummer Seb Rochford with Pete Wareham and Mark Lockheart on tenor saxophone, Tom Herbert on double bass and Leafcutter John on electronics and occasionally guitar or mandolin.»
+[2] «Same as You | Same as You is the sixth studio album by British jazz band Polar Bear.  It was released on 30 March 2015 by The Leaf Label.»
+[3] «Device (Device album) | Device is the eponymous debut album from American industrial metal band Device, featuring David Draiman of Disturbed and former Filter guitarist Geno Lenardo.  It was released on April 9, 2013, with their first single, "Vilify", out on digital download in February 19, 2013.  Their second single, "You Think You Know", was released in June 11, 2013.»
+[4] «You &amp; I (One Direction song) | "You & I" is a song recorded by boy-band One Direction, taken from their third studio album "Midnight Memories" (2013).  It was written by Julian Bunetta, John Ryan and Jamie Scott, with production being handled by Julian Bunetta and John Ryan.  "You & I" was released as the album's fourth and final single, first impacting US contemporary hit radio on 15 April 2014 by Columbia Records and later being released in Europe on 23 May 2014.  An EP containing a remix created by band member Liam Payne was also released.»
+[5] «Waiter: &quot;You Vultures!&quot; | Waiter: "You Vultures!"  is the debut full length album by the Alaskan experimental rock band Portugal.  The Man.  It is lead singer John Gourley's first album released after leaving the band Anatomy of a Ghost.  It is the band's only album before 2009's "The Satanic Satanist" to use a heavy amount of electronic drums and synthesizers.»
+[6] «Back to You (Louis Tomlinson song) | "Back to You" is a song recorded by English singer and songwriter Louis Tomlinson, featuring American singer and songwriter Bebe Rexha and British DJ and Producer Digital Farm Animals.  It was written by Tomlinson, Digital Farm Animals, Pablo Bowman, Richard Boardman, and Sarah Blanchard, while the production was handled by Digital Farm Animals and Tommy Danvers.  The single was released on 21 July 2017; its accompanying music video premiered the same date.»
+[7] «Who You Are (Jessie J song) | "Who You Are" is a song by British singer and songwriter Jessie J, released as the sixth overall single from her debut studio album of the same name.  The song was written by Jessica Cornish (Jessie J), Toby Gad and Shelly Peiken, while the production was handled by Gad.  The single was released via digital download on 13 November 2011.  The song's lyrics address the importance of staying true to one's identity.  According to Cornish, she wrote the song after a three-month lonely trip.  The song received very positive reviews from music critics, who complimented her strong vocals in the song and considered a highlight on the album.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze the claim systematically:
+
+The claim states: "Leafcutter John handles digital devices in the British experimental jazz band that released the seminal album Same as You."
+
+Breaking down the claim's components:
+1. "Leafcutter John" - a person/musician
+2. "handles digital devices" - role involving electronic/digital equipment
+3. "British experimental jazz band" - band nationality and genre
+4. "released the seminal album Same as You" - album released by this band
+
+Cross-referencing against passages:
+
+From Passage [1]: Polar Bear is identified as a British experimental jazz band led by drummer Seb Rochford. The passage explicitly states that Leafcutter John plays "electronics and occasionally guitar or mandolin" in Polar Bear.
+
+From Passage [2]: Same as You is confirmed as "the sixth studio album by British jazz band Polar Bear" released on 30 March 2015.
+
+Verification status:
+- Leafcutter John's role: VERIFIED - Passage [1] confirms he handles electronics in Polar Bear
+- British experimental jazz band identity: VERIFIED - Passage [1] identifies Polar Bear as British experimental jazz band
+- Album "Same as You": VERIFIED - Passage [2] confirms Polar Bear released this album
+- The characterization of "Same as You" as "seminal": NOT VERIFIED - The passages confirm the album exists and was released, but provide no information about its critical reception or significance
+
+All other passages [3-7] are irrelevant to the claim as they discuss unrelated artists and songs.
+
+[[ ## summary ## ]]
+
+The claim is PARTIALLY VERIFIED based on the provided passages.
+
+**Verified elements:**
+- Leafcutter John is confirmed to handle electronics (and occasionally guitar or mandolin) in Polar Bear [Passage 1]
+- Polar Bear is confirmed as a British experimental jazz band [Passage 1]
+- Polar Bear is confirmed to have released an album titled "Same as You" [Passage 2]
+
+**Unverified elements:**
+- The characterization of "Same as You" as a "seminal album" cannot be verified from the passages. Additional information would be needed about: the critical reception of the album "Same as You" by Polar Bear, its influence on British jazz and experimental music, and any formal recognition or awards it received.
+
+**To fully verify this claim, the retrieval system would need to locate additional documents containing:**
+1. Critical reviews and assessments of the album "Same as You" by Polar Bear
+2. Information about the album's impact, influence, and standing within the experimental jazz genre
+3. Any accolades, awards, or formal designations of this album as seminal or important in music history
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+Leafcutter John handles digital devices in the British experimental jazz band that released the seminal album Same as You.
+
+[[ ## summary_1 ## ]]
+The claim is PARTIALLY VERIFIED based on the provided passages.
+
+**Verified elements:**
+- Leafcutter John is confirmed to handle electronics (and occasionally guitar or mandolin) in Polar Bear [Passage 1]
+- Polar Bear is confirmed as a British experimental jazz band [Passage 1]
+- Polar Bear is confirmed to have released an album titled "Same as You" [Passage 2]
+
+**Unverified elements:**
+- The characterization of "Same as You" as a "seminal album" cannot be verified from the passages. Additional information would be needed about: the critical reception of the album "Same as You" by Polar Bear, its influence on British jazz and experimental music, and any formal recognition or awards it received.
+
+**To fully verify this claim, the retrieval system would need to locate additional documents containing:**
+1. Critical reviews and assessments of the album "Same as You" by Polar Bear
+2. Information about the album's impact, influence, and standing within the experimental jazz genre
+3. Any accolades, awards, or formal designations of this album as seminal or important in music history
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that most core facts have been verified: Leafcutter John's role in Polar Bear (a British experimental jazz band) and the existence of the album "Same as You" are all confirmed. However, the critical claim that "Same as You" is a "seminal album" remains unverified. To complete the verification, I need to generate a query that will retrieve documents assessing the album's critical reception, influence, and significance within jazz and music history. Additionally, while the summary confirms Leafcutter John handles "electronics," I should ensure comprehensive retrieval includes any additional context about his specific role with digital devices. The query should target: (1) critical assessments and reviews of "Same as You" by Polar Bear, (2) the album's influence and standing in experimental jazz, (3) any awards or recognition it received, and (4) confirmatory information about Polar Bear and Leafcutter John for baseline verification.
+[[ ## query ## ]]
+What is the critical reception and significance of Polar Bear's album "Same as You"? Is it considered a seminal or influential album in experimental jazz and British jazz music? What impact did the album have on the genre? Has "Same as You" received any awards or special recognition? Who is Leafcutter John and what is his role in Polar Bear?
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Same as You | Same as You is the sixth studio album by British jazz band Polar Bear.  It was released on 30 March 2015 by The Leaf Label.
+Bill Martin Jr. | William Ivan "Bill" Martin Jr. (March 20, 1916 – August 11, 2004) was an American educator, publishing executive, and author of more than 300 children's books including "The Sounds of Mystery," "Chicka Chicka Boom Boom", (co-authored with John Archambault) "Brown Bear, Brown Bear, What Do You See? ", "Baby Bear, Baby Bear, What Do You See?" , "Panda Bear, Panda Bear, What Do You See? ", and "Polar Bear, Polar Bear, What Do You Hear?"  The Bill Martin Jr.  Award, which is the Kansas state award for best children's picture book, was established in his honor in 1996.
+Polar Bear, Polar Bear, What Do You Hear? | Polar Bear, Polar Bear, What Do You Hear?  is a children's picture book, published in 1991, written and illustrated by Bill Martin, Jr. and Eric Carle.
+Polar Bear (British band) | Polar Bear is a British experimental jazz band led by drummer Seb Rochford with Pete Wareham and Mark Lockheart on tenor saxophone, Tom Herbert on double bass and Leafcutter John on electronics and occasionally guitar or mandolin.
+Polar Bear (album) | Polar Bear is the eponymous third album by Sebastian Rochford's British jazz band Polar Bear.
+360 (rapper) | Matthew James Colwell (born 12 July 1986), better known by his stage name 360, is an Australian hip hop recording artist.  He has released three studio albums: "What You See Is What You Get" (2008); "Falling & Flying" (2011), which peaked at No. 4 on the ARIA Albums Chart and was certified platinum; and "Utopia" (2014).  360's second album provided four charting singles, including "Boys like You", which peaked at No. 3 on the ARIA Singles Chart and was certified 4× platinum.  At the ARIA Music Awards of 2012, he received six nominations and won the 'Breakthrough Artist – Release' award for "Falling & Flying", while Styalz Fuego won the ARIA 'Producer Of The Year' Artisan award for the same album.
+Give You What You Like | "Give You What You Like" is a song recorded by Canadian singer-songwriter Avril Lavigne from her self-titled fifth studio album released in 2013.  It was written by Lavigne with her husband Chad Kroeger and David Hodges.  The song has been praised by critics for expanding Lavigne's musical diversity and exposing her to new genres of music and is the sixth track on the album.  Musically, "Give You What You Like" is a folk-pop song with lyrics that describe combating loneliness through swapping sex.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Leafcutter John handles digital devices in the British experimental jazz band that released the seminal album Same as You.
+
+[[ ## context ## ]]
+The claim is PARTIALLY VERIFIED based on the provided passages.
+
+**Verified elements:**
+- Leafcutter John is confirmed to handle electronics (and occasionally guitar or mandolin) in Polar Bear [Passage 1]
+- Polar Bear is confirmed as a British experimental jazz band [Passage 1]
+- Polar Bear is confirmed to have released an album titled "Same as You" [Passage 2]
+
+**Unverified elements:**
+- The characterization of "Same as You" as a "seminal album" cannot be verified from the passages. Additional information would be needed about: the critical reception of the album "Same as You" by Polar Bear, its influence on British jazz and experimental music, and any formal recognition or awards it received.
+
+**To fully verify this claim, the retrieval system would need to locate additional documents containing:**
+1. Critical reviews and assessments of the album "Same as You" by Polar Bear
+2. Information about the album's impact, influence, and standing within the experimental jazz genre
+3. Any accolades, awards, or formal designations of this album as seminal or important in music history
+
+[[ ## passages ## ]]
+[1] «Same as You | Same as You is the sixth studio album by British jazz band Polar Bear.  It was released on 30 March 2015 by The Leaf Label.»
+[2] «Bill Martin Jr. | William Ivan "Bill" Martin Jr. (March 20, 1916 – August 11, 2004) was an American educator, publishing executive, and author of more than 300 children's books including "The Sounds of Mystery," "Chicka Chicka Boom Boom", (co-authored with John Archambault) "Brown Bear, Brown Bear, What Do You See? ", "Baby Bear, Baby Bear, What Do You See?" , "Panda Bear, Panda Bear, What Do You See? ", and "Polar Bear, Polar Bear, What Do You Hear?"  The Bill Martin Jr.  Award, which is the Kansas state award for best children's picture book, was established in his honor in 1996.»
+[3] «Polar Bear, Polar Bear, What Do You Hear? | Polar Bear, Polar Bear, What Do You Hear?  is a children's picture book, published in 1991, written and illustrated by Bill Martin, Jr. and Eric Carle.»
+[4] «Polar Bear (British band) | Polar Bear is a British experimental jazz band led by drummer Seb Rochford with Pete Wareham and Mark Lockheart on tenor saxophone, Tom Herbert on double bass and Leafcutter John on electronics and occasionally guitar or mandolin.»
+[5] «Polar Bear (album) | Polar Bear is the eponymous third album by Sebastian Rochford's British jazz band Polar Bear.»
+[6] «360 (rapper) | Matthew James Colwell (born 12 July 1986), better known by his stage name 360, is an Australian hip hop recording artist.  He has released three studio albums: "What You See Is What You Get" (2008); "Falling & Flying" (2011), which peaked at No. 4 on the ARIA Albums Chart and was certified platinum; and "Utopia" (2014).  360's second album provided four charting singles, including "Boys like You", which peaked at No. 3 on the ARIA Singles Chart and was certified 4× platinum.  At the ARIA Music Awards of 2012, he received six nominations and won the 'Breakthrough Artist – Release' award for "Falling & Flying", while Styalz Fuego won the ARIA 'Producer Of The Year' Artisan award for the same album.»
+[7] «Give You What You Like | "Give You What You Like" is a song recorded by Canadian singer-songwriter Avril Lavigne from her self-titled fifth studio album released in 2013.  It was written by Lavigne with her husband Chad Kroeger and David Hodges.  The song has been praised by critics for expanding Lavigne's musical diversity and exposing her to new genres of music and is the sixth track on the album.  Musically, "Give You What You Like" is a folk-pop song with lyrics that describe combating loneliness through swapping sex.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+Examining the claim against the provided passages:
+
+1. **Leafcutter John and digital devices**: Passage 4 confirms that Leafcutter John plays "electronics and occasionally guitar or mandolin" in Polar Bear. Electronics qualify as digital devices, so this element is verified.
+
+2. **British experimental jazz band**: Passage 4 explicitly states that Polar Bear is "a British experimental jazz band," verifying this component.
+
+3. **Released "Same as You" album**: Passage 1 confirms that "Same as You is the sixth studio album by British jazz band Polar Bear. It was released on 30 March 2015 by The Leaf Label." This verifies that Polar Bear released this album.
+
+4. **"Seminal album" designation**: The passages provide no information about critical reception, influence, or the cultural significance of the "Same as You" album. No evidence supports or refutes the characterization of this album as "seminal." A seminal work is typically one that is highly influential and important to the development of a field; without critical analysis or historical context, this cannot be verified.
+
+The claim is substantially supported by the passages regarding Leafcutter John's role, the band's identity, and the album's existence. However, the single unverifiable element is whether "Same as You" qualifies as a "seminal" work.
+
+[[ ## summary ## ]]
+The claim is MOSTLY VERIFIED. Three of the four key components are confirmed by the passages: Leafcutter John does handle electronics (digital devices) in Polar Bear, which is indeed a British experimental jazz band that released an album titled "Same as You." However, the characterization of "Same as You" as a "seminal album" cannot be verified from the provided passages, as they contain no information about the album's critical reception, influence, or significance within the jazz genre.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Leafcutter John handles digital devices in the British experimental jazz band that released the seminal album Same as You.
+
+[[ ## summary_1 ## ]]
+The claim is PARTIALLY VERIFIED based on the provided passages.
+
+**Verified elements:**
+- Leafcutter John is confirmed to handle electronics (and occasionally guitar or mandolin) in Polar Bear [Passage 1]
+- Polar Bear is confirmed as a British experimental jazz band [Passage 1]
+- Polar Bear is confirmed to have released an album titled "Same as You" [Passage 2]
+
+**Unverified elements:**
+- The characterization of "Same as You" as a "seminal album" cannot be verified from the passages. Additional information would be needed about: the critical reception of the album "Same as You" by Polar Bear, its influence on British jazz and experimental music, and any formal recognition or awards it received.
+
+**To fully verify this claim, the retrieval system would need to locate additional documents containing:**
+1. Critical reviews and assessments of the album "Same as You" by Polar Bear
+2. Information about the album's impact, influence, and standing within the experimental jazz genre
+3. Any accolades, awards, or formal designations of this album as seminal or important in music history
+
+[[ ## summary_2 ## ]]
+The claim is MOSTLY VERIFIED. Three of the four key components are confirmed by the passages: Leafcutter John does handle electronics (digital devices) in Polar Bear, which is indeed a British experimental jazz band that released an album titled "Same as You." However, the characterization of "Same as You" as a "seminal album" cannot be verified from the provided passages, as they contain no information about the album's critical reception, influence, or significance within the jazz genre.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries agree on the core verification status: the claim is largely verified but with one key caveat. They both confirm that:
+1. Leafcutter John handles digital/electronic devices in Polar Bear
+2. Polar Bear is a British experimental jazz band
+3. Polar Bear released an album called "Same as You"
+
+However, both summaries identify the same gap: the descriptor "seminal" cannot be verified from the provided passages. Summary_1 is more detailed in outlining what additional documents would be needed (critical reviews, impact assessments, awards/accolades), while summary_2 is more concise but conveys the same essential conclusion. The discrepancy between "PARTIALLY VERIFIED" and "MOSTLY VERIFIED" is semantic rather than substantive—both are indicating the same limitation.
+
+The query should target information that would either confirm or refute the characterization of "Same as You" as a seminal album in experimental jazz.
+
+[[ ## query ## ]]
+seminal album "Same as You" Polar Bear critical reception influence impact experimental jazz significance
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Same as You | Same as You is the sixth studio album by British jazz band Polar Bear.  It was released on 30 March 2015 by The Leaf Label.
+Polar Bear (album) | Polar Bear is the eponymous third album by Sebastian Rochford's British jazz band Polar Bear.
+Polar Bear (British band) | Polar Bear is a British experimental jazz band led by drummer Seb Rochford with Pete Wareham and Mark Lockheart on tenor saxophone, Tom Herbert on double bass and Leafcutter John on electronics and occasionally guitar or mandolin.
+Thank You, Happy Birthday | Thank You Happy Birthday is the second studio album by American rock band Cage the Elephant.  It was released on January 11, 2011 to positive critical reception.  The album was produced by Jay Joyce, who worked in the same capacity on the band's eponymous debut album.
+Polar Bear, Polar Bear, What Do You Hear? | Polar Bear, Polar Bear, What Do You Hear?  is a children's picture book, published in 1991, written and illustrated by Bill Martin, Jr. and Eric Carle.
+Bitches Brew | Bitches Brew is a studio double album by American jazz musician Miles Davis, released on March 30, 1970, on Columbia Records.  The album continued his experimentation with electric instruments previously featured on his critically acclaimed "In a Silent Way" album.  With the use of these instruments, such as the electric piano and guitar, Davis rejected traditional jazz rhythms in favor of a looser, rock-influenced improvisational style.  Upon release, it received a mixed response, due to the album's unconventional style and experimental sound, but became Davis's first gold record; it sold more than half a million copies.
+Peepers (album) | Peepers is the fourth album by Sebastian Rochford's British jazz band Polar Bear.
+The Seeds (album) | The Seeds is the debut studio album by American garage rock band The Seeds.  It was released in April 1966 through GNP Crescendo Records and produced by Marcus Tybalt and Sky Saxon.  After the release of two singles for "Can't Seem to Make You Mine" and "Pushin' Too Hard" in 1965, the album was released and charted in the United States where it peaked at No. 132 on the "Billboard" Top LPs & Tapes chart.  Modern reception of the album is positive, with critics noting the album influence on punk rock a decade later.
+Royal and Ancient Polar Bear Society | The Royal and Ancient Polar Bear Society (Norwegian "Isbjørnklubben") locates a small exhibition in the town of Hammerfest in Finnmark, Norway.  The significance of the polar bear is that this animal is the town's mascot and heraldic crest.
+Bill Martin Jr. | William Ivan "Bill" Martin Jr. (March 20, 1916 – August 11, 2004) was an American educator, publishing executive, and author of more than 300 children's books including "The Sounds of Mystery," "Chicka Chicka Boom Boom", (co-authored with John Archambault) "Brown Bear, Brown Bear, What Do You See? ", "Baby Bear, Baby Bear, What Do You See?" , "Panda Bear, Panda Bear, What Do You See? ", and "Polar Bear, Polar Bear, What Do You Hear?"  The Bill Martin Jr.  Award, which is the Kansas state award for best children's picture book, was established in his honor in 1996.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Polar Bear (British band) | Polar Bear is a British experimental jazz band led by drummer Seb Rochford with Pete Wareham and Mark Lockheart on tenor saxophone, Tom Herbert on double bass and Leafcutter John on electronics and occasionally guitar or mandolin.
+Same as You | Same as You is the sixth studio album by British jazz band Polar Bear.  It was released on 30 March 2015 by The Leaf Label.
+Device (Device album) | Device is the eponymous debut album from American industrial metal band Device, featuring David Draiman of Disturbed and former Filter guitarist Geno Lenardo.  It was released on April 9, 2013, with their first single, "Vilify", out on digital download in February 19, 2013.  Their second single, "You Think You Know", was released in June 11, 2013.
+You &amp; I (One Direction song) | "You & I" is a song recorded by boy-band One Direction, taken from their third studio album "Midnight Memories" (2013).  It was written by Julian Bunetta, John Ryan and Jamie Scott, with production being handled by Julian Bunetta and John Ryan.  "You & I" was released as the album's fourth and final single, first impacting US contemporary hit radio on 15 April 2014 by Columbia Records and later being released in Europe on 23 May 2014.  An EP containing a remix created by band member Liam Payne was also released.
+Waiter: &quot;You Vultures!&quot; | Waiter: "You Vultures!"  is the debut full length album by the Alaskan experimental rock band Portugal.  The Man.  It is lead singer John Gourley's first album released after leaving the band Anatomy of a Ghost.  It is the band's only album before 2009's "The Satanic Satanist" to use a heavy amount of electronic drums and synthesizers.
+Back to You (Louis Tomlinson song) | "Back to You" is a song recorded by English singer and songwriter Louis Tomlinson, featuring American singer and songwriter Bebe Rexha and British DJ and Producer Digital Farm Animals.  It was written by Tomlinson, Digital Farm Animals, Pablo Bowman, Richard Boardman, and Sarah Blanchard, while the production was handled by Digital Farm Animals and Tommy Danvers.  The single was released on 21 July 2017; its accompanying music video premiered the same date.
+Who You Are (Jessie J song) | "Who You Are" is a song by British singer and songwriter Jessie J, released as the sixth overall single from her debut studio album of the same name.  The song was written by Jessica Cornish (Jessie J), Toby Gad and Shelly Peiken, while the production was handled by Gad.  The single was released via digital download on 13 November 2011.  The song's lyrics address the importance of staying true to one's identity.  According to Cornish, she wrote the song after a three-month lonely trip.  The song received very positive reviews from music critics, who complimented her strong vocals in the song and considered a highlight on the album.
+Same as You | Same as You is the sixth studio album by British jazz band Polar Bear.  It was released on 30 March 2015 by The Leaf Label.
+Bill Martin Jr. | William Ivan "Bill" Martin Jr. (March 20, 1916 – August 11, 2004) was an American educator, publishing executive, and author of more than 300 children's books including "The Sounds of Mystery," "Chicka Chicka Boom Boom", (co-authored with John Archambault) "Brown Bear, Brown Bear, What Do You See? ", "Baby Bear, Baby Bear, What Do You See?" , "Panda Bear, Panda Bear, What Do You See? ", and "Polar Bear, Polar Bear, What Do You Hear?"  The Bill Martin Jr.  Award, which is the Kansas state award for best children's picture book, was established in his honor in 1996.
+Polar Bear, Polar Bear, What Do You Hear? | Polar Bear, Polar Bear, What Do You Hear?  is a children's picture book, published in 1991, written and illustrated by Bill Martin, Jr. and Eric Carle.
+Polar Bear (British band) | Polar Bear is a British experimental jazz band led by drummer Seb Rochford with Pete Wareham and Mark Lockheart on tenor saxophone, Tom Herbert on double bass and Leafcutter John on electronics and occasionally guitar or mandolin.
+Polar Bear (album) | Polar Bear is the eponymous third album by Sebastian Rochford's British jazz band Polar Bear.
+360 (rapper) | Matthew James Colwell (born 12 July 1986), better known by his stage name 360, is an Australian hip hop recording artist.  He has released three studio albums: "What You See Is What You Get" (2008); "Falling & Flying" (2011), which peaked at No. 4 on the ARIA Albums Chart and was certified platinum; and "Utopia" (2014).  360's second album provided four charting singles, including "Boys like You", which peaked at No. 3 on the ARIA Singles Chart and was certified 4× platinum.  At the ARIA Music Awards of 2012, he received six nominations and won the 'Breakthrough Artist – Release' award for "Falling & Flying", while Styalz Fuego won the ARIA 'Producer Of The Year' Artisan award for the same album.
+Give You What You Like | "Give You What You Like" is a song recorded by Canadian singer-songwriter Avril Lavigne from her self-titled fifth studio album released in 2013.  It was written by Lavigne with her husband Chad Kroeger and David Hodges.  The song has been praised by critics for expanding Lavigne's musical diversity and exposing her to new genres of music and is the sixth track on the album.  Musically, "Give You What You Like" is a folk-pop song with lyrics that describe combating loneliness through swapping sex.
+Same as You | Same as You is the sixth studio album by British jazz band Polar Bear.  It was released on 30 March 2015 by The Leaf Label.
+Polar Bear (album) | Polar Bear is the eponymous third album by Sebastian Rochford's British jazz band Polar Bear.
+Polar Bear (British band) | Polar Bear is a British experimental jazz band led by drummer Seb Rochford with Pete Wareham and Mark Lockheart on tenor saxophone, Tom Herbert on double bass and Leafcutter John on electronics and occasionally guitar or mandolin.
+Thank You, Happy Birthday | Thank You Happy Birthday is the second studio album by American rock band Cage the Elephant.  It was released on January 11, 2011 to positive critical reception.  The album was produced by Jay Joyce, who worked in the same capacity on the band's eponymous debut album.
+Polar Bear, Polar Bear, What Do You Hear? | Polar Bear, Polar Bear, What Do You Hear?  is a children's picture book, published in 1991, written and illustrated by Bill Martin, Jr. and Eric Carle.
+Bitches Brew | Bitches Brew is a studio double album by American jazz musician Miles Davis, released on March 30, 1970, on Columbia Records.  The album continued his experimentation with electric instruments previously featured on his critically acclaimed "In a Silent Way" album.  With the use of these instruments, such as the electric piano and guitar, Davis rejected traditional jazz rhythms in favor of a looser, rock-influenced improvisational style.  Upon release, it received a mixed response, due to the album's unconventional style and experimental sound, but became Davis's first gold record; it sold more than half a million copies.
+Peepers (album) | Peepers is the fourth album by Sebastian Rochford's British jazz band Polar Bear.
+The Seeds (album) | The Seeds is the debut studio album by American garage rock band The Seeds.  It was released in April 1966 through GNP Crescendo Records and produced by Marcus Tybalt and Sky Saxon.  After the release of two singles for "Can't Seem to Make You Mine" and "Pushin' Too Hard" in 1965, the album was released and charted in the United States where it peaked at No. 132 on the "Billboard" Top LPs & Tapes chart.  Modern reception of the album is positive, with critics noting the album influence on punk rock a decade later.
+Royal and Ancient Polar Bear Society | The Royal and Ancient Polar Bear Society (Norwegian "Isbjørnklubben") locates a small exhibition in the town of Hammerfest in Finnmark, Norway.  The significance of the polar bear is that this animal is the town's mascot and heraldic crest.
+Bill Martin Jr. | William Ivan "Bill" Martin Jr. (March 20, 1916 – August 11, 2004) was an American educator, publishing executive, and author of more than 300 children's books including "The Sounds of Mystery," "Chicka Chicka Boom Boom", (co-authored with John Archambault) "Brown Bear, Brown Bear, What Do You See? ", "Baby Bear, Baby Bear, What Do You See?" , "Panda Bear, Panda Bear, What Do You See? ", and "Polar Bear, Polar Bear, What Do You Hear?"  The Bill Martin Jr.  Award, which is the Kansas state award for best children's picture book, was established in his honor in 1996.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step UNKNOWN: evidence: In hop 1 reasoning, the solver analyzes multiple irrelevant passages at length: 'All other passages [3-7] are irrelevant to the claim as they discuss unrelated artists and songs.' Passages include Device (Device album), You & I (One Direction song), Waiter: 'You Vultures!', Back to You (Louis Tomlinson song), and Who You Are (Jessie J song). These passages are clearly irrelevant yet were included 
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Summary_1 states: 'The characterization of "Same as You" as a "seminal album" cannot be verified from the passages. Additional information would be needed about: the critical reception of the album "Same as You" by Polar Bear, its influence on British jazz and experimental music, and any formal recognition or awards it received.' This describes categories of missing information but does not name a
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: The hop 3 query is formulated as unstructured keyword soup: 'seminal album "Same as You" Polar Bear critical reception influence impact experimental jazz significance'. This is a collection of keywords without clear structure or target entity, rather than a well-formed retrieval query that would enable precise document matching.
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: The hop 2 query was 'Polar Bear band Same as You album Leafcutter John electronics' and the hop 3 query was 'seminal album "Same as You" Polar Bear critical reception influence impact experimental jazz significance'. Both queries target the same core entities (Polar Bear band, Same as You album) and hop 3 retrieval returned largely duplicate documents: 'Same as You' appears in both hop 2 and hop 3
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: (i) Summary_1 names the missing gap: 'Critical reviews and assessments of the album "Same as You" by Polar Bear' and 'Any accolades, awards, or formal designations of this album as seminal or important in music history.' (ii) The hop 3 query targets this: 'seminal album "Same as You" Polar Bear critical reception influence impact experimental jazz significance'. However, no passages with critical 
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

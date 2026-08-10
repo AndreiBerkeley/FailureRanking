@@ -1,0 +1,432 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Arthur Hiller Penn was born before the director of "We, the Normal".
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.
+David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.
+Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.
+Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.
+Arthur Hiller (footballer) | Arthur Hiller (3 October 1881 – 14 August 1941) was a German footballer who played club football for 1.  FC Pforzheim, as well as at international level for Germany, where he became the national side's first captain.  His nephew, Marius Hiller, also played football, representing both Germany and Argentina at international level.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify the factual accuracy of a claim by analyzing provided passages and producing a summary that evaluates the claim's correctness.
+        
+        ## Task Overview
+        You will receive:
+        1. A `claim` - a statement to be verified
+        2. A `passages` - a list of text passages that may contain relevant information
+        
+        You must produce:
+        1. A `summary` - an evaluation of whether the claim is supported, contradicted, or cannot be verified by the passages
+        
+        ## Critical Requirements for Evidence Retrieval
+        
+        **IMPORTANT**: Your analysis must ensure that ALL necessary evidence documents are retrievable through a three-hop retrieval process. This means:
+        
+        1. **Identify ALL entities mentioned in the claim** - Every person, organization, event, concept, or object that is referenced
+        2. **For each entity, determine if passages provide information about it** - Track which entities have supporting evidence
+        3. **Pay special attention to implicit entities** - If the claim mentions "the vocalist on [Album X]" or "the developer of [Technique Y]", you MUST identify WHO that person is from the passages, even if they're not named in the claim directly
+        4. **Ensure chain of evidence is complete** - If the claim connects multiple entities (e.g., Person A → Role B → Entity C), verify that passages provide information for each link in the chain
+        
+        ## Evidence Retrieval Strategy
+        
+        When analyzing claims with implicit references:
+        - If the claim says "the [role] of [thing]", identify the specific person/entity from the passages
+        - Example: "The vocalist on Bone Against Steel" requires identifying that Max Carl is the vocalist, then retrieving evidence about Max Carl
+        - Example: "The developer of wet-folding technique" requires identifying Akira Yoshizawa as the developer, then retrieving evidence about Yoshizawa
+        
+        Track required evidence documents by:
+        1. Listing all entities explicitly named in the claim
+        2. Listing all entities implicitly referenced (roles, positions, relationships)
+        3. Verifying that passages exist for each entity
+        4. If any entity lacks sufficient passage evidence, note this as a missing required evidence document
+        
+        ## Summary Guidelines
+        
+        Your summary should:
+        - Clearly state whether the claim is accurate, partially accurate, or inaccurate
+        - Cite specific passages to support your evaluation
+        - Identify any factual errors or misattributions in the claim
+        - Note if there is insufficient information to verify parts of the claim
+        - Highlight any conflation of different entities or concepts
+        - Be concise but comprehensive in addressing all parts of the claim
+[STEP 4] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director of "We, the Normal".
+
+[[ ## passages ## ]]
+[1] «Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).»
+[2] «We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love»
+[3] «Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.»
+[4] «David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.»
+[5] «Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.»
+[6] «Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.»
+[7] «Arthur Hiller (footballer) | Arthur Hiller (3 October 1881 – 14 August 1941) was a German footballer who played club football for 1.  FC Pforzheim, as well as at international level for Germany, where he became the national side's first captain.  His nephew, Marius Hiller, also played football, representing both Germany and Argentina at international level.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze this claim step by step.
+
+The claim states: "Arthur Hiller Penn was born before the director of 'We, the Normal'."
+
+**Step 1: Identify all entities in the claim**
+- Arthur Hiller Penn (explicitly named)
+- The director of "We, the Normal" (implicitly referenced)
+
+**Step 2: Find information about Arthur Hiller Penn**
+From passage [1]: Arthur Hiller Penn was born September 27, 1922.
+This is confirmed in passage [3]: Arthur Penn (1922 - 2010) was an American film and theatre director.
+
+**Step 3: Identify the director of "We, the Normal"**
+This is the critical issue. The passages mention "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love" (passage [2]), but this is NOT the same as "We, the Normal." The passage doesn't provide information about a film/work called "We, the Normal" or its director.
+
+**Step 4: Check for other "Arthur Hiller" references**
+Passage [5] mentions Arthur Hiller (November 22, 1923 – August 17, 2016), a Canadian-American television and film director. However, the claim specifically says "Arthur Hiller Penn," not just "Arthur Hiller."
+
+**Step 5: Assess evidence completeness**
+- Arthur Hiller Penn's birth date: FOUND (September 27, 1922)
+- Director of "We, the Normal": NOT FOUND in the passages
+- The passages do not contain information about "We, the Normal" or its director
+
+The passages fail to provide sufficient evidence to verify the claim because they do not identify who directed "We, the Normal" or provide that work's details.
+
+[[ ## summary ## ]]
+
+The claim cannot be verified with the provided passages. While passage [1] confirms that Arthur Hiller Penn was born on September 27, 1922, the passages contain no information about a film or work titled "We, the Normal" or its director. Passage [2] references "We're All Normal and We Want Our Freedom," which appears to be a different work (a tribute to Arthur Lee and Love). Without identifying the director of "We, the Normal" and their birth date, it is impossible to determine whether Arthur Hiller Penn was born before or after that director. This represents a missing required evidence document in the chain of verification.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director of "We, the Normal".
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified with the provided passages. While passage [1] confirms that Arthur Hiller Penn was born on September 27, 1922, the passages contain no information about a film or work titled "We, the Normal" or its director. Passage [2] references "We're All Normal and We Want Our Freedom," which appears to be a different work (a tribute to Arthur Lee and Love). Without identifying the director of "We, the Normal" and their birth date, it is impossible to determine whether Arthur Hiller Penn was born before or after that director. This represents a missing required evidence document in the chain of verification.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim requires verification of two key facts: (1) Arthur Hiller Penn's birth date, and (2) the birth date of the director of "We, the Normal". The summary confirms that Arthur Hiller Penn was born on September 27, 1922, but indicates that no information about "We, the Normal" or its director was found in the provided passages. To verify this claim, we need to identify who directed "We, the Normal" and determine their birth date, then compare it with Arthur Hiller Penn's birth date.
+
+[[ ## query ## ]]
+Who is the director of "We, the Normal" and what is their birth date?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.
+R. S. Moyes | R S Moyes (dates of birth and death unknown) was a director of Crystal Palace who served also as manager in 1936.
+Muggeridge (Surrey cricketer) | Muggeridge was a noted English cricketer of the mid-18th century who played for the famous Chertsey Cricket Club and for Surrey.  His dates of birth and death and his first name are unknown.  He was principally a bowler but we do not know his pace or type.
+Identity Performance | In everyday interactions, the body serves as a critical site of identity performance.  In conveying who we are to other people, we use our bodies to project information about ourselves.  This is done through movement, clothes, speech, and facial expressions.  What we put forward is our best effort at what we want to say about who we are.  Yet while we intend to convey one impression, our performance is not always interpreted as we might expect.  Through learning to make sense of others’ responses to our behavior, we can assess how well we have conveyed what we intended.  We can then alter our performance accordingly.  This process of performance, interpretation, and adjustment is what Erving Goffman calls impression management.  Impression management is a part of a larger process where people seek to define a situation through their behavior.  People seek to define social situations by using contextual cues from the environment around them.  Social norms emerge from situational definitions, as people learn to read cues from the environment and the people present to understand what is appropriate behavior.
+We, the Normal | We, the Normal is a 1987 video by American video artist George Kuchar.  "We, the Normal" records Kuchar's trip to Boulder, Colorado.  In the video, Kuchar addresses humanity, nature, society.
+Historic Barns of Connecticut | Historic Barns of Connecticut is a Connecticut Trust for Historic Preservation project dedicated to the documention and preservation of barns.  The program includes a grant program and a database.  The project began listing barns in 2004.  By June 2011 8,200 barns had been documented in Connecticut, said project director Todd Levine.  "The first step in preservation is documentation, so we need to know what we are losing to know what we need to do to protect them".
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director of "We, the Normal".
+
+[[ ## context ## ]]
+The claim cannot be verified with the provided passages. While passage [1] confirms that Arthur Hiller Penn was born on September 27, 1922, the passages contain no information about a film or work titled "We, the Normal" or its director. Passage [2] references "We're All Normal and We Want Our Freedom," which appears to be a different work (a tribute to Arthur Lee and Love). Without identifying the director of "We, the Normal" and their birth date, it is impossible to determine whether Arthur Hiller Penn was born before or after that director. This represents a missing required evidence document in the chain of verification.
+
+[[ ## passages ## ]]
+[1] «We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.»
+[2] «R. S. Moyes | R S Moyes (dates of birth and death unknown) was a director of Crystal Palace who served also as manager in 1936.»
+[3] «Muggeridge (Surrey cricketer) | Muggeridge was a noted English cricketer of the mid-18th century who played for the famous Chertsey Cricket Club and for Surrey.  His dates of birth and death and his first name are unknown.  He was principally a bowler but we do not know his pace or type.»
+[4] «Identity Performance | In everyday interactions, the body serves as a critical site of identity performance.  In conveying who we are to other people, we use our bodies to project information about ourselves.  This is done through movement, clothes, speech, and facial expressions.  What we put forward is our best effort at what we want to say about who we are.  Yet while we intend to convey one impression, our performance is not always interpreted as we might expect.  Through learning to make sense of others’ responses to our behavior, we can assess how well we have conveyed what we intended.  We can then alter our performance accordingly.  This process of performance, interpretation, and adjustment is what Erving Goffman calls impression management.  Impression management is a part of a larger process where people seek to define a situation through their behavior.  People seek to define social situations by using contextual cues from the environment around them.  Social norms emerge from situational definitions, as people learn to read cues from the environment and the people present to understand what is appropriate behavior.»
+[5] «We, the Normal | We, the Normal is a 1987 video by American video artist George Kuchar.  "We, the Normal" records Kuchar's trip to Boulder, Colorado.  In the video, Kuchar addresses humanity, nature, society.»
+[6] «Historic Barns of Connecticut | Historic Barns of Connecticut is a Connecticut Trust for Historic Preservation project dedicated to the documention and preservation of barns.  The program includes a grant program and a database.  The project began listing barns in 2004.  By June 2011 8,200 barns had been documented in Connecticut, said project director Todd Levine.  "The first step in preservation is documentation, so we need to know what we are losing to know what we need to do to protect them".»
+[7] «We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim states that "Arthur Hiller Penn was born before the director of 'We, the Normal'."
+
+From passage [5], we learn that "We, the Normal" is a 1987 video by American video artist George Kuchar. This identifies the director as George Kuchar.
+
+However, the passages provided do not contain George Kuchar's birth date. Passage [1] confirms Arthur Hiller Penn (also known as Arthur Penn) was born on September 27, 1922 (as referenced in the context), but there is no information about George Kuchar's birth date in any of the passages.
+
+To verify the claim, we would need to know:
+1. Arthur Hiller Penn's birth date: September 27, 1922 (confirmed)
+2. George Kuchar's birth date: NOT PROVIDED in the passages
+
+Without George Kuchar's birth date, it is impossible to determine whether Arthur Hiller Penn was born before or after him, making the claim unverifiable based on the provided passages.
+
+[[ ## summary ## ]]
+The claim cannot be verified. While passage [5] identifies George Kuchar as the director of "We, the Normal" (1987), the passages do not provide George Kuchar's birth date. Arthur Hiller Penn's birth date of September 27, 1922 is known from external context, but without Kuchar's birth date, the comparison cannot be made. The required evidence (George Kuchar's birth date) is missing from the provided passages.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve the key evidence documents needed to verify the claim. The query should be designed to work with a retrieval system that finds Wikipedia articles or similar documents based on entity names and key phrases.
+        
+        ## Key Instructions:
+        
+        1. **Identify the core entities in the claim**: Extract the main subjects, people, places, organizations, events, or concepts mentioned in the claim. These are typically proper nouns.
+        
+        2. **Focus on entity names rather than questions**: The retrieval system works best with specific entity names and key phrases. Instead of asking full questions, structure your query around the specific entities that need to be retrieved as documents.
+        
+        3. **Use simple, direct entity references**: For each key entity in the claim, use its most common or official name. For example:
+           - For a person, use their full name (e.g., "John Woo", "Scott Kelly", "Michael Fincke")
+           - For a specific mission or event, use its official designation (e.g., "Soyuz TMA-4")
+           - For dog breeds, use the breed name (e.g., "Taigan", "Nureongi", "Korean Jindo")
+           - For films, use the film title (e.g., "Vibes film")
+        
+        4. **Include all entities mentioned in the claim**: Even if the summaries suggest some parts are verified or unverified, include queries for ALL key entities in the claim to ensure comprehensive retrieval.
+        
+        5. **Consider related entities**: If the claim compares two things or mentions records being broken, include both the record holder and the person who broke the record as separate entities.
+        
+        6. **Avoid complex question formats**: Instead of "Did John Woo direct films in the 1980s?", prefer a format that targets the entity directly like "John Woo" or lists multiple entities.
+        
+        7. **Structure for multi-hop retrieval**: The query should enable a three-hop retrieval process where documents about related entities can be discovered. This means including all primary entities explicitly.
+        
+        ## Format:
+        Provide a `reasoning` section explaining what entities need to be retrieved and why, then provide a `query` that lists the key entities or uses simple phrases to target those entities.
+        
+        ## Examples of Good Query Structures:
+        - List format: "Entity1, Entity2, Entity3"
+        - Simple phrase format: "Entity1 Entity2 related topic"
+        - Avoid: Long questions with multiple clauses
+[STEP 14] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director of "We, the Normal".
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified with the provided passages. While passage [1] confirms that Arthur Hiller Penn was born on September 27, 1922, the passages contain no information about a film or work titled "We, the Normal" or its director. Passage [2] references "We're All Normal and We Want Our Freedom," which appears to be a different work (a tribute to Arthur Lee and Love). Without identifying the director of "We, the Normal" and their birth date, it is impossible to determine whether Arthur Hiller Penn was born before or after that director. This represents a missing required evidence document in the chain of verification.
+
+[[ ## summary_2 ## ]]
+The claim cannot be verified. While passage [5] identifies George Kuchar as the director of "We, the Normal" (1987), the passages do not provide George Kuchar's birth date. Arthur Hiller Penn's birth date of September 27, 1922 is known from external context, but without Kuchar's birth date, the comparison cannot be made. The required evidence (George Kuchar's birth date) is missing from the provided passages.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The claim requires verifying two key pieces of information:
+1. Arthur Hiller Penn's birth date (already confirmed as September 27, 1922)
+2. The director of "We, the Normal" and their birth date
+
+From summary_2, we know that George Kuchar directed "We, the Normal" (1987). However, George Kuchar's birth date is missing from the provided passages. To verify the claim, we need to retrieve:
+- Information about George Kuchar to find his birth date
+- Confirmation about "We, the Normal" and its director
+
+The core entities that need to be retrieved are: Arthur Hiller Penn (to confirm his birth details), George Kuchar (to find his birth date), and "We, the Normal" (to confirm the film and director relationship).
+
+[[ ## query ## ]]
+George Kuchar, Arthur Hiller Penn, We the Normal film
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+We, the Normal | We, the Normal is a 1987 video by American video artist George Kuchar.  "We, the Normal" records Kuchar's trip to Boulder, Colorado.  In the video, Kuchar addresses humanity, nature, society.
+Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).
+It Came from Kuchar | It Came from Kuchar is a 2009 documentary film about twin underground filmmakers George Kuchar and Mike Kuchar directed by Jennifer Kroot (a former student of George Kuchar at the San Francisco Art Institute) and produced by Tigerlily Films LLC.  The film includes commentary by John Waters, Christopher Coppola, Wayne Wang, B. Ruby Rich, Atom Egoyan, Guy Maddin, Bill Griffith, and Buck Henry.
+Hold Me While I'm Naked | Hold Me While I'm Naked, also known as Color Me Lurid, is a 1966 American underground short 16 mm film directed by George Kuchar.  It stars Kuchar, Donna Kerness, Stella Kuchar, and Andrea Lunin.  The most popular and acclaimed of Kuchar's filmography of over 200 films – it was voted 52nd in "Village Voice"'s Critics' Poll of the 100 Best Films of the 20th Century.
+George Kuchar | George Kuchar (August 31, 1942 – September 6, 2011) was an American underground film director and video artist, known for his "low-fi" aesthetic.
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+The Crazy World of Julius Vrooder | The Crazy World of Julius Vrooder is a 1974 film from Playboy Enterprises directed by Arthur Hiller and produced by Hugh Hefner.  This was the final film for actor George Marshall.
+Tobruk (1967 film) | Tobruk is a 1967 American war film starring Rock Hudson in his final film for Universal Pictures and George Peppard that was directed by Arthur Hiller.  The film was written by Leo Gordon (who also acted in the film) and released through Universal Pictures.
+The Careless Years | The Careless Years is a 1957 film from United Artists directed by Arthur Hiller and produced by Edward Lewis.  The film was the directorial debut for Hiller.  The film stars Dean Stockwell and Natalie Trundy in an early film appearance.
+The Hospital | The Hospital is a 1971 satirical film directed by Arthur Hiller.  It stars George C. Scott as Dr. Herbert Bock.  "The Hospital" was written by Paddy Chayefsky, who was awarded the 1972 Academy Award for Best Original Screenplay.  Chayefsky also narrates the film and was one of the producers; he had complete control over the casting and content of the film.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.
+David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.
+Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.
+Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.
+Arthur Hiller (footballer) | Arthur Hiller (3 October 1881 – 14 August 1941) was a German footballer who played club football for 1.  FC Pforzheim, as well as at international level for Germany, where he became the national side's first captain.  His nephew, Marius Hiller, also played football, representing both Germany and Argentina at international level.
+We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.
+R. S. Moyes | R S Moyes (dates of birth and death unknown) was a director of Crystal Palace who served also as manager in 1936.
+Muggeridge (Surrey cricketer) | Muggeridge was a noted English cricketer of the mid-18th century who played for the famous Chertsey Cricket Club and for Surrey.  His dates of birth and death and his first name are unknown.  He was principally a bowler but we do not know his pace or type.
+Identity Performance | In everyday interactions, the body serves as a critical site of identity performance.  In conveying who we are to other people, we use our bodies to project information about ourselves.  This is done through movement, clothes, speech, and facial expressions.  What we put forward is our best effort at what we want to say about who we are.  Yet while we intend to convey one impression, our performance is not always interpreted as we might expect.  Through learning to make sense of others’ responses to our behavior, we can assess how well we have conveyed what we intended.  We can then alter our performance accordingly.  This process of performance, interpretation, and adjustment is what Erving Goffman calls impression management.  Impression management is a part of a larger process where people seek to define a situation through their behavior.  People seek to define social situations by using contextual cues from the environment around them.  Social norms emerge from situational definitions, as people learn to read cues from the environment and the people present to understand what is appropriate behavior.
+We, the Normal | We, the Normal is a 1987 video by American video artist George Kuchar.  "We, the Normal" records Kuchar's trip to Boulder, Colorado.  In the video, Kuchar addresses humanity, nature, society.
+Historic Barns of Connecticut | Historic Barns of Connecticut is a Connecticut Trust for Historic Preservation project dedicated to the documention and preservation of barns.  The program includes a grant program and a database.  The project began listing barns in 2004.  By June 2011 8,200 barns had been documented in Connecticut, said project director Todd Levine.  "The first step in preservation is documentation, so we need to know what we are losing to know what we need to do to protect them".
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+We, the Normal | We, the Normal is a 1987 video by American video artist George Kuchar.  "We, the Normal" records Kuchar's trip to Boulder, Colorado.  In the video, Kuchar addresses humanity, nature, society.
+Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).
+It Came from Kuchar | It Came from Kuchar is a 2009 documentary film about twin underground filmmakers George Kuchar and Mike Kuchar directed by Jennifer Kroot (a former student of George Kuchar at the San Francisco Art Institute) and produced by Tigerlily Films LLC.  The film includes commentary by John Waters, Christopher Coppola, Wayne Wang, B. Ruby Rich, Atom Egoyan, Guy Maddin, Bill Griffith, and Buck Henry.
+Hold Me While I'm Naked | Hold Me While I'm Naked, also known as Color Me Lurid, is a 1966 American underground short 16 mm film directed by George Kuchar.  It stars Kuchar, Donna Kerness, Stella Kuchar, and Andrea Lunin.  The most popular and acclaimed of Kuchar's filmography of over 200 films – it was voted 52nd in "Village Voice"'s Critics' Poll of the 100 Best Films of the 20th Century.
+George Kuchar | George Kuchar (August 31, 1942 – September 6, 2011) was an American underground film director and video artist, known for his "low-fi" aesthetic.
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+The Crazy World of Julius Vrooder | The Crazy World of Julius Vrooder is a 1974 film from Playboy Enterprises directed by Arthur Hiller and produced by Hugh Hefner.  This was the final film for actor George Marshall.
+Tobruk (1967 film) | Tobruk is a 1967 American war film starring Rock Hudson in his final film for Universal Pictures and George Peppard that was directed by Arthur Hiller.  The film was written by Leo Gordon (who also acted in the film) and released through Universal Pictures.
+The Careless Years | The Careless Years is a 1957 film from United Artists directed by Arthur Hiller and produced by Edward Lewis.  The film was the directorial debut for Hiller.  The film stars Dean Stockwell and Natalie Trundy in an early film appearance.
+The Hospital | The Hospital is a 1971 satirical film directed by Arthur Hiller.  It stars George C. Scott as Dr. Herbert Bock.  "The Hospital" was written by Paddy Chayefsky, who was awarded the 1972 Academy Award for Best Original Screenplay.  Chayefsky also narrates the film and was one of the producers; he had complete control over the casting and content of the film.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: In summary_2, the solver states 'the passages do not provide George Kuchar's birth date' and 'without Kuchar's birth date, the comparison cannot be made.' However, in hop 3 retrieval, passage about 'George Kuchar' explicitly states: 'George Kuchar (August 31, 1942 – September 6, 2011) was an American underground film director and video artist.' The birth date August 31, 1942 was present in the ret
+- code C.7 (Entity_Coreference_Error), anchored near step UNKNOWN: evidence: The claim references 'Arthur Hiller Penn' while passages distinguish between 'Arthur Penn' (Arthur Hiller Penn, born September 27, 1922) and 'Arthur Hiller' (born November 22, 1923). The solver in hop 1 correctly identifies Arthur Hiller Penn but the presence of both entities 'Arthur Penn' and 'Arthur Hiller' in the passages, along with mentions of Arthur Hiller directing various films in hop 3, c
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

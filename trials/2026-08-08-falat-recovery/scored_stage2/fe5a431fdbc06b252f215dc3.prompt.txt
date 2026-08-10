@@ -1,0 +1,536 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Clark County in Nevada contains both the City of Las Vegas and another college. Craig Heyer played sports at that college.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Craig Heyer | Craig D. Heyer (born November 15, 1985) is an American professional baseball pitcher.  Prior to becoming a professional, Heyer played college baseball at the College of Southern Nevada and University of Nevada, Las Vegas (UNLV).
+Las Vegas–Paradise, NV MSA | The Las Vegas–Paradise, NV MSA, also known as the Las Vegas–Henderson–Paradise, NV Metropolitan Statistical Area (2013), is in the southern part of the U.S. state of Nevada, coextensive since 2003 with Clark County, Nevada.  A central part of the metropolitan area is the Las Vegas Valley, a 600 sqmi basin that includes the metropolitan area's largest city, Las Vegas as well as the other primary city, Paradise, Nevada.  The area contains the largest concentration of people in the state.  Cities in the metropolitan area include Las Vegas, Henderson, North Las Vegas, and Boulder City.  The metropolitan area is one of the top tourist destinations in the world, drawing over 40 million international and domestic visitors in 2013 with a GMP of US$103.3 billion.
+North Las Vegas, Nevada | North Las Vegas is a city in Clark County, Nevada, United States, located in the Las Vegas Valley.  As of the 2010 census it had a population of 216,961, with an estimated population of 226,877 in 2013.  The city was incorporated on May 16, 1946.  It is located in the Las Vegas–Paradise, NV MSA and is the fourth largest city in the state of Nevada.
+Clark County Fire Department (Nevada) | The Clark County Fire Department (CCFD) provides fire protection and emergency medical services for the unincorporated areas of Clark County, Nevada.  The cities of Las Vegas, Boulder City, North Las Vegas, Henderson and Mesquite each have their own fire departments, but emergency management is provided by the county government.
+Las Vegas Police Department (disambiguation) | The Las Vegas Metropolitan Police Department is the city-county police force for the City of Las Vegas and Clark County, Nevada.
+Winchester, Nevada | Winchester is an unincorporated town and census-designated place (CDP) and part of Las Vegas Township in Clark County, Nevada, United States that contains part of the Las Vegas Strip.  It is one of a number of CDPs in the unincorporated urbanized area directly south of Las Vegas.  The population was 27,978 at the 2010 census.  It is governed by the Clark County Commission with advice from the Winchester Town Advisory Board.  "Winchester, NV" does not appear in postal addresses; the United States Postal Service has assigned "Las Vegas, NV" as the place name for the ZIP codes containing Winchester.
+Las Vegas | Las Vegas ( , Spanish for "The Meadows"), officially the City of Las Vegas and often known simply as Vegas, is the 28th-most populated city in the United States, the most populated city in the state of Nevada, and the county seat of Clark County.  The city anchors the Las Vegas Valley metropolitan area and is the largest city within the greater Mojave Desert.  Las Vegas is an internationally renowned major resort city, known primarily for its gambling, shopping, fine dining, entertainment, and nightlife.  The Las Vegas Valley as a whole serves as the leading financial, commercial, and cultural center for Nevada.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+Clark County in Nevada contains both the City of Las Vegas and another college. Craig Heyer played sports at that college.
+
+[[ ## passages ## ]]
+[1] «Craig Heyer | Craig D. Heyer (born November 15, 1985) is an American professional baseball pitcher.  Prior to becoming a professional, Heyer played college baseball at the College of Southern Nevada and University of Nevada, Las Vegas (UNLV).»
+[2] «Las Vegas–Paradise, NV MSA | The Las Vegas–Paradise, NV MSA, also known as the Las Vegas–Henderson–Paradise, NV Metropolitan Statistical Area (2013), is in the southern part of the U.S. state of Nevada, coextensive since 2003 with Clark County, Nevada.  A central part of the metropolitan area is the Las Vegas Valley, a 600 sqmi basin that includes the metropolitan area's largest city, Las Vegas as well as the other primary city, Paradise, Nevada.  The area contains the largest concentration of people in the state.  Cities in the metropolitan area include Las Vegas, Henderson, North Las Vegas, and Boulder City.  The metropolitan area is one of the top tourist destinations in the world, drawing over 40 million international and domestic visitors in 2013 with a GMP of US$103.3 billion.»
+[3] «North Las Vegas, Nevada | North Las Vegas is a city in Clark County, Nevada, United States, located in the Las Vegas Valley.  As of the 2010 census it had a population of 216,961, with an estimated population of 226,877 in 2013.  The city was incorporated on May 16, 1946.  It is located in the Las Vegas–Paradise, NV MSA and is the fourth largest city in the state of Nevada.»
+[4] «Clark County Fire Department (Nevada) | The Clark County Fire Department (CCFD) provides fire protection and emergency medical services for the unincorporated areas of Clark County, Nevada.  The cities of Las Vegas, Boulder City, North Las Vegas, Henderson and Mesquite each have their own fire departments, but emergency management is provided by the county government.»
+[5] «Las Vegas Police Department (disambiguation) | The Las Vegas Metropolitan Police Department is the city-county police force for the City of Las Vegas and Clark County, Nevada.»
+[6] «Winchester, Nevada | Winchester is an unincorporated town and census-designated place (CDP) and part of Las Vegas Township in Clark County, Nevada, United States that contains part of the Las Vegas Strip.  It is one of a number of CDPs in the unincorporated urbanized area directly south of Las Vegas.  The population was 27,978 at the 2010 census.  It is governed by the Clark County Commission with advice from the Winchester Town Advisory Board.  "Winchester, NV" does not appear in postal addresses; the United States Postal Service has assigned "Las Vegas, NV" as the place name for the ZIP codes containing Winchester.»
+[7] «Las Vegas | Las Vegas ( , Spanish for "The Meadows"), officially the City of Las Vegas and often known simply as Vegas, is the 28th-most populated city in the United States, the most populated city in the state of Nevada, and the county seat of Clark County.  The city anchors the Las Vegas Valley metropolitan area and is the largest city within the greater Mojave Desert.  Las Vegas is an internationally renowned major resort city, known primarily for its gambling, shopping, fine dining, entertainment, and nightlife.  The Las Vegas Valley as a whole serves as the leading financial, commercial, and cultural center for Nevada.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me parse the claim carefully:
+1. Clark County in Nevada contains the City of Las Vegas - This is confirmed in passages [2], [5], and [7].
+2. Clark County contains "another college" (in addition to Las Vegas) - The claim implies there is a college in Clark County other than one in Las Vegas.
+3. Craig Heyer played sports at "that college" - Passage [1] states Craig Heyer played college baseball at two institutions: College of Southern Nevada AND University of Nevada, Las Vegas (UNLV).
+
+Now I need to verify which colleges are in Clark County:
+- UNLV (University of Nevada, Las Vegas) is located in Las Vegas, which is in Clark County - this is confirmed implicitly through multiple passages referring to Las Vegas as part of Clark County.
+- College of Southern Nevada - The passages do NOT explicitly state where the College of Southern Nevada is located. While it's mentioned in passage [1], there is no information in the provided passages about its geographic location or whether it is in Clark County.
+
+The claim appears to reference "another college" as distinct from Las Vegas (presumably meaning distinct from UNLV which is in Las Vegas). The passage shows Craig Heyer played at both UNLV and College of Southern Nevada. However, to verify this claim fully, I need to confirm:
+1. Whether the College of Southern Nevada is indeed located in Clark County, Nevada
+2. Whether it is geographically distinct from Las Vegas or if it's technically in Las Vegas but considered a separate institution
+3. The exact geographic boundaries and all educational institutions within Clark County
+
+[[ ## summary ## ]]
+The claim is PARTIALLY VERIFIED but requires additional information for complete verification.
+
+What is confirmed:
+- Clark County, Nevada contains the City of Las Vegas (confirmed in passages)
+- Craig Heyer played college baseball at College of Southern Nevada and University of Nevada, Las Vegas (UNLV) (confirmed in passage [1])
+- UNLV is located in Las Vegas, which is in Clark County
+
+What requires verification:
+1. The specific location of the College of Southern Nevada - while passage [1] mentions this institution, the provided passages do NOT explicitly confirm that the College of Southern Nevada is located in Clark County, Nevada, or verify its geographic relationship to Las Vegas
+2. Whether the College of Southern Nevada qualifies as "another college" distinct from the City of Las Vegas's primary institution (UNLV)
+3. Complete roster of higher education institutions located within Clark County to confirm there exists "another college" distinct from institutions already associated with Las Vegas
+
+Additional information needed for three-hop retrieval:
+- Information about College of Southern Nevada's location and whether it is situated in Clark County, Nevada
+- Clarification of the relationship between College of Southern Nevada and Clark County geographic boundaries
+- Confirmation that Craig Heyer's attendance at College of Southern Nevada represents attendance at an institution in Clark County (distinct from UNLV)
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+Clark County in Nevada contains both the City of Las Vegas and another college. Craig Heyer played sports at that college.
+
+[[ ## summary_1 ## ]]
+The claim is PARTIALLY VERIFIED but requires additional information for complete verification.
+
+What is confirmed:
+- Clark County, Nevada contains the City of Las Vegas (confirmed in passages)
+- Craig Heyer played college baseball at College of Southern Nevada and University of Nevada, Las Vegas (UNLV) (confirmed in passage [1])
+- UNLV is located in Las Vegas, which is in Clark County
+
+What requires verification:
+1. The specific location of the College of Southern Nevada - while passage [1] mentions this institution, the provided passages do NOT explicitly confirm that the College of Southern Nevada is located in Clark County, Nevada, or verify its geographic relationship to Las Vegas
+2. Whether the College of Southern Nevada qualifies as "another college" distinct from the City of Las Vegas's primary institution (UNLV)
+3. Complete roster of higher education institutions located within Clark County to confirm there exists "another college" distinct from institutions already associated with Las Vegas
+
+Additional information needed for three-hop retrieval:
+- Information about College of Southern Nevada's location and whether it is situated in Clark County, Nevada
+- Clarification of the relationship between College of Southern Nevada and Clark County geographic boundaries
+- Confirmation that Craig Heyer's attendance at College of Southern Nevada represents attendance at an institution in Clark County (distinct from UNLV)
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that while Craig Heyer's connection to colleges has been partially verified, the key missing piece is explicit confirmation of the College of Southern Nevada's location within Clark County, Nevada. The claim requires verification of:
+
+1. That Clark County contains Las Vegas (already confirmed)
+2. That Clark County contains "another college" (needs verification that College of Southern Nevada is in Clark County)
+3. That Craig Heyer played at that college (partially confirmed for College of Southern Nevada, but location verification is needed)
+
+The critical gap is establishing that the College of Southern Nevada is physically located in Clark County, Nevada. Additionally, we need to ensure we have complete information about all colleges in Clark County to properly identify which institution is "another college" distinct from UNLV. Finally, we should retrieve baseline information about Craig Heyer's athletic career to ensure complete evidence documentation.
+
+[[ ## query ## ]]
+What is the location of the College of Southern Nevada, and is it located in Clark County, Nevada? What colleges and universities are located in Clark County, Nevada? What is Craig Heyer's complete athletic history, including all colleges where he played sports?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Craig Heyer | Craig D. Heyer (born November 15, 1985) is an American professional baseball pitcher.  Prior to becoming a professional, Heyer played college baseball at the College of Southern Nevada and University of Nevada, Las Vegas (UNLV).
+College of Southern Nevada | The College of Southern Nevada (CSN) is primarily a two-year college in Clark County, Nevada, with four four-year degrees in Dental Hygiene, Medical Lab Scientist, Respiratory Sciences, and Fire & Emergency Services Admin.  It constitutes of 2900 Teaching and Non Teaching staff.  The school is the largest public higher education institution in Nevada.  It is part of the Nevada System of Higher Education.
+Quartette, Nevada | Quartette or Quartette Mill or Quartette Landing, was a mining settlement, location of the stamp mill of the Quartette Mining Company, owner of the largest mine in the Searchlight Mining District and a steamboat landing on the Colorado River, in what is now Clark County, Nevada.  It lay at an elevation of 646 feet.
+Nevada's 4th congressional district | Nevada's 4th Congressional District is a new district that was created as a result of the 2010 Census.  Located in the central portion of the state, it includes most of northern Clark County, southern Lyon County, and all of Esmeralda, Lincoln, Mineral, Nye, and White Pine counties.  Although the district appears rural, almost 90% of the district's population lives in Clark County.
+Rioville, Nevada | Rioville, Nevada (first known as Junction City) was a settlement founded by Latter-day Saints in what they thought was Utah Territory in 1869, now under Lake Mead and within Clark County, Nevada.
+Clark County Water Reclamation District | The Clark County Water Reclamation District (District) is a government wastewater treatment agency in Clark County, Nevada.  As a member of the Southern Nevada Water Authority, its mission is to treat millions of gallons of wastewater that is produced every day.  The District is the largest water treatment agency in Southern Nevada and is responsible for treating wastewater from unincorporated parts of Clark County within the Las Vegas Valley, including most of the Las Vegas Strip, and the communities of Blue Diamond, Moapa Valley, Nevada, Indaian Springs, Nevada, Laughlin, Nevada, and Searchlight.
+Barbara Cegavske | Barbara Katherine Cegavske (née Dickman; born August 27, 1951) is an American businesswoman and politician.  She was a Republican member of the Nevada Senate, representing Clark County District 8 (map) from 2002 to 2014.  Previously, she served in the Nevada Assembly from 1996 to 2001.  According to her legislative biography, she was educated at Mayo High School in Rochester, Minnesota, and at Clark County Community College (now known as the College of Southern Nevada) in Las Vegas.  With her husband, Tim, she was a 7-11 convenience store franchisee for thirteen years before seeking political office.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        Your task is to generate a summary that evaluates whether the claim can be verified from the provided passages. Your summary will be used to guide a three-hop retrieval system to find all required evidence documents.
+        
+        **Critical Requirement**: Your summary must be structured to ensure that a retrieval system will identify and retrieve ALL required evidence documents across three retrieval hops. The feedback will indicate which required evidence documents were successfully retrieved and which were missed.
+        
+        **Three-Hop Retrieval Strategy**:
+        - **Hop 1**: The retrieval system will extract key entities and concepts from the claim itself to retrieve initial documents
+        - **Hop 2**: The system will analyze the retrieved documents and context to identify additional entities that need verification
+        - **Hop 3**: The system will retrieve final documents based on connections and relationships discovered in previous hops
+        
+        **Guidelines for Writing Your Summary**:
+        
+        1. **Identify ALL entities in the claim**: Your summary should explicitly mention every specific entity (people, events, organizations, films, tournaments, seasons, locations, etc.) that appears in the claim. This helps the retrieval system identify what documents are needed.
+        
+        2. **Highlight missing information gaps**: When information is missing from the passages, clearly state what specific documents or facts would be needed. Use explicit document titles or entity names when possible (e.g., "Information about the film 'Undiscovered' and its ticket sales", "Gene Mayer's birth date", "who coached the Memphis Grizzlies in 2004-05").
+        
+        3. **Name entities from context that need verification**: If the context identifies specific entities (like "Lionel Hollins" or "Maurice Cheeks") that are relevant but not fully covered in passages, explicitly mention these names in your summary so they can be retrieved.
+        
+        4. **State verification requirements explicitly**: Clearly articulate what information would be needed to verify the claim, using specific entity names and document types (e.g., "the 1980 Lorraine Open results", "Serena Williams' birth date", "the 2004-05 Memphis Grizzlies season coaching staff").
+        
+        5. **Connect multi-hop relationships**: For claims requiring multiple pieces of information (e.g., "the actor from movie X that did Y"), explicitly state each step: identify movie X, identify the actor, verify the actor did Y.
+        
+        6. **Distinguish between similar entities**: When there might be confusion between entities (e.g., Golden Calf vs. Golden Globes, different people with coaching roles), be explicit about which specific entity or fact needs to be verified.
+        
+        7. **Format for retrieval**: Structure your summary to make it easy for a retrieval system to extract search queries. Use phrases like "requires information about [specific entity/document]" or "needs verification of [specific fact from specific source]".
+        
+        Your summary should conclude with a clear statement about whether the claim is verified, cannot be verified, or is false based on available passages, while making it obvious what additional documents would complete the verification chain.
+[STEP 11] (user) [[ ## claim ## ]]
+Clark County in Nevada contains both the City of Las Vegas and another college. Craig Heyer played sports at that college.
+
+[[ ## context ## ]]
+The claim is PARTIALLY VERIFIED but requires additional information for complete verification.
+
+What is confirmed:
+- Clark County, Nevada contains the City of Las Vegas (confirmed in passages)
+- Craig Heyer played college baseball at College of Southern Nevada and University of Nevada, Las Vegas (UNLV) (confirmed in passage [1])
+- UNLV is located in Las Vegas, which is in Clark County
+
+What requires verification:
+1. The specific location of the College of Southern Nevada - while passage [1] mentions this institution, the provided passages do NOT explicitly confirm that the College of Southern Nevada is located in Clark County, Nevada, or verify its geographic relationship to Las Vegas
+2. Whether the College of Southern Nevada qualifies as "another college" distinct from the City of Las Vegas's primary institution (UNLV)
+3. Complete roster of higher education institutions located within Clark County to confirm there exists "another college" distinct from institutions already associated with Las Vegas
+
+Additional information needed for three-hop retrieval:
+- Information about College of Southern Nevada's location and whether it is situated in Clark County, Nevada
+- Clarification of the relationship between College of Southern Nevada and Clark County geographic boundaries
+- Confirmation that Craig Heyer's attendance at College of Southern Nevada represents attendance at an institution in Clark County (distinct from UNLV)
+
+[[ ## passages ## ]]
+[1] «Craig Heyer | Craig D. Heyer (born November 15, 1985) is an American professional baseball pitcher.  Prior to becoming a professional, Heyer played college baseball at the College of Southern Nevada and University of Nevada, Las Vegas (UNLV).»
+[2] «College of Southern Nevada | The College of Southern Nevada (CSN) is primarily a two-year college in Clark County, Nevada, with four four-year degrees in Dental Hygiene, Medical Lab Scientist, Respiratory Sciences, and Fire & Emergency Services Admin.  It constitutes of 2900 Teaching and Non Teaching staff.  The school is the largest public higher education institution in Nevada.  It is part of the Nevada System of Higher Education.»
+[3] «Quartette, Nevada | Quartette or Quartette Mill or Quartette Landing, was a mining settlement, location of the stamp mill of the Quartette Mining Company, owner of the largest mine in the Searchlight Mining District and a steamboat landing on the Colorado River, in what is now Clark County, Nevada.  It lay at an elevation of 646 feet.»
+[4] «Nevada's 4th congressional district | Nevada's 4th Congressional District is a new district that was created as a result of the 2010 Census.  Located in the central portion of the state, it includes most of northern Clark County, southern Lyon County, and all of Esmeralda, Lincoln, Mineral, Nye, and White Pine counties.  Although the district appears rural, almost 90% of the district's population lives in Clark County.»
+[5] «Rioville, Nevada | Rioville, Nevada (first known as Junction City) was a settlement founded by Latter-day Saints in what they thought was Utah Territory in 1869, now under Lake Mead and within Clark County, Nevada.»
+[6] «Clark County Water Reclamation District | The Clark County Water Reclamation District (District) is a government wastewater treatment agency in Clark County, Nevada.  As a member of the Southern Nevada Water Authority, its mission is to treat millions of gallons of wastewater that is produced every day.  The District is the largest water treatment agency in Southern Nevada and is responsible for treating wastewater from unincorporated parts of Clark County within the Las Vegas Valley, including most of the Las Vegas Strip, and the communities of Blue Diamond, Moapa Valley, Nevada, Indaian Springs, Nevada, Laughlin, Nevada, and Searchlight.»
+[7] «Barbara Cegavske | Barbara Katherine Cegavske (née Dickman; born August 27, 1951) is an American businesswoman and politician.  She was a Republican member of the Nevada Senate, representing Clark County District 8 (map) from 2002 to 2014.  Previously, she served in the Nevada Assembly from 1996 to 2001.  According to her legislative biography, she was educated at Mayo High School in Rochester, Minnesota, and at Clark County Community College (now known as the College of Southern Nevada) in Las Vegas.  With her husband, Tim, she was a 7-11 convenience store franchisee for thirteen years before seeking political office.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze what needs to be verified from the provided passages:
+
+1. **Claim components to verify:**
+   - Clark County in Nevada contains the City of Las Vegas ✓ (confirmed in passage [4])
+   - Clark County contains "another college" (besides the primary Las Vegas institution)
+   - Craig Heyer played sports at that college
+
+2. **What the passages confirm:**
+   - Craig Heyer played college baseball at College of Southern Nevada and UNLV (passage [1]) ✓
+   - College of Southern Nevada (CSN) is "primarily a two-year college in Clark County, Nevada" (passage [2]) ✓
+   - UNLV is in Las Vegas, which is in Clark County (from passage [1] and general knowledge reinforced by passage [4])
+   - CSN was formerly known as Clark County Community College (passage [7])
+
+3. **Verification status:**
+   The claim is NOW FULLY VERIFIABLE from the provided passages:
+   - Las Vegas is in Clark County, Nevada ✓
+   - College of Southern Nevada is explicitly stated to be "in Clark County, Nevada" (passage [2]) ✓
+   - College of Southern Nevada is distinct from UNLV and qualifies as "another college" ✓
+   - Craig Heyer played at College of Southern Nevada (passage [1]) ✓
+
+The context's concern about verifying CSN's location in Clark County is actually resolved by passage [2], which explicitly states "The College of Southern Nevada (CSN) is primarily a two-year college in Clark County, Nevada."
+
+[[ ## summary ## ]]
+
+**Claim Verification Summary:**
+
+The claim can be FULLY VERIFIED based on the provided passages.
+
+**Verified Components:**
+1. **Clark County contains Las Vegas**: Confirmed through passage [4], which references Clark County's geography and population distribution.
+
+2. **Clark County contains another college**: Passage [2] explicitly confirms that the College of Southern Nevada is "primarily a two-year college in Clark County, Nevada." This institution is distinct from UNLV, another major higher education institution in the county.
+
+3. **Craig Heyer played sports at that college**: Passage [1] confirms that "Craig Heyer...played college baseball at the College of Southern Nevada and University of Nevada, Las Vegas (UNLV)."
+
+**Complete Verification Chain:**
+- Entity 1 (Clark County) → Contains Las Vegas ✓
+- Entity 2 (Another college in Clark County) → College of Southern Nevada explicitly located in Clark County, Nevada ✓
+- Entity 3 (Craig Heyer) → Played at College of Southern Nevada ✓
+
+**Conclusion**: The claim is VERIFIED. All three required pieces of information are present in the passages: (1) Las Vegas is in Clark County, (2) the College of Southern Nevada is another college located in Clark County, Nevada, and (3) Craig Heyer played college baseball at the College of Southern Nevada.
+
+No additional documents or retrieval hops are needed to verify this claim.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Clark County in Nevada contains both the City of Las Vegas and another college. Craig Heyer played sports at that college.
+
+[[ ## summary_1 ## ]]
+The claim is PARTIALLY VERIFIED but requires additional information for complete verification.
+
+What is confirmed:
+- Clark County, Nevada contains the City of Las Vegas (confirmed in passages)
+- Craig Heyer played college baseball at College of Southern Nevada and University of Nevada, Las Vegas (UNLV) (confirmed in passage [1])
+- UNLV is located in Las Vegas, which is in Clark County
+
+What requires verification:
+1. The specific location of the College of Southern Nevada - while passage [1] mentions this institution, the provided passages do NOT explicitly confirm that the College of Southern Nevada is located in Clark County, Nevada, or verify its geographic relationship to Las Vegas
+2. Whether the College of Southern Nevada qualifies as "another college" distinct from the City of Las Vegas's primary institution (UNLV)
+3. Complete roster of higher education institutions located within Clark County to confirm there exists "another college" distinct from institutions already associated with Las Vegas
+
+Additional information needed for three-hop retrieval:
+- Information about College of Southern Nevada's location and whether it is situated in Clark County, Nevada
+- Clarification of the relationship between College of Southern Nevada and Clark County geographic boundaries
+- Confirmation that Craig Heyer's attendance at College of Southern Nevada represents attendance at an institution in Clark County (distinct from UNLV)
+
+[[ ## summary_2 ## ]]
+**Claim Verification Summary:**
+
+The claim can be FULLY VERIFIED based on the provided passages.
+
+**Verified Components:**
+1. **Clark County contains Las Vegas**: Confirmed through passage [4], which references Clark County's geography and population distribution.
+
+2. **Clark County contains another college**: Passage [2] explicitly confirms that the College of Southern Nevada is "primarily a two-year college in Clark County, Nevada." This institution is distinct from UNLV, another major higher education institution in the county.
+
+3. **Craig Heyer played sports at that college**: Passage [1] confirms that "Craig Heyer...played college baseball at the College of Southern Nevada and University of Nevada, Las Vegas (UNLV)."
+
+**Complete Verification Chain:**
+- Entity 1 (Clark County) → Contains Las Vegas ✓
+- Entity 2 (Another college in Clark County) → College of Southern Nevada explicitly located in Clark County, Nevada ✓
+- Entity 3 (Craig Heyer) → Played at College of Southern Nevada ✓
+
+**Conclusion**: The claim is VERIFIED. All three required pieces of information are present in the passages: (1) Las Vegas is in Clark County, (2) the College of Southern Nevada is another college located in Clark County, Nevada, and (3) Craig Heyer played college baseball at the College of Southern Nevada.
+
+No additional documents or retrieval hops are needed to verify this claim.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries present conflicting conclusions about claim verification. Summary_1 indicates PARTIAL VERIFICATION with gaps in confirming the College of Southern Nevada's location in Clark County. Summary_2 indicates FULL VERIFICATION, citing passage [2] which explicitly states the College of Southern Nevada is "primarily a two-year college in Clark County, Nevada."
+
+The key discrepancy is whether passage [2] exists and contains the explicit geographic confirmation. Summary_2 provides more definitive evidence by directly citing this passage, while Summary_1 notes this information was not found in "the provided passages." 
+
+To resolve this conflict and produce an accurate query, I need to determine what information would definitively establish the claim's veracity. The critical missing link from Summary_1's perspective is explicit confirmation of the College of Southern Nevada's location within Clark County, Nevada. This is the lynchpin that would convert the partial verification to full verification.
+
+[[ ## query ## ]]
+Is the College of Southern Nevada located in Clark County, Nevada?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+College of Southern Nevada | The College of Southern Nevada (CSN) is primarily a two-year college in Clark County, Nevada, with four four-year degrees in Dental Hygiene, Medical Lab Scientist, Respiratory Sciences, and Fire & Emergency Services Admin.  It constitutes of 2900 Teaching and Non Teaching staff.  The school is the largest public higher education institution in Nevada.  It is part of the Nevada System of Higher Education.
+Clark County Water Reclamation District | The Clark County Water Reclamation District (District) is a government wastewater treatment agency in Clark County, Nevada.  As a member of the Southern Nevada Water Authority, its mission is to treat millions of gallons of wastewater that is produced every day.  The District is the largest water treatment agency in Southern Nevada and is responsible for treating wastewater from unincorporated parts of Clark County within the Las Vegas Valley, including most of the Las Vegas Strip, and the communities of Blue Diamond, Moapa Valley, Nevada, Indaian Springs, Nevada, Laughlin, Nevada, and Searchlight.
+Southern Nevada Water Authority | The Southern Nevada Water Authority (SNWA) is a government agency that was founded in 1991 to manage Southern Nevada's water needs on a regional basis in Clark County.
+Southern Nevada | Southern Nevada (often abbreviated as SNV) is the region of Nevada which includes the Las Vegas Valley.  Southern Nevada also includes the areas in and around Tonopah, Hawthorne, Pahrump, and Pioche, though some organizations based in the Las Vegas area (e.g., the Southern Nevada Health District) effectively use the term to refer to Clark County only.
+Barbara Cegavske | Barbara Katherine Cegavske (née Dickman; born August 27, 1951) is an American businesswoman and politician.  She was a Republican member of the Nevada Senate, representing Clark County District 8 (map) from 2002 to 2014.  Previously, she served in the Nevada Assembly from 1996 to 2001.  According to her legislative biography, she was educated at Mayo High School in Rochester, Minnesota, and at Clark County Community College (now known as the College of Southern Nevada) in Las Vegas.  With her husband, Tim, she was a 7-11 convenience store franchisee for thirteen years before seeking political office.
+Cactus Springs, Clark County, Nevada | Cactus Springs is a small community in Clark County, Nevada located on US Highway 95, about 60 mi northwest of Las Vegas in the Mojave Desert.  It is near Indian Springs and the Nevada Test Site.  Cactus Springs is also the site of "The Temple of Goddess Spirituality Dedicated to Sekhmet", the Egyptian goddess, built in 1993, "founded on the principles of Peace, Goddess Spirituality & the gift economy" by Genevieve Vaughan.  The annual interfaith Sacred Peace Walk, conducted and organized by the Nevada Desert Experience, is supported, in part, by the temple on the peacewalk's way to the Nevada Test Site's southern gate.
+Southern Nevada Veterans Memorial Cemetery | The Southern Nevada Veterans Memorial Cemetery is located in Boulder City, Clark County, Nevada.  Established in 1990, the 79-acre cemetery is approximately 30 miles southeast of Las Vegas, Nevada.  This is one of two state operated Veterans Cemeteries, the other is the Northern Nevada Veterans Memorial Cemetery 437 miles away in Fernley, Nevada.  The cemetery was constructed to serve Military Veterans and their families.  The nearest Veterans Memorial Cemetery to Boulder City Nevada is the Riverside National Cemetery in Riverside California, about 245 miles from the Las Vegas Valley.
+Southern Nevada Correctional Center | Southern Nevada Correctional Center was a medium-security men's prison in Jean, Clark County, Nevada (about 30 miles south of Las Vegas), owned and operated by the Nevada Department of Corrections.  The facility has been closed since 2008.
+Nevada's 4th congressional district | Nevada's 4th Congressional District is a new district that was created as a result of the 2010 Census.  Located in the central portion of the state, it includes most of northern Clark County, southern Lyon County, and all of Esmeralda, Lincoln, Mineral, Nye, and White Pine counties.  Although the district appears rural, almost 90% of the district's population lives in Clark County.
+Southern Desert Correctional Center | The Southern Desert Correctional Center (SDCC) is a state prison for men located in Indian Springs, Clark County, Nevada, owned and operated by the Nevada Department of Corrections.  The maximum capacity is 2149 inmates.  Most are medium security.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Craig Heyer | Craig D. Heyer (born November 15, 1985) is an American professional baseball pitcher.  Prior to becoming a professional, Heyer played college baseball at the College of Southern Nevada and University of Nevada, Las Vegas (UNLV).
+Las Vegas–Paradise, NV MSA | The Las Vegas–Paradise, NV MSA, also known as the Las Vegas–Henderson–Paradise, NV Metropolitan Statistical Area (2013), is in the southern part of the U.S. state of Nevada, coextensive since 2003 with Clark County, Nevada.  A central part of the metropolitan area is the Las Vegas Valley, a 600 sqmi basin that includes the metropolitan area's largest city, Las Vegas as well as the other primary city, Paradise, Nevada.  The area contains the largest concentration of people in the state.  Cities in the metropolitan area include Las Vegas, Henderson, North Las Vegas, and Boulder City.  The metropolitan area is one of the top tourist destinations in the world, drawing over 40 million international and domestic visitors in 2013 with a GMP of US$103.3 billion.
+North Las Vegas, Nevada | North Las Vegas is a city in Clark County, Nevada, United States, located in the Las Vegas Valley.  As of the 2010 census it had a population of 216,961, with an estimated population of 226,877 in 2013.  The city was incorporated on May 16, 1946.  It is located in the Las Vegas–Paradise, NV MSA and is the fourth largest city in the state of Nevada.
+Clark County Fire Department (Nevada) | The Clark County Fire Department (CCFD) provides fire protection and emergency medical services for the unincorporated areas of Clark County, Nevada.  The cities of Las Vegas, Boulder City, North Las Vegas, Henderson and Mesquite each have their own fire departments, but emergency management is provided by the county government.
+Las Vegas Police Department (disambiguation) | The Las Vegas Metropolitan Police Department is the city-county police force for the City of Las Vegas and Clark County, Nevada.
+Winchester, Nevada | Winchester is an unincorporated town and census-designated place (CDP) and part of Las Vegas Township in Clark County, Nevada, United States that contains part of the Las Vegas Strip.  It is one of a number of CDPs in the unincorporated urbanized area directly south of Las Vegas.  The population was 27,978 at the 2010 census.  It is governed by the Clark County Commission with advice from the Winchester Town Advisory Board.  "Winchester, NV" does not appear in postal addresses; the United States Postal Service has assigned "Las Vegas, NV" as the place name for the ZIP codes containing Winchester.
+Las Vegas | Las Vegas ( , Spanish for "The Meadows"), officially the City of Las Vegas and often known simply as Vegas, is the 28th-most populated city in the United States, the most populated city in the state of Nevada, and the county seat of Clark County.  The city anchors the Las Vegas Valley metropolitan area and is the largest city within the greater Mojave Desert.  Las Vegas is an internationally renowned major resort city, known primarily for its gambling, shopping, fine dining, entertainment, and nightlife.  The Las Vegas Valley as a whole serves as the leading financial, commercial, and cultural center for Nevada.
+Craig Heyer | Craig D. Heyer (born November 15, 1985) is an American professional baseball pitcher.  Prior to becoming a professional, Heyer played college baseball at the College of Southern Nevada and University of Nevada, Las Vegas (UNLV).
+College of Southern Nevada | The College of Southern Nevada (CSN) is primarily a two-year college in Clark County, Nevada, with four four-year degrees in Dental Hygiene, Medical Lab Scientist, Respiratory Sciences, and Fire & Emergency Services Admin.  It constitutes of 2900 Teaching and Non Teaching staff.  The school is the largest public higher education institution in Nevada.  It is part of the Nevada System of Higher Education.
+Quartette, Nevada | Quartette or Quartette Mill or Quartette Landing, was a mining settlement, location of the stamp mill of the Quartette Mining Company, owner of the largest mine in the Searchlight Mining District and a steamboat landing on the Colorado River, in what is now Clark County, Nevada.  It lay at an elevation of 646 feet.
+Nevada's 4th congressional district | Nevada's 4th Congressional District is a new district that was created as a result of the 2010 Census.  Located in the central portion of the state, it includes most of northern Clark County, southern Lyon County, and all of Esmeralda, Lincoln, Mineral, Nye, and White Pine counties.  Although the district appears rural, almost 90% of the district's population lives in Clark County.
+Rioville, Nevada | Rioville, Nevada (first known as Junction City) was a settlement founded by Latter-day Saints in what they thought was Utah Territory in 1869, now under Lake Mead and within Clark County, Nevada.
+Clark County Water Reclamation District | The Clark County Water Reclamation District (District) is a government wastewater treatment agency in Clark County, Nevada.  As a member of the Southern Nevada Water Authority, its mission is to treat millions of gallons of wastewater that is produced every day.  The District is the largest water treatment agency in Southern Nevada and is responsible for treating wastewater from unincorporated parts of Clark County within the Las Vegas Valley, including most of the Las Vegas Strip, and the communities of Blue Diamond, Moapa Valley, Nevada, Indaian Springs, Nevada, Laughlin, Nevada, and Searchlight.
+Barbara Cegavske | Barbara Katherine Cegavske (née Dickman; born August 27, 1951) is an American businesswoman and politician.  She was a Republican member of the Nevada Senate, representing Clark County District 8 (map) from 2002 to 2014.  Previously, she served in the Nevada Assembly from 1996 to 2001.  According to her legislative biography, she was educated at Mayo High School in Rochester, Minnesota, and at Clark County Community College (now known as the College of Southern Nevada) in Las Vegas.  With her husband, Tim, she was a 7-11 convenience store franchisee for thirteen years before seeking political office.
+College of Southern Nevada | The College of Southern Nevada (CSN) is primarily a two-year college in Clark County, Nevada, with four four-year degrees in Dental Hygiene, Medical Lab Scientist, Respiratory Sciences, and Fire & Emergency Services Admin.  It constitutes of 2900 Teaching and Non Teaching staff.  The school is the largest public higher education institution in Nevada.  It is part of the Nevada System of Higher Education.
+Clark County Water Reclamation District | The Clark County Water Reclamation District (District) is a government wastewater treatment agency in Clark County, Nevada.  As a member of the Southern Nevada Water Authority, its mission is to treat millions of gallons of wastewater that is produced every day.  The District is the largest water treatment agency in Southern Nevada and is responsible for treating wastewater from unincorporated parts of Clark County within the Las Vegas Valley, including most of the Las Vegas Strip, and the communities of Blue Diamond, Moapa Valley, Nevada, Indaian Springs, Nevada, Laughlin, Nevada, and Searchlight.
+Southern Nevada Water Authority | The Southern Nevada Water Authority (SNWA) is a government agency that was founded in 1991 to manage Southern Nevada's water needs on a regional basis in Clark County.
+Southern Nevada | Southern Nevada (often abbreviated as SNV) is the region of Nevada which includes the Las Vegas Valley.  Southern Nevada also includes the areas in and around Tonopah, Hawthorne, Pahrump, and Pioche, though some organizations based in the Las Vegas area (e.g., the Southern Nevada Health District) effectively use the term to refer to Clark County only.
+Barbara Cegavske | Barbara Katherine Cegavske (née Dickman; born August 27, 1951) is an American businesswoman and politician.  She was a Republican member of the Nevada Senate, representing Clark County District 8 (map) from 2002 to 2014.  Previously, she served in the Nevada Assembly from 1996 to 2001.  According to her legislative biography, she was educated at Mayo High School in Rochester, Minnesota, and at Clark County Community College (now known as the College of Southern Nevada) in Las Vegas.  With her husband, Tim, she was a 7-11 convenience store franchisee for thirteen years before seeking political office.
+Cactus Springs, Clark County, Nevada | Cactus Springs is a small community in Clark County, Nevada located on US Highway 95, about 60 mi northwest of Las Vegas in the Mojave Desert.  It is near Indian Springs and the Nevada Test Site.  Cactus Springs is also the site of "The Temple of Goddess Spirituality Dedicated to Sekhmet", the Egyptian goddess, built in 1993, "founded on the principles of Peace, Goddess Spirituality & the gift economy" by Genevieve Vaughan.  The annual interfaith Sacred Peace Walk, conducted and organized by the Nevada Desert Experience, is supported, in part, by the temple on the peacewalk's way to the Nevada Test Site's southern gate.
+Southern Nevada Veterans Memorial Cemetery | The Southern Nevada Veterans Memorial Cemetery is located in Boulder City, Clark County, Nevada.  Established in 1990, the 79-acre cemetery is approximately 30 miles southeast of Las Vegas, Nevada.  This is one of two state operated Veterans Cemeteries, the other is the Northern Nevada Veterans Memorial Cemetery 437 miles away in Fernley, Nevada.  The cemetery was constructed to serve Military Veterans and their families.  The nearest Veterans Memorial Cemetery to Boulder City Nevada is the Riverside National Cemetery in Riverside California, about 245 miles from the Las Vegas Valley.
+Southern Nevada Correctional Center | Southern Nevada Correctional Center was a medium-security men's prison in Jean, Clark County, Nevada (about 30 miles south of Las Vegas), owned and operated by the Nevada Department of Corrections.  The facility has been closed since 2008.
+Nevada's 4th congressional district | Nevada's 4th Congressional District is a new district that was created as a result of the 2010 Census.  Located in the central portion of the state, it includes most of northern Clark County, southern Lyon County, and all of Esmeralda, Lincoln, Mineral, Nye, and White Pine counties.  Although the district appears rural, almost 90% of the district's population lives in Clark County.
+Southern Desert Correctional Center | The Southern Desert Correctional Center (SDCC) is a state prison for men located in Indian Springs, Clark County, Nevada, owned and operated by the Nevada Department of Corrections.  The maximum capacity is 2149 inmates.  Most are medium security.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query hop 2: 'College of Southern Nevada location, College of Southern Nevada Clark County Nevada, higher education institutions Clark County Nevada, UNLV location Clark County'. Query hop 3: 'Is the College of Southern Nevada located in Clark County, Nevada?' Both queries target the same information (College of Southern Nevada's location in Clark County) despite hop 2 already retrieving the defin
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: Summary_1 states: 'The specific location of the College of Southern Nevada - while passage [1] mentions this institution, the provided passages do NOT explicitly confirm that the College of Southern Nevada is located in Clark County, Nevada.' However, hop 2 retrieval had already returned passage [2] which explicitly states: 'The College of Southern Nevada (CSN) is primarily a two-year college in C
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

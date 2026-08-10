@@ -1,0 +1,478 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The genus of plants that includes the cactus arnostiana, and Thalictrum are both non flowering plants.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Parodia arnostiana | Parodia arnostiana is a species of cactus in the genus "Parodia".  The small, squat green plants produce yellow flowers, green fruit and black seeds.  The species is found growing in Rio Grande do Sul, Brazil.
+Thalictrum | Thalictrum ( ) is a genus of 120-200 species of herbaceous perennial flowering plants in the Ranunculaceae (buttercup) family native mostly to temperate regions.  Meadow-rue is a common name for plants in this genus.
+Thalictrum dioicum | Thalictrum dioicum, the early meadow-rue or quicksilver-weed, is a species of herbaceous plants in the family Ranunculaceae.  Plants are typically upright growing woodland natives from Colorado Rocky Mountain forests to central and eastern North America including parts of south eastern Canada.  This species has dioecious plants, with male and female flowers on separate plants blooming in early to mid spring.
+Thalictrum fendleri | Thalictrum fendleri is a species of flowering plant in the buttercup family known by the common name Fendler's meadow-rue.
+Stetsonia coryne | Stetsonia is a genus of cactus, with the sole species Stetsonia coryne, the toothpick cactus.  The plant is native to the deserts of Argentina and Bolivia.  "Stetsonia coryne" grows to a height of 15 to tall.  It has white flowers.  The genus was named to honor Francis Lynde Stetson, a New York attorney and plant lover.
+Stapelia grandiflora | Stapelia grandiflora is a flowering plant in the "Stapelia" genus.  It is commonly referred to as the carrion plant, starfish flower, or starfish cactus, although it is not related to cacti at all.  The name "carrion plant" (due to the odor emitted by the flowers as a technique of attracting flies in areas where other pollinating insects are scarce) can also refer to similar "Stapelia" species as well as members of related genera, including "Stapelia gigantea" and "Orbea variegata".  "Stapelia grandiflora" sometimes also goes by the name of "Stapelia flavirostris".
+Thalictrum alpinum | Thalictrum alpinum is a species of flowering plant in the buttercup family known by the common names alpine meadow-rue and arctic meadow-rue.  It is native to Arctic and alpine regions of North America and Eurasia, including Alaska, northern Canada, and Greenland, and it occurs in cold, wet, boggy habitats in high mountains farther south.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        5. **CRITICAL: For every distinct entity mentioned in the claim (whether explicitly named or referenced indirectly), ensure that passages about that specific entity are available. If passages are missing for any entity in the claim, identify those missing evidence documents.**
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        **Critical requirement for identifying missing evidence documents**:
+        - **If a claim mentions multiple distinct entities (e.g., "Entity A is X. Entity B is not X."), you must have passages about EACH entity mentioned**
+        - **Even if the claim can be partially verified, if any entity in the claim lacks corresponding passages, you must identify that entity's evidence document as missing**
+        - **For comparison claims (e.g., "A is perennial. B is not perennial"), you need passages about both A and B, even if one can be verified**
+        - **When a claim mentions an entity only to negate something about it (e.g., "Duranta is not a perennial"), that entity still requires evidence documents**
+        - **The fact that you can verify part of a claim does not mean you should ignore entities that lack passages - explicitly identify all entities that need but lack evidence documents**
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - **List ALL entities from the claim that lack corresponding passages, even if other parts of the claim are verifiable**
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+        - **When identifying missing evidence documents, use the entity name or subject matter that would be the title/topic of the needed passage (e.g., if the claim mentions "Duranta" but no passages discuss it, identify "duranta" as a missing evidence document)**
+[STEP 4] (user) [[ ## claim ## ]]
+The genus of plants that includes the cactus arnostiana, and Thalictrum are both non flowering plants.
+
+[[ ## passages ## ]]
+[1] «Parodia arnostiana | Parodia arnostiana is a species of cactus in the genus "Parodia".  The small, squat green plants produce yellow flowers, green fruit and black seeds.  The species is found growing in Rio Grande do Sul, Brazil.»
+[2] «Thalictrum | Thalictrum ( ) is a genus of 120-200 species of herbaceous perennial flowering plants in the Ranunculaceae (buttercup) family native mostly to temperate regions.  Meadow-rue is a common name for plants in this genus.»
+[3] «Thalictrum dioicum | Thalictrum dioicum, the early meadow-rue or quicksilver-weed, is a species of herbaceous plants in the family Ranunculaceae.  Plants are typically upright growing woodland natives from Colorado Rocky Mountain forests to central and eastern North America including parts of south eastern Canada.  This species has dioecious plants, with male and female flowers on separate plants blooming in early to mid spring.»
+[4] «Thalictrum fendleri | Thalictrum fendleri is a species of flowering plant in the buttercup family known by the common name Fendler's meadow-rue.»
+[5] «Stetsonia coryne | Stetsonia is a genus of cactus, with the sole species Stetsonia coryne, the toothpick cactus.  The plant is native to the deserts of Argentina and Bolivia.  "Stetsonia coryne" grows to a height of 15 to tall.  It has white flowers.  The genus was named to honor Francis Lynde Stetson, a New York attorney and plant lover.»
+[6] «Stapelia grandiflora | Stapelia grandiflora is a flowering plant in the "Stapelia" genus.  It is commonly referred to as the carrion plant, starfish flower, or starfish cactus, although it is not related to cacti at all.  The name "carrion plant" (due to the odor emitted by the flowers as a technique of attracting flies in areas where other pollinating insects are scarce) can also refer to similar "Stapelia" species as well as members of related genera, including "Stapelia gigantea" and "Orbea variegata".  "Stapelia grandiflora" sometimes also goes by the name of "Stapelia flavirostris".»
+[7] «Thalictrum alpinum | Thalictrum alpinum is a species of flowering plant in the buttercup family known by the common names alpine meadow-rue and arctic meadow-rue.  It is native to Arctic and alpine regions of North America and Eurasia, including Alaska, northern Canada, and Greenland, and it occurs in cold, wet, boggy habitats in high mountains farther south.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze this claim step by step.
+
+The claim states: "The genus of plants that includes the cactus arnostiana, and Thalictrum are both non flowering plants."
+
+First, I need to identify what "the cactus arnostiana" refers to:
+- From passage [1]: Parodia arnostiana is a species of cactus in the genus "Parodia"
+- So "the genus of plants that includes the cactus arnostiana" = the genus Parodia
+
+The claim is asserting that:
+1. Parodia (the genus containing arnostiana) is a non-flowering plant
+2. Thalictrum is a non-flowering plant
+
+Now let me check what the passages say:
+
+For Parodia:
+- Passage [1] explicitly states: "The small, squat green plants produce yellow flowers, green fruit and black seeds."
+- This directly contradicts the claim that Parodia is non-flowering. Parodia produces flowers.
+
+For Thalictrum:
+- Passage [2] states: "Thalictrum is a genus of 120-200 species of herbaceous perennial flowering plants"
+- Passage [4] states: "Thalictrum fendleri is a species of flowering plant in the buttercup family"
+- Passage [7] states: "Thalictrum alpinum is a species of flowering plant in the buttercup family"
+- All passages clearly indicate Thalictrum is a flowering plant genus, contradicting the claim.
+
+Both parts of the claim are directly refuted by the provided passages. There are no missing entities or evidence documents - the passages contain sufficient information to verify that both Parodia and Thalictrum are flowering plants, which directly contradicts the claim.
+
+[[ ## summary ## ]]
+The claim is FALSE. The provided passages contain sufficient information to refute it completely:
+
+1. **Parodia (genus containing Parodia arnostiana)**: Passage [1] explicitly states that Parodia arnostiana "produce yellow flowers, green fruit and black seeds." This directly contradicts the claim that this genus is non-flowering.
+
+2. **Thalictrum**: Passages [2], [4], and [7] all explicitly identify Thalictrum as a "flowering plant" or "flowering plants" genus. Passage [2] specifically states it is "a genus of 120-200 species of herbaceous perennial flowering plants."
+
+Both genera mentioned in the claim are flowering plants, not non-flowering plants. The passages provide clear, direct evidence refuting the core assertion of the claim.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+The genus of plants that includes the cactus arnostiana, and Thalictrum are both non flowering plants.
+
+[[ ## summary_1 ## ]]
+The claim is FALSE. The provided passages contain sufficient information to refute it completely:
+
+1. **Parodia (genus containing Parodia arnostiana)**: Passage [1] explicitly states that Parodia arnostiana "produce yellow flowers, green fruit and black seeds." This directly contradicts the claim that this genus is non-flowering.
+
+2. **Thalictrum**: Passages [2], [4], and [7] all explicitly identify Thalictrum as a "flowering plant" or "flowering plants" genus. Passage [2] specifically states it is "a genus of 120-200 species of herbaceous perennial flowering plants."
+
+Both genera mentioned in the claim are flowering plants, not non-flowering plants. The passages provide clear, direct evidence refuting the core assertion of the claim.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary has already evaluated the claim and determined it to be FALSE. The reasoning provided identifies that both Parodia (the genus containing Parodia arnostiana) and Thalictrum are flowering plants, not non-flowering plants. The summary cites specific evidence from passages showing that Parodia arnostiana produces yellow flowers, and that Thalictrum is explicitly described as a genus of flowering plants. This directly contradicts the claim's assertion that these genera are non-flowering plants.
+
+[[ ## query ## ]]
+Are Parodia arnostiana and Thalictrum flowering plants or non-flowering plants?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Parodia arnostiana | Parodia arnostiana is a species of cactus in the genus "Parodia".  The small, squat green plants produce yellow flowers, green fruit and black seeds.  The species is found growing in Rio Grande do Sul, Brazil.
+Thalictrum | Thalictrum ( ) is a genus of 120-200 species of herbaceous perennial flowering plants in the Ranunculaceae (buttercup) family native mostly to temperate regions.  Meadow-rue is a common name for plants in this genus.
+Parodia magnifica | Parodia magnifica is a species of flowering plant in the Cactaceae family, native to southern Brazil.  It is a cactus growing to 7 - tall by 45 cm broad, with heavily ribbed, spherical to columnar, spiny and hairy stems, bearing pale yellow flowers in summer.
+Thalictrum fendleri | Thalictrum fendleri is a species of flowering plant in the buttercup family known by the common name Fendler's meadow-rue.
+Thalictrum flavum | Thalictrum flavum, known by the common names common meadow-rue and yellow meadow-rue, is a flowering plant species in the family Ranunculaceae, native to Caucasus and Russia (Siberia).  Growing to 100 cm tall by 45 cm broad, it is an herbaceous perennial producing clusters of fluffy yellow fragrant flowers in summer.  The flowers are composed of short sepals and longer, erect stamens.
+Thalictrum dioicum | Thalictrum dioicum, the early meadow-rue or quicksilver-weed, is a species of herbaceous plants in the family Ranunculaceae.  Plants are typically upright growing woodland natives from Colorado Rocky Mountain forests to central and eastern North America including parts of south eastern Canada.  This species has dioecious plants, with male and female flowers on separate plants blooming in early to mid spring.
+Parodia scopa | Parodia scopa syn.  "Notocactus scopa" (silver ball cactus) is a species of flowering plant in the cactus family Cactaceae, native to upland southern Brazil and Uruguay.  It is a ball- or cylinder-shaped cactus growing to 5 - tall by 10 cm broad, with a spiny, woolly crown and pale yellow flowers in summer.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+The genus of plants that includes the cactus arnostiana, and Thalictrum are both non flowering plants.
+
+[[ ## context ## ]]
+The claim is FALSE. The provided passages contain sufficient information to refute it completely:
+
+1. **Parodia (genus containing Parodia arnostiana)**: Passage [1] explicitly states that Parodia arnostiana "produce yellow flowers, green fruit and black seeds." This directly contradicts the claim that this genus is non-flowering.
+
+2. **Thalictrum**: Passages [2], [4], and [7] all explicitly identify Thalictrum as a "flowering plant" or "flowering plants" genus. Passage [2] specifically states it is "a genus of 120-200 species of herbaceous perennial flowering plants."
+
+Both genera mentioned in the claim are flowering plants, not non-flowering plants. The passages provide clear, direct evidence refuting the core assertion of the claim.
+
+[[ ## passages ## ]]
+[1] «Parodia arnostiana | Parodia arnostiana is a species of cactus in the genus "Parodia".  The small, squat green plants produce yellow flowers, green fruit and black seeds.  The species is found growing in Rio Grande do Sul, Brazil.»
+[2] «Thalictrum | Thalictrum ( ) is a genus of 120-200 species of herbaceous perennial flowering plants in the Ranunculaceae (buttercup) family native mostly to temperate regions.  Meadow-rue is a common name for plants in this genus.»
+[3] «Parodia magnifica | Parodia magnifica is a species of flowering plant in the Cactaceae family, native to southern Brazil.  It is a cactus growing to 7 - tall by 45 cm broad, with heavily ribbed, spherical to columnar, spiny and hairy stems, bearing pale yellow flowers in summer.»
+[4] «Thalictrum fendleri | Thalictrum fendleri is a species of flowering plant in the buttercup family known by the common name Fendler's meadow-rue.»
+[5] «Thalictrum flavum | Thalictrum flavum, known by the common names common meadow-rue and yellow meadow-rue, is a flowering plant species in the family Ranunculaceae, native to Caucasus and Russia (Siberia).  Growing to 100 cm tall by 45 cm broad, it is an herbaceous perennial producing clusters of fluffy yellow fragrant flowers in summer.  The flowers are composed of short sepals and longer, erect stamens.»
+[6] «Thalictrum dioicum | Thalictrum dioicum, the early meadow-rue or quicksilver-weed, is a species of herbaceous plants in the family Ranunculaceae.  Plants are typically upright growing woodland natives from Colorado Rocky Mountain forests to central and eastern North America including parts of south eastern Canada.  This species has dioecious plants, with male and female flowers on separate plants blooming in early to mid spring.»
+[7] «Parodia scopa | Parodia scopa syn.  "Notocactus scopa" (silver ball cactus) is a species of flowering plant in the cactus family Cactaceae, native to upland southern Brazil and Uruguay.  It is a ball- or cylinder-shaped cactus growing to 5 - tall by 10 cm broad, with a spiny, woolly crown and pale yellow flowers in summer.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+The claim asserts that two entities are non-flowering plants:
+1. The genus containing "cactus arnostiana" (which is Parodia, containing Parodia arnostiana)
+2. Thalictrum
+
+Examining the passages:
+
+**Parodia genus**: Passage [1] explicitly states that Parodia arnostiana "produce yellow flowers, green fruit and black seeds." Passages [3] and [7] further confirm that Parodia magnifica and Parodia scopa are both "species of flowering plant" with specific flower descriptions. This definitively establishes that Parodia is a flowering plant genus, directly contradicting the claim.
+
+**Thalictrum genus**: Passage [2] explicitly identifies Thalictrum as "a genus of 120-200 species of herbaceous perennial flowering plants." Passages [4], [5], and [6] provide additional confirmation, each describing specific Thalictrum species as flowering plants with detailed flower characteristics. This definitively establishes that Thalictrum is a flowering plant genus, directly contradicting the claim.
+
+The passages provide complete, unambiguous, and multiple lines of evidence that contradict every core assertion in the claim.
+
+[[ ## summary ## ]]
+
+**Verification Status**: The claim is FALSE and is directly contradicted by the provided passages.
+
+**What the passages establish**:
+- Parodia (the genus containing Parodia arnostiana) is definitively a flowering plant genus. Multiple species are documented as producing flowers: P. arnostiana produces yellow flowers, P. magnifica bears pale yellow flowers, and P. scopa produces pale yellow flowers.
+- Thalictrum is definitively a flowering plant genus. The passages explicitly classify it as a "genus of... flowering plants" and describe multiple species (T. fendleri, T. flavum, T. dioicum) with specific flowering characteristics.
+
+**Conclusion**: 
+No additional passages are needed. The provided passages contain complete and sufficient evidence to verify and refute the claim. Both genera mentioned in the claim are flowering plants, not non-flowering plants, as demonstrated by explicit passages about flower production and botanical classification in the Cactaceae and Ranunculaceae families respectively.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The genus of plants that includes the cactus arnostiana, and Thalictrum are both non flowering plants.
+
+[[ ## summary_1 ## ]]
+The claim is FALSE. The provided passages contain sufficient information to refute it completely:
+
+1. **Parodia (genus containing Parodia arnostiana)**: Passage [1] explicitly states that Parodia arnostiana "produce yellow flowers, green fruit and black seeds." This directly contradicts the claim that this genus is non-flowering.
+
+2. **Thalictrum**: Passages [2], [4], and [7] all explicitly identify Thalictrum as a "flowering plant" or "flowering plants" genus. Passage [2] specifically states it is "a genus of 120-200 species of herbaceous perennial flowering plants."
+
+Both genera mentioned in the claim are flowering plants, not non-flowering plants. The passages provide clear, direct evidence refuting the core assertion of the claim.
+
+[[ ## summary_2 ## ]]
+**Verification Status**: The claim is FALSE and is directly contradicted by the provided passages.
+
+**What the passages establish**:
+- Parodia (the genus containing Parodia arnostiana) is definitively a flowering plant genus. Multiple species are documented as producing flowers: P. arnostiana produces yellow flowers, P. magnifica bears pale yellow flowers, and P. scopa produces pale yellow flowers.
+- Thalictrum is definitively a flowering plant genus. The passages explicitly classify it as a "genus of... flowering plants" and describe multiple species (T. fendleri, T. flavum, T. dioicum) with specific flowering characteristics.
+
+**Conclusion**: 
+No additional passages are needed. The provided passages contain complete and sufficient evidence to verify and refute the claim. Both genera mentioned in the claim are flowering plants, not non-flowering plants, as demonstrated by explicit passages about flower production and botanical classification in the Cactaceae and Ranunculaceae families respectively.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The claim asserts that both the genus containing Parodia arnostiana (which is Parodia) and Thalictrum are non-flowering plants. However, the provided summaries conclusively demonstrate this is false:
+
+1. Parodia arnostiana is explicitly documented as producing yellow flowers, green fruit, and black seeds, proving it is a flowering plant.
+
+2. Thalictrum is explicitly classified as "a genus of 120-200 species of herbaceous perennial flowering plants," with multiple species documented as having specific flowering characteristics.
+
+Both summaries provide direct, textual evidence from passages that contradict the core claim. The reasoning presented in both summaries is consistent and definitive - no ambiguity exists. The claim is demonstrably false based on straightforward botanical facts about flower production and classification in both genera.
+
+[[ ## query ## ]]
+Are Parodia (the genus containing Parodia arnostiana) and Thalictrum flowering plants or non-flowering plants? What evidence exists about their reproductive structures?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Parodia arnostiana | Parodia arnostiana is a species of cactus in the genus "Parodia".  The small, squat green plants produce yellow flowers, green fruit and black seeds.  The species is found growing in Rio Grande do Sul, Brazil.
+Parodia | Parodia is a genus of flowering plants in the cactus family Cactaceae, native to the uplands of Argentina, Peru, Bolivia, Brazil, Colombia and Uruguay.  This genus has about 50 species, many of which have been transferred from "Eriocactus", "Notocactus" and "Wigginsia".  They range from small globose plants to 1 m tall columnar cacti.  All are deeply ribbed and spiny, with single flowers at or near the crown.  Some species produce offsets at the base.  They are popular in cultivation, but must be grown indoors where temperatures fall below 10 C .
+Parodia magnifica | Parodia magnifica is a species of flowering plant in the Cactaceae family, native to southern Brazil.  It is a cactus growing to 7 - tall by 45 cm broad, with heavily ribbed, spherical to columnar, spiny and hairy stems, bearing pale yellow flowers in summer.
+Parodia scopa | Parodia scopa syn.  "Notocactus scopa" (silver ball cactus) is a species of flowering plant in the cactus family Cactaceae, native to upland southern Brazil and Uruguay.  It is a ball- or cylinder-shaped cactus growing to 5 - tall by 10 cm broad, with a spiny, woolly crown and pale yellow flowers in summer.
+Parodia tenuicylindrica | Parodia tenuicylindrica is a species of cactus from the genus "Parodia".  The small green cacti have yellow and red-brown spines, white wool and yellow flowers.  They produce yellow-green fruit, and black seeds.  "P. tenuicylindrica" can be found growing individually in Rio Grande do Sul, Brazil.
+Parodia mammulosa | Parodia mammulosa is a species of succulent plant in the Cactaceae family.
+Thalictrum | Thalictrum ( ) is a genus of 120-200 species of herbaceous perennial flowering plants in the Ranunculaceae (buttercup) family native mostly to temperate regions.  Meadow-rue is a common name for plants in this genus.
+Flower | A flower, sometimes known as a bloom or blossom, is the reproductive structure found in flowering plants (plants of the division Magnoliophyta, also called angiosperms).  The biological function of a flower is to effect reproduction, usually by providing a mechanism for the union of sperm with eggs.  Flowers may facilitate outcrossing (fusion of sperm and eggs from different individuals in a population) or allow selfing (fusion of sperm and egg from the same flower).  Some flowers produce diaspores without fertilization (parthenocarpy).  Flowers contain sporangia and are the site where gametophytes develop.  Many flowers have evolved to be attractive to animals, so as to cause them to be vectors for the transfer of pollen.  After fertilization, the ovary of the flower develops into fruit containing seeds.
+Parodia schumanniana | Parodia schumanniana is a quite rare species of succulent plant in the Cactaceae family.  The specific epithet "schumanniana" honors the cactus specialist Karl Moritz Schumann.
+Parodia buiningii | Parodia buiningii is a rare species of cactus native to South America.  It is a solitary spherical or oblate cactus only a few inches in height with long, yellow spines.  It bears yellow flowers, and produces hairy fruit and black seeds.  It is found surrounding the towns of Santana do Livramento, Brazil and Rivera, Uruguay.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Parodia arnostiana | Parodia arnostiana is a species of cactus in the genus "Parodia".  The small, squat green plants produce yellow flowers, green fruit and black seeds.  The species is found growing in Rio Grande do Sul, Brazil.
+Thalictrum | Thalictrum ( ) is a genus of 120-200 species of herbaceous perennial flowering plants in the Ranunculaceae (buttercup) family native mostly to temperate regions.  Meadow-rue is a common name for plants in this genus.
+Thalictrum dioicum | Thalictrum dioicum, the early meadow-rue or quicksilver-weed, is a species of herbaceous plants in the family Ranunculaceae.  Plants are typically upright growing woodland natives from Colorado Rocky Mountain forests to central and eastern North America including parts of south eastern Canada.  This species has dioecious plants, with male and female flowers on separate plants blooming in early to mid spring.
+Thalictrum fendleri | Thalictrum fendleri is a species of flowering plant in the buttercup family known by the common name Fendler's meadow-rue.
+Stetsonia coryne | Stetsonia is a genus of cactus, with the sole species Stetsonia coryne, the toothpick cactus.  The plant is native to the deserts of Argentina and Bolivia.  "Stetsonia coryne" grows to a height of 15 to tall.  It has white flowers.  The genus was named to honor Francis Lynde Stetson, a New York attorney and plant lover.
+Stapelia grandiflora | Stapelia grandiflora is a flowering plant in the "Stapelia" genus.  It is commonly referred to as the carrion plant, starfish flower, or starfish cactus, although it is not related to cacti at all.  The name "carrion plant" (due to the odor emitted by the flowers as a technique of attracting flies in areas where other pollinating insects are scarce) can also refer to similar "Stapelia" species as well as members of related genera, including "Stapelia gigantea" and "Orbea variegata".  "Stapelia grandiflora" sometimes also goes by the name of "Stapelia flavirostris".
+Thalictrum alpinum | Thalictrum alpinum is a species of flowering plant in the buttercup family known by the common names alpine meadow-rue and arctic meadow-rue.  It is native to Arctic and alpine regions of North America and Eurasia, including Alaska, northern Canada, and Greenland, and it occurs in cold, wet, boggy habitats in high mountains farther south.
+Parodia arnostiana | Parodia arnostiana is a species of cactus in the genus "Parodia".  The small, squat green plants produce yellow flowers, green fruit and black seeds.  The species is found growing in Rio Grande do Sul, Brazil.
+Thalictrum | Thalictrum ( ) is a genus of 120-200 species of herbaceous perennial flowering plants in the Ranunculaceae (buttercup) family native mostly to temperate regions.  Meadow-rue is a common name for plants in this genus.
+Parodia magnifica | Parodia magnifica is a species of flowering plant in the Cactaceae family, native to southern Brazil.  It is a cactus growing to 7 - tall by 45 cm broad, with heavily ribbed, spherical to columnar, spiny and hairy stems, bearing pale yellow flowers in summer.
+Thalictrum fendleri | Thalictrum fendleri is a species of flowering plant in the buttercup family known by the common name Fendler's meadow-rue.
+Thalictrum flavum | Thalictrum flavum, known by the common names common meadow-rue and yellow meadow-rue, is a flowering plant species in the family Ranunculaceae, native to Caucasus and Russia (Siberia).  Growing to 100 cm tall by 45 cm broad, it is an herbaceous perennial producing clusters of fluffy yellow fragrant flowers in summer.  The flowers are composed of short sepals and longer, erect stamens.
+Thalictrum dioicum | Thalictrum dioicum, the early meadow-rue or quicksilver-weed, is a species of herbaceous plants in the family Ranunculaceae.  Plants are typically upright growing woodland natives from Colorado Rocky Mountain forests to central and eastern North America including parts of south eastern Canada.  This species has dioecious plants, with male and female flowers on separate plants blooming in early to mid spring.
+Parodia scopa | Parodia scopa syn.  "Notocactus scopa" (silver ball cactus) is a species of flowering plant in the cactus family Cactaceae, native to upland southern Brazil and Uruguay.  It is a ball- or cylinder-shaped cactus growing to 5 - tall by 10 cm broad, with a spiny, woolly crown and pale yellow flowers in summer.
+Parodia arnostiana | Parodia arnostiana is a species of cactus in the genus "Parodia".  The small, squat green plants produce yellow flowers, green fruit and black seeds.  The species is found growing in Rio Grande do Sul, Brazil.
+Parodia | Parodia is a genus of flowering plants in the cactus family Cactaceae, native to the uplands of Argentina, Peru, Bolivia, Brazil, Colombia and Uruguay.  This genus has about 50 species, many of which have been transferred from "Eriocactus", "Notocactus" and "Wigginsia".  They range from small globose plants to 1 m tall columnar cacti.  All are deeply ribbed and spiny, with single flowers at or near the crown.  Some species produce offsets at the base.  They are popular in cultivation, but must be grown indoors where temperatures fall below 10 C .
+Parodia magnifica | Parodia magnifica is a species of flowering plant in the Cactaceae family, native to southern Brazil.  It is a cactus growing to 7 - tall by 45 cm broad, with heavily ribbed, spherical to columnar, spiny and hairy stems, bearing pale yellow flowers in summer.
+Parodia scopa | Parodia scopa syn.  "Notocactus scopa" (silver ball cactus) is a species of flowering plant in the cactus family Cactaceae, native to upland southern Brazil and Uruguay.  It is a ball- or cylinder-shaped cactus growing to 5 - tall by 10 cm broad, with a spiny, woolly crown and pale yellow flowers in summer.
+Parodia tenuicylindrica | Parodia tenuicylindrica is a species of cactus from the genus "Parodia".  The small green cacti have yellow and red-brown spines, white wool and yellow flowers.  They produce yellow-green fruit, and black seeds.  "P. tenuicylindrica" can be found growing individually in Rio Grande do Sul, Brazil.
+Parodia mammulosa | Parodia mammulosa is a species of succulent plant in the Cactaceae family.
+Thalictrum | Thalictrum ( ) is a genus of 120-200 species of herbaceous perennial flowering plants in the Ranunculaceae (buttercup) family native mostly to temperate regions.  Meadow-rue is a common name for plants in this genus.
+Flower | A flower, sometimes known as a bloom or blossom, is the reproductive structure found in flowering plants (plants of the division Magnoliophyta, also called angiosperms).  The biological function of a flower is to effect reproduction, usually by providing a mechanism for the union of sperm with eggs.  Flowers may facilitate outcrossing (fusion of sperm and eggs from different individuals in a population) or allow selfing (fusion of sperm and egg from the same flower).  Some flowers produce diaspores without fertilization (parthenocarpy).  Flowers contain sporangia and are the site where gametophytes develop.  Many flowers have evolved to be attractive to animals, so as to cause them to be vectors for the transfer of pollen.  After fertilization, the ovary of the flower develops into fruit containing seeds.
+Parodia schumanniana | Parodia schumanniana is a quite rare species of succulent plant in the Cactaceae family.  The specific epithet "schumanniana" honors the cactus specialist Karl Moritz Schumann.
+Parodia buiningii | Parodia buiningii is a rare species of cactus native to South America.  It is a solitary spherical or oblate cactus only a few inches in height with long, yellow spines.  It bears yellow flowers, and produces hairy fruit and black seeds.  It is found surrounding the towns of Santana do Livramento, Brazil and Rivera, Uruguay.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 1 query (implicit from retrieval): retrieves Parodia arnostiana and Thalictrum passages. Hop 2 query: 'Are Parodia arnostiana and Thalictrum flowering plants or non-flowering plants?' Hop 3 query: 'Are Parodia (the genus containing Parodia arnostiana) and Thalictrum flowering plants or non-flowering plants? What evidence exists about their reproductive structures?' All three queries target the
+- code B.12 (Verdict_Despite_Insufficiency), anchored near step UNKNOWN: evidence: Summary_1 states: 'The claim is FALSE. The provided passages contain sufficient information to refute it completely' and 'Both genera mentioned in the claim are flowering plants, not non-flowering plants. The passages provide clear, direct evidence refuting the core assertion of the claim.' Summary_2 states: 'The claim is FALSE and is directly contradicted by the provided passages' and 'No additio
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

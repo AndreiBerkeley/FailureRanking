@@ -1,0 +1,543 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The male lead of the film is American. Canadian actress Amber Savva played Serena in this film.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Amber Savva | Amber Zoe Savva (born 1993) is a British actress.  She is perhaps best known for her role as Serena in the 2007 film "Fishtales".
+Amber Heard | Amber Laura Heard (born April 22, 1986) is an American actress.  She made her film debut in 2004 in the sports drama "Friday Night Lights".  After small roles in "North Country" and "Alpha Dog", Heard played her first leading role in "All the Boys Love Mandy Lane" (2006) and appeared in The CW television show "Hidden Palms" (2007).
+Carly Schroeder | Carly Brook Schroeder (born October 18, 1990) is an American film and television actress.  She is best known for playing Serena Baldwin, the daughter of Scotty Baldwin and Lucy Coe in the "General Hospital" spin-off "Port Charles".  She also had a recurring role on the Disney Channel's "Lizzie McGuire".  In 2007, she played the lead in "Gracie", a film inspired by a real-life tragedy during the childhood of actors Elisabeth Shue and Andrew Shue.
+Shraap 3D | The principal photography of the film began in January 2016 and will be released sometime in February 2018.  Rajpal Yadav and Kavita Radheshyam will be in male and female lead roles respectively.  Controversial Kannada actress "Mythriya Gowda" was approached and finalized to play the main lead role in the film after rejecting several other actresses.
+Serena Berman | Serena Berman (born December 30, 1990) is an American actress.  She has done voice-over work for animated series and films.
+Serena Vergano | Serena Vergano born Adalgisa Serena Maggiora Vergano (25 August 1943 in Milan, Italy), is an Italian actress.  She was the muse of the Barcelona School of Film, acting in many of the films of this movement.
+Sulagna Panigrahi | Sulagna Panigrahi (Odia: ସୁଲଗ୍ନା ପାଣିଗ୍ରାହୀ , born 3 February in Berhampur, Odisha) is an Odia, Marathi and Indian television and film actress.  As a débutante, she played the lead role in the television serial "Amber Dhara" as Dhara, and went on to play the principal character in "Do Saheliyaan".  She further did a grey role as Sakshi Rajvansh in "Bidaai", until getting her big-break in the Bhatt banner film "Murder 2" as Reshma.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+The male lead of the film is American. Canadian actress Amber Savva played Serena in this film.
+
+[[ ## passages ## ]]
+[1] «Amber Savva | Amber Zoe Savva (born 1993) is a British actress.  She is perhaps best known for her role as Serena in the 2007 film "Fishtales".»
+[2] «Amber Heard | Amber Laura Heard (born April 22, 1986) is an American actress.  She made her film debut in 2004 in the sports drama "Friday Night Lights".  After small roles in "North Country" and "Alpha Dog", Heard played her first leading role in "All the Boys Love Mandy Lane" (2006) and appeared in The CW television show "Hidden Palms" (2007).»
+[3] «Carly Schroeder | Carly Brook Schroeder (born October 18, 1990) is an American film and television actress.  She is best known for playing Serena Baldwin, the daughter of Scotty Baldwin and Lucy Coe in the "General Hospital" spin-off "Port Charles".  She also had a recurring role on the Disney Channel's "Lizzie McGuire".  In 2007, she played the lead in "Gracie", a film inspired by a real-life tragedy during the childhood of actors Elisabeth Shue and Andrew Shue.»
+[4] «Shraap 3D | The principal photography of the film began in January 2016 and will be released sometime in February 2018.  Rajpal Yadav and Kavita Radheshyam will be in male and female lead roles respectively.  Controversial Kannada actress "Mythriya Gowda" was approached and finalized to play the main lead role in the film after rejecting several other actresses.»
+[5] «Serena Berman | Serena Berman (born December 30, 1990) is an American actress.  She has done voice-over work for animated series and films.»
+[6] «Serena Vergano | Serena Vergano born Adalgisa Serena Maggiora Vergano (25 August 1943 in Milan, Italy), is an Italian actress.  She was the muse of the Barcelona School of Film, acting in many of the films of this movement.»
+[7] «Sulagna Panigrahi | Sulagna Panigrahi (Odia: ସୁଲଗ୍ନା ପାଣିଗ୍ରାହୀ , born 3 February in Berhampur, Odisha) is an Odia, Marathi and Indian television and film actress.  As a débutante, she played the lead role in the television serial "Amber Dhara" as Dhara, and went on to play the principal character in "Do Saheliyaan".  She further did a grey role as Sakshi Rajvansh in "Bidaai", until getting her big-break in the Bhatt banner film "Murder 2" as Reshma.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze the claim against the provided passages:
+
+The claim makes two assertions:
+1. "The male lead of the film is American" - This requires identifying which film is being referenced and confirming the male lead's nationality.
+2. "Canadian actress Amber Savva played Serena in this film" - This contains a factual error that can be verified against the passages.
+
+From passage [1], I can confirm that Amber Savva played Serena in the 2007 film "Fishtales". However, the passage explicitly states that "Amber Zoe Savva (born 1993) is a British actress," not a Canadian actress as claimed.
+
+Regarding the male lead being American: The passages do not provide information about who the male lead of "Fishtales" (2007) is, nor their nationality. Without knowing the identity of the male lead in "Fishtales," I cannot verify whether this person is American.
+
+The claim contains a verifiable error (Amber Savva's nationality) but lacks sufficient information in the passages to verify the claim about the male lead's nationality.
+
+[[ ## summary ## ]]
+
+The claim CANNOT BE FULLY VERIFIED and contains a factual inaccuracy:
+
+**Verified Information:**
+- Amber Savva did play Serena in the 2007 film "Fishtales" (confirmed in passage [1])
+
+**Factual Error Identified:**
+- Amber Savva is described as a BRITISH actress (born 1993), not a Canadian actress as claimed in the passage. This directly contradicts the claim.
+
+**Information Missing for Complete Verification:**
+- The identity of the male lead actor in the 2007 film "Fishtales" is not mentioned in any of the provided passages
+- The nationality of the male lead actor in "Fishtales" cannot be verified from these passages
+- To fully verify or refute the first part of the claim, additional information is needed about: the lead male actor in "Fishtales" (2007) and his nationality/background
+
+**Required for Resolution:**
+- Film "Fishtales" (2007) - cast information, specifically identifying the male lead actor
+- Male lead actor of "Fishtales" (2007) - biographical information including nationality
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+The male lead of the film is American. Canadian actress Amber Savva played Serena in this film.
+
+[[ ## summary_1 ## ]]
+The claim CANNOT BE FULLY VERIFIED and contains a factual inaccuracy:
+
+**Verified Information:**
+- Amber Savva did play Serena in the 2007 film "Fishtales" (confirmed in passage [1])
+
+**Factual Error Identified:**
+- Amber Savva is described as a BRITISH actress (born 1993), not a Canadian actress as claimed in the passage. This directly contradicts the claim.
+
+**Information Missing for Complete Verification:**
+- The identity of the male lead actor in the 2007 film "Fishtales" is not mentioned in any of the provided passages
+- The nationality of the male lead actor in "Fishtales" cannot be verified from these passages
+- To fully verify or refute the first part of the claim, additional information is needed about: the lead male actor in "Fishtales" (2007) and his nationality/background
+
+**Required for Resolution:**
+- Film "Fishtales" (2007) - cast information, specifically identifying the male lead actor
+- Male lead actor of "Fishtales" (2007) - biographical information including nationality
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that while Amber Savva's role as Serena has been verified, there is a factual error regarding her nationality (she is British, not Canadian as claimed). Additionally, the critical missing information is the identity and nationality of the male lead actor in "Fishtales" (2007). To complete verification of the claim, I need to retrieve:
+
+1. Information about the male lead actor in the 2007 film "Fishtales"
+2. The actor's nationality to verify if he is American
+3. Confirmation of all cast details for this specific film
+4. Any biographical information about the lead actor that would establish his nationality
+
+The query should target documents about the film's cast and the specific male lead actor's identity and background.
+
+[[ ## query ## ]]
+Who is the male lead actor in the 2007 film "Fishtales"? What is his nationality and background? What are the complete cast details for the film "Fishtales" (2007), including the lead male actor's identity and whether he is American?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Fishtales | Fishtales is a 2007 family comedy film directed by Alki David, and starring Billy Zane and Kelly Brook about a widowed father who falls in love with a mermaid.  The film was released theatrically in the UK on 24 August 2007.
+Peter Dinklage on screen and stage | Peter Dinklage is an American actor and producer.  Dinklage studied acting at the Bennington College where he starred in a number of amateur stage productions.  He made his film debut in the 1995 comedy-drama "Living in Oblivion".  After appearing in a series of supporting parts in much of the 1990s and early 2000s, he made his breakthrough by starring in the Tom McCarthy-directed comedy-drama "The Station Agent" (2003), which had him play a railroad-obsessed introvert who inherits an abandoned train depot.  He was cast in the role by director Tom McCarthy who recalled fondly his appearance in McCarthy's play "The Killing Act" (1995).  For his performance, he received a Screen Actors Guild Award nomination for Best Actor and an Independent Spirit Awards nomination for Best Male Lead.  In the same year, Dinklage played the title role in the play "Richard III" at The Public Theater.  He also played a children's book author in the comedy "Elf".  In 2006, he appeared in the Sidney Lumet-directed crime film "Find Me Guilty".  He followed with roles in the films "Underdog" (2007), the British film "Death at a Funeral" (2007), with its American remake of the same name (2010) and Trumpkin in the high fantasy film "" (2008).
+Corrado Racca | Corrado Racca (1889–1950) was an Italian actor who appeared in more than twenty films during his career.  He played the male lead in the 1933 film "Villafranca".  He also worked as a voice actor, dubbing international films for release in Italy.
+Nithin Sathya | Nitin Sathyaa (born 9 January 1980) is a Tamil film actor from Chennai.  His first appearance was in the film Kalatpadai, and a notable role was also in "Chennai 600028" (2007).  Since then he has been cast as a villain in "Satham Podathey" (2007) and in supporting roles in films like "Raman Thediya Seethai".  He has played the lead role in "Pandhayam" (2007) and "Muthirai" (2008).
+Amber Savva | Amber Zoe Savva (born 1993) is a British actress.  She is perhaps best known for her role as Serena in the 2007 film "Fishtales".
+Jack Reynor | Jack Reynor (born January 23, 1992) is an American-born Irish actor.  His notable roles include the lead in Lenny Abrahamson's film "What Richard Did" (2012), for which he won an IFTA Award for Best Film Actor; the blockbuster ""; "Glassland", for which he won the World Cinema Dramatic Special Jury Award for Acting at the Sundance Film Festival; "Macbeth"; and "Sing Street".
+Dileep Raj | Dileep Raj (born 2 September 1978) is an Indian actor, film director and television director and producer known for his work in Kannada cinema.He has appeared in 24 films.  After having found success in television and as a supporting actor, he made his film debut as a lead with Boy Friend in 2005.  He shot to popularity with the blockbuster film Milana (2007), in which he played the role of a protagonist alongside Puneeth Rajkumar.  In his 2016 film, "U Turn", he essays a leading role in the dramatic thriller.He has also acted in stage roles, including the leading role in the play "Treadmill".
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        Your task is to generate a summary that evaluates whether the claim can be verified from the provided passages. Your summary will be used to guide a three-hop retrieval system to find all required evidence documents.
+        
+        **Critical Requirement**: Your summary must be structured to ensure that a retrieval system will identify and retrieve ALL required evidence documents across three retrieval hops. The feedback will indicate which required evidence documents were successfully retrieved and which were missed.
+        
+        **Three-Hop Retrieval Strategy**:
+        - **Hop 1**: The retrieval system will extract key entities and concepts from the claim itself to retrieve initial documents
+        - **Hop 2**: The system will analyze the retrieved documents and context to identify additional entities that need verification
+        - **Hop 3**: The system will retrieve final documents based on connections and relationships discovered in previous hops
+        
+        **Guidelines for Writing Your Summary**:
+        
+        1. **Identify ALL entities in the claim**: Your summary should explicitly mention every specific entity (people, events, organizations, films, tournaments, seasons, locations, etc.) that appears in the claim. This helps the retrieval system identify what documents are needed.
+        
+        2. **Highlight missing information gaps**: When information is missing from the passages, clearly state what specific documents or facts would be needed. Use explicit document titles or entity names when possible (e.g., "Information about the film 'Undiscovered' and its ticket sales", "Gene Mayer's birth date", "who coached the Memphis Grizzlies in 2004-05").
+        
+        3. **Name entities from context that need verification**: If the context identifies specific entities (like "Lionel Hollins" or "Maurice Cheeks") that are relevant but not fully covered in passages, explicitly mention these names in your summary so they can be retrieved.
+        
+        4. **State verification requirements explicitly**: Clearly articulate what information would be needed to verify the claim, using specific entity names and document types (e.g., "the 1980 Lorraine Open results", "Serena Williams' birth date", "the 2004-05 Memphis Grizzlies season coaching staff").
+        
+        5. **Connect multi-hop relationships**: For claims requiring multiple pieces of information (e.g., "the actor from movie X that did Y"), explicitly state each step: identify movie X, identify the actor, verify the actor did Y.
+        
+        6. **Distinguish between similar entities**: When there might be confusion between entities (e.g., Golden Calf vs. Golden Globes, different people with coaching roles), be explicit about which specific entity or fact needs to be verified.
+        
+        7. **Format for retrieval**: Structure your summary to make it easy for a retrieval system to extract search queries. Use phrases like "requires information about [specific entity/document]" or "needs verification of [specific fact from specific source]".
+        
+        Your summary should conclude with a clear statement about whether the claim is verified, cannot be verified, or is false based on available passages, while making it obvious what additional documents would complete the verification chain.
+[STEP 11] (user) [[ ## claim ## ]]
+The male lead of the film is American. Canadian actress Amber Savva played Serena in this film.
+
+[[ ## context ## ]]
+The claim CANNOT BE FULLY VERIFIED and contains a factual inaccuracy:
+
+**Verified Information:**
+- Amber Savva did play Serena in the 2007 film "Fishtales" (confirmed in passage [1])
+
+**Factual Error Identified:**
+- Amber Savva is described as a BRITISH actress (born 1993), not a Canadian actress as claimed in the passage. This directly contradicts the claim.
+
+**Information Missing for Complete Verification:**
+- The identity of the male lead actor in the 2007 film "Fishtales" is not mentioned in any of the provided passages
+- The nationality of the male lead actor in "Fishtales" cannot be verified from these passages
+- To fully verify or refute the first part of the claim, additional information is needed about: the lead male actor in "Fishtales" (2007) and his nationality/background
+
+**Required for Resolution:**
+- Film "Fishtales" (2007) - cast information, specifically identifying the male lead actor
+- Male lead actor of "Fishtales" (2007) - biographical information including nationality
+
+[[ ## passages ## ]]
+[1] «Fishtales | Fishtales is a 2007 family comedy film directed by Alki David, and starring Billy Zane and Kelly Brook about a widowed father who falls in love with a mermaid.  The film was released theatrically in the UK on 24 August 2007.»
+[2] «Peter Dinklage on screen and stage | Peter Dinklage is an American actor and producer.  Dinklage studied acting at the Bennington College where he starred in a number of amateur stage productions.  He made his film debut in the 1995 comedy-drama "Living in Oblivion".  After appearing in a series of supporting parts in much of the 1990s and early 2000s, he made his breakthrough by starring in the Tom McCarthy-directed comedy-drama "The Station Agent" (2003), which had him play a railroad-obsessed introvert who inherits an abandoned train depot.  He was cast in the role by director Tom McCarthy who recalled fondly his appearance in McCarthy's play "The Killing Act" (1995).  For his performance, he received a Screen Actors Guild Award nomination for Best Actor and an Independent Spirit Awards nomination for Best Male Lead.  In the same year, Dinklage played the title role in the play "Richard III" at The Public Theater.  He also played a children's book author in the comedy "Elf".  In 2006, he appeared in the Sidney Lumet-directed crime film "Find Me Guilty".  He followed with roles in the films "Underdog" (2007), the British film "Death at a Funeral" (2007), with its American remake of the same name (2010) and Trumpkin in the high fantasy film "" (2008).»
+[3] «Corrado Racca | Corrado Racca (1889–1950) was an Italian actor who appeared in more than twenty films during his career.  He played the male lead in the 1933 film "Villafranca".  He also worked as a voice actor, dubbing international films for release in Italy.»
+[4] «Nithin Sathya | Nitin Sathyaa (born 9 January 1980) is a Tamil film actor from Chennai.  His first appearance was in the film Kalatpadai, and a notable role was also in "Chennai 600028" (2007).  Since then he has been cast as a villain in "Satham Podathey" (2007) and in supporting roles in films like "Raman Thediya Seethai".  He has played the lead role in "Pandhayam" (2007) and "Muthirai" (2008).»
+[5] «Amber Savva | Amber Zoe Savva (born 1993) is a British actress.  She is perhaps best known for her role as Serena in the 2007 film "Fishtales".»
+[6] «Jack Reynor | Jack Reynor (born January 23, 1992) is an American-born Irish actor.  His notable roles include the lead in Lenny Abrahamson's film "What Richard Did" (2012), for which he won an IFTA Award for Best Film Actor; the blockbuster ""; "Glassland", for which he won the World Cinema Dramatic Special Jury Award for Acting at the Sundance Film Festival; "Macbeth"; and "Sing Street".»
+[7] «Dileep Raj | Dileep Raj (born 2 September 1978) is an Indian actor, film director and television director and producer known for his work in Kannada cinema.He has appeared in 24 films.  After having found success in television and as a supporting actor, he made his film debut as a lead with Boy Friend in 2005.  He shot to popularity with the blockbuster film Milana (2007), in which he played the role of a protagonist alongside Puneeth Rajkumar.  In his 2016 film, "U Turn", he essays a leading role in the dramatic thriller.He has also acted in stage roles, including the leading role in the play "Treadmill".»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Analyzing the claim against the provided passages:
+
+1. **First part of claim**: "The male lead of the film is American"
+   - Passage [1] identifies the film as "Fishtales" (2007) directed by Alki David, starring Billy Zane and Kelly Brook
+   - Billy Zane is mentioned as a star, but his nationality is not provided in the passages
+   - No other male lead actor is explicitly identified in passage [1]
+   - Therefore, the identity and nationality of the male lead cannot be verified from the passages
+
+2. **Second part of claim**: "Canadian actress Amber Savva played Serena in this film"
+   - Passage [5] confirms Amber Savva played Serena in the 2007 film "Fishtales" ✓
+   - However, passage [5] explicitly states Amber Savva is a BRITISH actress (born 1993), NOT Canadian ✗
+   - This is a factual error in the claim
+
+**Verification Status**: The claim contains a verified factual inaccuracy (Amber Savva's nationality) and cannot be fully verified regarding the male lead actor's identity and American nationality.
+
+[[ ## summary ## ]]
+
+**Claim Verification Summary for "Fishtales" (2007)**
+
+**Verified Information:**
+- Amber Savva did play the character Serena in the 2007 film "Fishtales" (confirmed in passage [5])
+
+**Factual Error Found:**
+- The claim states Amber Savva is a "Canadian actress," but passage [5] definitively establishes she is a BRITISH actress born in 1993. This is a direct contradiction that renders the second part of the claim factually inaccurate.
+
+**Information That Cannot Be Verified:**
+- The identity of the male lead actor in "Fishtales" (2007) requires clarification. Passage [1] mentions the film stars "Billy Zane and Kelly Brook," but does not explicitly state which actor is "the male lead." Billy Zane's nationality is not provided in any passage.
+- To verify the first part of the claim ("The male lead of the film is American"), the retrieval system must identify:
+  1. **Hop 1**: Which actor is definitively the male lead in "Fishtales" (2007) — is it Billy Zane or another actor?
+  2. **Hop 2**: Biographical information about Billy Zane (or the identified male lead actor), specifically his nationality/background
+  3. **Hop 3**: Confirmation of whether the male lead actor holds American nationality
+
+**Required Documents for Complete Verification:**
+- Billy Zane filmography and biographical information (nationality confirmation)
+- Complete cast list for "Fishtales" (2007) with character assignments
+- Additional male actor information if Billy Zane is not the primary male lead
+
+**Conclusion:**
+The claim CANNOT BE FULLY VERIFIED and contains a CONFIRMED FACTUAL ERROR. The second clause about Amber Savva's nationality is demonstrably false (she is British, not Canadian). The first clause about the male lead being American cannot be verified from the provided passages, as the male lead's identity and nationality are not established in the passages.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The male lead of the film is American. Canadian actress Amber Savva played Serena in this film.
+
+[[ ## summary_1 ## ]]
+The claim CANNOT BE FULLY VERIFIED and contains a factual inaccuracy:
+
+**Verified Information:**
+- Amber Savva did play Serena in the 2007 film "Fishtales" (confirmed in passage [1])
+
+**Factual Error Identified:**
+- Amber Savva is described as a BRITISH actress (born 1993), not a Canadian actress as claimed in the passage. This directly contradicts the claim.
+
+**Information Missing for Complete Verification:**
+- The identity of the male lead actor in the 2007 film "Fishtales" is not mentioned in any of the provided passages
+- The nationality of the male lead actor in "Fishtales" cannot be verified from these passages
+- To fully verify or refute the first part of the claim, additional information is needed about: the lead male actor in "Fishtales" (2007) and his nationality/background
+
+**Required for Resolution:**
+- Film "Fishtales" (2007) - cast information, specifically identifying the male lead actor
+- Male lead actor of "Fishtales" (2007) - biographical information including nationality
+
+[[ ## summary_2 ## ]]
+**Claim Verification Summary for "Fishtales" (2007)**
+
+**Verified Information:**
+- Amber Savva did play the character Serena in the 2007 film "Fishtales" (confirmed in passage [5])
+
+**Factual Error Found:**
+- The claim states Amber Savva is a "Canadian actress," but passage [5] definitively establishes she is a BRITISH actress born in 1993. This is a direct contradiction that renders the second part of the claim factually inaccurate.
+
+**Information That Cannot Be Verified:**
+- The identity of the male lead actor in "Fishtales" (2007) requires clarification. Passage [1] mentions the film stars "Billy Zane and Kelly Brook," but does not explicitly state which actor is "the male lead." Billy Zane's nationality is not provided in any passage.
+- To verify the first part of the claim ("The male lead of the film is American"), the retrieval system must identify:
+  1. **Hop 1**: Which actor is definitively the male lead in "Fishtales" (2007) — is it Billy Zane or another actor?
+  2. **Hop 2**: Biographical information about Billy Zane (or the identified male lead actor), specifically his nationality/background
+  3. **Hop 3**: Confirmation of whether the male lead actor holds American nationality
+
+**Required Documents for Complete Verification:**
+- Billy Zane filmography and biographical information (nationality confirmation)
+- Complete cast list for "Fishtales" (2007) with character assignments
+- Additional male actor information if Billy Zane is not the primary male lead
+
+**Conclusion:**
+The claim CANNOT BE FULLY VERIFIED and contains a CONFIRMED FACTUAL ERROR. The second clause about Amber Savva's nationality is demonstrably false (she is British, not Canadian). The first clause about the male lead being American cannot be verified from the provided passages, as the male lead's identity and nationality are not established in the passages.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries identify the same key issues with the claim:
+
+1. **Confirmed Factual Error**: Amber Savva is British, not Canadian. Both summaries definitively establish this contradiction based on passage evidence.
+
+2. **Unverified Information**: The first part of the claim about the male lead being American cannot be verified from the provided passages. While Billy Zane and Kelly Brook are mentioned as stars of "Fishtales" (2007), neither summary confirms:
+   - Which actor is definitively "the male lead"
+   - The nationality of the male lead actor
+
+3. **Gap Analysis**: To fully verify the claim, we need biographical information about the male lead actor (likely Billy Zane based on context) and explicit confirmation of his American nationality.
+
+The most direct path to resolving the unverified portion is to retrieve biographical information about the male lead actor of "Fishtales" (2007) and confirm his nationality.
+
+[[ ## query ## ]]
+Billy Zane nationality birthplace American actor Fishtales 2007
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Fishtales | Fishtales is a 2007 family comedy film directed by Alki David, and starring Billy Zane and Kelly Brook about a widowed father who falls in love with a mermaid.  The film was released theatrically in the UK on 24 August 2007.
+Billy Zane | William George "Billy" Zane, Jr. (born February 24, 1966) is an American actor and producer.  He is best known for playing Hughie in the thriller "Dead Calm" (1989), Kit Walker / The Phantom in the superhero film "The Phantom" (1996), Caledon Hockley in the epic romantic disaster film "Titanic" (1997), and for his television role as John Wheeler in the serial drama series "Twin Peaks".
+Betrayal of the Dove | Betrayal of the Dove is a 1993 American suspense film starring Helen Slater, Billy Zane, and Heather Lind in a screenplay co-written by actor-turned-author Robby Benson.
+The Mad | The Mad is a 2007 comedy/horror film, starring Billy Zane and Maggie Castle, Directed and written by John Kalangis.
+Gabrielle Stone | Gabrielle Stone is an American actress and dancer born in Los Angeles, California.  Gabrielle Stone is the daughter of actor Christopher Stone and actress Dee Wallace.  She is known for various movies and television series such as "Speak No Evil", the movie "Cut "and the upcoming movie "The Legacy Of Avril Kyte" with actors Doug Jones, J. Larose and Dave Vescio.  Gabrielle Stone has also worked on the film set with known actors Billy Zane, Mischa Barton and Dee Wallace in "Zombie Killers: Elephant's Graveyard".
+Alien Agent | Alien Agent is a 2007 Canadian science fiction/action film.  It was directed by Jesse Johnson and starred Mark Dacascos, Emma Lahana with Billy Zane and Amelia Cooke.
+Zane Huett | Zane Alexander Huett (born May 9, 1997) is an American child actor.
+Matt Zane | Matt "The Lord" Zane (born October 7) is an American musician, suspension artist, actor, poet and author .
+Trent Kowalik | Trent Matthias Kowalik (born February 22, 1995) is an American actor, dancer, and singer.  He made his theatrical debut as Billy in the West End production of "Billy Elliot the Musical" in 2007.
+Lil Zane | Zane R. Copeland Jr. (born July 11, 1982), better known as Lil Zane, is an American rapper and actor born in Yonkers, New York and raised in Atlanta, Georgia.  He is best known for his debut album "", released in 2000, which featured the single "Callin' Me" featuring 112.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Amber Savva | Amber Zoe Savva (born 1993) is a British actress.  She is perhaps best known for her role as Serena in the 2007 film "Fishtales".
+Amber Heard | Amber Laura Heard (born April 22, 1986) is an American actress.  She made her film debut in 2004 in the sports drama "Friday Night Lights".  After small roles in "North Country" and "Alpha Dog", Heard played her first leading role in "All the Boys Love Mandy Lane" (2006) and appeared in The CW television show "Hidden Palms" (2007).
+Carly Schroeder | Carly Brook Schroeder (born October 18, 1990) is an American film and television actress.  She is best known for playing Serena Baldwin, the daughter of Scotty Baldwin and Lucy Coe in the "General Hospital" spin-off "Port Charles".  She also had a recurring role on the Disney Channel's "Lizzie McGuire".  In 2007, she played the lead in "Gracie", a film inspired by a real-life tragedy during the childhood of actors Elisabeth Shue and Andrew Shue.
+Shraap 3D | The principal photography of the film began in January 2016 and will be released sometime in February 2018.  Rajpal Yadav and Kavita Radheshyam will be in male and female lead roles respectively.  Controversial Kannada actress "Mythriya Gowda" was approached and finalized to play the main lead role in the film after rejecting several other actresses.
+Serena Berman | Serena Berman (born December 30, 1990) is an American actress.  She has done voice-over work for animated series and films.
+Serena Vergano | Serena Vergano born Adalgisa Serena Maggiora Vergano (25 August 1943 in Milan, Italy), is an Italian actress.  She was the muse of the Barcelona School of Film, acting in many of the films of this movement.
+Sulagna Panigrahi | Sulagna Panigrahi (Odia: ସୁଲଗ୍ନା ପାଣିଗ୍ରାହୀ , born 3 February in Berhampur, Odisha) is an Odia, Marathi and Indian television and film actress.  As a débutante, she played the lead role in the television serial "Amber Dhara" as Dhara, and went on to play the principal character in "Do Saheliyaan".  She further did a grey role as Sakshi Rajvansh in "Bidaai", until getting her big-break in the Bhatt banner film "Murder 2" as Reshma.
+Fishtales | Fishtales is a 2007 family comedy film directed by Alki David, and starring Billy Zane and Kelly Brook about a widowed father who falls in love with a mermaid.  The film was released theatrically in the UK on 24 August 2007.
+Peter Dinklage on screen and stage | Peter Dinklage is an American actor and producer.  Dinklage studied acting at the Bennington College where he starred in a number of amateur stage productions.  He made his film debut in the 1995 comedy-drama "Living in Oblivion".  After appearing in a series of supporting parts in much of the 1990s and early 2000s, he made his breakthrough by starring in the Tom McCarthy-directed comedy-drama "The Station Agent" (2003), which had him play a railroad-obsessed introvert who inherits an abandoned train depot.  He was cast in the role by director Tom McCarthy who recalled fondly his appearance in McCarthy's play "The Killing Act" (1995).  For his performance, he received a Screen Actors Guild Award nomination for Best Actor and an Independent Spirit Awards nomination for Best Male Lead.  In the same year, Dinklage played the title role in the play "Richard III" at The Public Theater.  He also played a children's book author in the comedy "Elf".  In 2006, he appeared in the Sidney Lumet-directed crime film "Find Me Guilty".  He followed with roles in the films "Underdog" (2007), the British film "Death at a Funeral" (2007), with its American remake of the same name (2010) and Trumpkin in the high fantasy film "" (2008).
+Corrado Racca | Corrado Racca (1889–1950) was an Italian actor who appeared in more than twenty films during his career.  He played the male lead in the 1933 film "Villafranca".  He also worked as a voice actor, dubbing international films for release in Italy.
+Nithin Sathya | Nitin Sathyaa (born 9 January 1980) is a Tamil film actor from Chennai.  His first appearance was in the film Kalatpadai, and a notable role was also in "Chennai 600028" (2007).  Since then he has been cast as a villain in "Satham Podathey" (2007) and in supporting roles in films like "Raman Thediya Seethai".  He has played the lead role in "Pandhayam" (2007) and "Muthirai" (2008).
+Amber Savva | Amber Zoe Savva (born 1993) is a British actress.  She is perhaps best known for her role as Serena in the 2007 film "Fishtales".
+Jack Reynor | Jack Reynor (born January 23, 1992) is an American-born Irish actor.  His notable roles include the lead in Lenny Abrahamson's film "What Richard Did" (2012), for which he won an IFTA Award for Best Film Actor; the blockbuster ""; "Glassland", for which he won the World Cinema Dramatic Special Jury Award for Acting at the Sundance Film Festival; "Macbeth"; and "Sing Street".
+Dileep Raj | Dileep Raj (born 2 September 1978) is an Indian actor, film director and television director and producer known for his work in Kannada cinema.He has appeared in 24 films.  After having found success in television and as a supporting actor, he made his film debut as a lead with Boy Friend in 2005.  He shot to popularity with the blockbuster film Milana (2007), in which he played the role of a protagonist alongside Puneeth Rajkumar.  In his 2016 film, "U Turn", he essays a leading role in the dramatic thriller.He has also acted in stage roles, including the leading role in the play "Treadmill".
+Fishtales | Fishtales is a 2007 family comedy film directed by Alki David, and starring Billy Zane and Kelly Brook about a widowed father who falls in love with a mermaid.  The film was released theatrically in the UK on 24 August 2007.
+Billy Zane | William George "Billy" Zane, Jr. (born February 24, 1966) is an American actor and producer.  He is best known for playing Hughie in the thriller "Dead Calm" (1989), Kit Walker / The Phantom in the superhero film "The Phantom" (1996), Caledon Hockley in the epic romantic disaster film "Titanic" (1997), and for his television role as John Wheeler in the serial drama series "Twin Peaks".
+Betrayal of the Dove | Betrayal of the Dove is a 1993 American suspense film starring Helen Slater, Billy Zane, and Heather Lind in a screenplay co-written by actor-turned-author Robby Benson.
+The Mad | The Mad is a 2007 comedy/horror film, starring Billy Zane and Maggie Castle, Directed and written by John Kalangis.
+Gabrielle Stone | Gabrielle Stone is an American actress and dancer born in Los Angeles, California.  Gabrielle Stone is the daughter of actor Christopher Stone and actress Dee Wallace.  She is known for various movies and television series such as "Speak No Evil", the movie "Cut "and the upcoming movie "The Legacy Of Avril Kyte" with actors Doug Jones, J. Larose and Dave Vescio.  Gabrielle Stone has also worked on the film set with known actors Billy Zane, Mischa Barton and Dee Wallace in "Zombie Killers: Elephant's Graveyard".
+Alien Agent | Alien Agent is a 2007 Canadian science fiction/action film.  It was directed by Jesse Johnson and starred Mark Dacascos, Emma Lahana with Billy Zane and Amelia Cooke.
+Zane Huett | Zane Alexander Huett (born May 9, 1997) is an American child actor.
+Matt Zane | Matt "The Lord" Zane (born October 7) is an American musician, suspension artist, actor, poet and author .
+Trent Kowalik | Trent Matthias Kowalik (born February 22, 1995) is an American actor, dancer, and singer.  He made his theatrical debut as Billy in the West End production of "Billy Elliot the Musical" in 2007.
+Lil Zane | Zane R. Copeland Jr. (born July 11, 1982), better known as Lil Zane, is an American rapper and actor born in Yonkers, New York and raised in Atlanta, Georgia.  He is best known for his debut album "", released in 2000, which featured the single "Callin' Me" featuring 112.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.6 (Solver_Passage_Content_Misreading), anchored near step UNKNOWN: evidence: Summary_2 states: 'Passage [1] mentions the film stars "Billy Zane and Kelly Brook," but does not explicitly state which actor is "the male lead."' However, passage [1] describes Fishtales as 'starring Billy Zane and Kelly Brook about a widowed father who falls in love with a mermaid.' The plot description clearly identifies Billy Zane as playing the widowed father (the male protagonist), making h
+- code B.13 (Query_Form_Mismatch), anchored near step 8: evidence: Query for hop 2: 'Who is the male lead actor in the 2007 film "Fishtales"? What is his nationality and background? What are the complete cast details for the film "Fishtales" (2007), including the lead male actor's identity and whether he is American?' This is a natural-language yes/no question format bundling multiple questions together, rather than a structured entity-targeting query.
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query hop 2 asks 'Who is the male lead actor in the 2007 film "Fishtales"? What is his nationality...' while query hop 3 asks 'Billy Zane nationality birthplace American actor Fishtales 2007'. Both queries target the same information (Billy Zane's nationality in relation to Fishtales 2007) without substantive advancement. Hop 2 already retrieved the passage stating Billy Zane stars in Fishtales (p
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

@@ -1,0 +1,398 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.
+Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.
+List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## passages ## ]]
+[1] «Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.»
+[2] «Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.»
+[3] «The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.»
+[4] «Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.»
+[5] «List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.»
+[6] «Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.»
+[7] «Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze this claim step by step.
+
+The claim states: "Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera 'I puritani'"
+
+From the passages, I can establish:
+1. Mikhail Glinka's nationality: Passage [7] clearly states he was Russian ("was the first Russian composer to gain wide recognition within his own country")
+2. The composer who wrote "I puritani": Passage [1] explicitly states "Bellini's contribution being the hugely-successful 'I puritani'"
+3. Vincenzo Bellini's nationality: Passage [1] identifies him as one of "the outstanding Italian composers of the day" and mentions both Donizetti and Bellini as Italian composers commissioned by Rossini
+
+So the claim is verifiable:
+- Mikhail Glinka = Russian
+- Vincenzo Bellini = Italian (implied by context of "Italian composers")
+- Bellini wrote "I puritani"
+- Therefore, Glinka and Bellini are NOT the same nationality (Russian ≠ Italian)
+
+The claim is TRUE and can be verified from the passages.
+[[ ## summary ## ]]
+The claim can be FULLY VERIFIED from the provided passages.
+
+The claim asserts that Mikhail Glinka is not of the same nationality as the composer who wrote "I puritani," and identifies that composer as the writer of that opera.
+
+From the passages:
+- Mikhail Glinka is confirmed to be Russian (Passage [7]: "was the first Russian composer to gain wide recognition within his own country")
+- Vincenzo Bellini is confirmed as the composer of "I puritani" (Passage [1]: "Bellini's contribution being the hugely-successful 'I puritani'")
+- Vincenzo Bellini is identified as an Italian composer (Passage [1] groups him among "the outstanding Italian composers of the day")
+
+Therefore, the nationalities differ: Mikhail Glinka (Russian) vs. Vincenzo Bellini (Italian), confirming that the claim is accurate. No additional information is required for verification.
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## summary_1 ## ]]
+The claim can be FULLY VERIFIED from the provided passages.
+
+The claim asserts that Mikhail Glinka is not of the same nationality as the composer who wrote "I puritani," and identifies that composer as the writer of that opera.
+
+From the passages:
+- Mikhail Glinka is confirmed to be Russian (Passage [7]: "was the first Russian composer to gain wide recognition within his own country")
+- Vincenzo Bellini is confirmed as the composer of "I puritani" (Passage [1]: "Bellini's contribution being the hugely-successful 'I puritani'")
+- Vincenzo Bellini is identified as an Italian composer (Passage [1] groups him among "the outstanding Italian composers of the day")
+
+Therefore, the nationalities differ: Mikhail Glinka (Russian) vs. Vincenzo Bellini (Italian), confirming that the claim is accurate. No additional information is required for verification.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim states that Mikhail Glinka is not the same nationality as the composer who wrote "I puritani". According to the summary, this has been fully verified: Mikhail Glinka is Russian, Vincenzo Bellini composed "I puritani" and is Italian. Since Russian ≠ Italian, the claim is accurate and requires no additional verification.
+
+[[ ## query ## ]]
+No query needed - the claim has been fully verified through the provided passages.
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Longevity claims | Longevity claims are unsubstantiated cases of asserted human longevity.  Those asserting lifespans of 110 years or more are referred to as supercentenarians.  Many have either no official verification or are backed only by partial evidence.  Cases where longevity has been fully verified, according to modern standards of longevity research, are reflected in an established list of supercentenarians based on the work of organizations such as the Gerontology Research Group (GRG) or the "Guinness World Records".  This article lists living claims greater than that of the oldest person whose age has been independently verified, Nabi Tajima at and deceased claims greater than that of the oldest person ever whose age has been verified, namely Jeanne Calment who died at the age of 122 years, 164 days.  The upper limit for both lists is 130 years.
+Service authentication | Service authentication refers to the identity verification process from the service provider to the user.  So far, virtually all types of authentication have been a user authentication where a user provides his or her credentials to the service in lieu of the service providing its identity credentials to the user.  There has been a steady rise of needs for service authentication to protect users from the malicious hacking attack, commonly known as ‘pharming’, which lures users to fake sites.  Since pharming effectively entices a user to believe the site is genuine, it is obviously vital for users to find a way to carefully verify the authenticity of a site.  Service authentication, a type of mutual authentication technology combined with the international standard security protocol, would prevent such pharming attacks if properly administered by providing the identity credentials of the server to the client through securely encrypted communication.  There have been several attempts within the community of IT security vendors and IAM providers to successfully incorporate the service authentication for more robust protection of the client-server communication.
+Video browsing | Video browsing, also known as exploratory video search, is the interactive process of skimming through video content in order to satisfy some information need or to interactively check if the video content is relevant.  While originally proposed to help users inspecting a single video through visual thumbnails, modern video browsing tools enable users to quickly find desired information in a video archive by iterative human–computer interaction through an exploratory search approach.  Many of these tools presume a smart user that wants features to interactively inspect video content as well as automatic content filtering features.  For that purpose, several video interaction features are usually provided, such as sophisticated navigation in video or search by a content-based query.  Video browsing tools often build on lower-level video content analysis, such as shot transition detection, keyframe extraction, semantic concept detection, and create a structured content overview of the video file or video archive.  Furthermore, they usually provide sophisticated navigation features, such as advanced timelines, visual seeker bars or a list of selected thumbnails, as well as means for content querying.  Examples of content queries are shot filtering through visual concepts (e.g., only shots showing cars), through some specific characteristics (e.g., color or motion filtering), through user-provided sketches (e.g., a visually drawn sketch), or through content-based similarity search.
+Custom (law) | Custom in law is the established pattern of behavior that can be objectively verified within a particular social setting.  A claim can be carried out in defense of "what has always been done and accepted by law."  Related is the idea of prescription; a right enjoyed through long custom rather than positive law.
+Eulalia Pérez de Guillén Mariné | Eulalia Perez de Guillen Marine (1766 – June 11, 1878), better known in Spanish orthography as Eulalia Pérez de Guillén Mariné, was a Californio who was "mayordoma" of Missión San Gabriel Arcángel and grantee of Rancho del Rincón de San Pascual in the San Rafael Hills, in present-day Los Angeles County, California.  She claimed to have been born in 1766, if so making her 112 years old at the time of her death in 1878, but her case has not been verified or fully proven.
+Object Query Language | Object Query Language (OQL) is a query language standard for object-oriented databases modeled after SQL.  OQL was developed by the Object Data Management Group (ODMG).  Because of its overall complexity nobody has ever fully implemented the complete OQL.  OQL has influenced the design of some of the newer query languages like JDOQL and EJB QL, but they can't be considered as different flavors of OQL.
+Voter-verified paper audit trail | Voter Verifiable Paper Audit Trail (VVPAT) or Verifiable Paper Record (VPR) is a method of providing feedback to voters using a ballotless voting system.  A VVPAT is intended as an independent verification system for voting machines designed to allow voters to verify that their vote was cast correctly, to detect possible election fraud or malfunction, and to provide a means to audit the stored electronic results.It contains name of the candidate (for whom vote has been casted) and symbol of the party/ individual candidate.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## context ## ]]
+The claim can be FULLY VERIFIED from the provided passages.
+
+The claim asserts that Mikhail Glinka is not of the same nationality as the composer who wrote "I puritani," and identifies that composer as the writer of that opera.
+
+From the passages:
+- Mikhail Glinka is confirmed to be Russian (Passage [7]: "was the first Russian composer to gain wide recognition within his own country")
+- Vincenzo Bellini is confirmed as the composer of "I puritani" (Passage [1]: "Bellini's contribution being the hugely-successful 'I puritani'")
+- Vincenzo Bellini is identified as an Italian composer (Passage [1] groups him among "the outstanding Italian composers of the day")
+
+Therefore, the nationalities differ: Mikhail Glinka (Russian) vs. Vincenzo Bellini (Italian), confirming that the claim is accurate. No additional information is required for verification.
+
+[[ ## passages ## ]]
+[1] «Longevity claims | Longevity claims are unsubstantiated cases of asserted human longevity.  Those asserting lifespans of 110 years or more are referred to as supercentenarians.  Many have either no official verification or are backed only by partial evidence.  Cases where longevity has been fully verified, according to modern standards of longevity research, are reflected in an established list of supercentenarians based on the work of organizations such as the Gerontology Research Group (GRG) or the "Guinness World Records".  This article lists living claims greater than that of the oldest person whose age has been independently verified, Nabi Tajima at and deceased claims greater than that of the oldest person ever whose age has been verified, namely Jeanne Calment who died at the age of 122 years, 164 days.  The upper limit for both lists is 130 years.»
+[2] «Service authentication | Service authentication refers to the identity verification process from the service provider to the user.  So far, virtually all types of authentication have been a user authentication where a user provides his or her credentials to the service in lieu of the service providing its identity credentials to the user.  There has been a steady rise of needs for service authentication to protect users from the malicious hacking attack, commonly known as ‘pharming’, which lures users to fake sites.  Since pharming effectively entices a user to believe the site is genuine, it is obviously vital for users to find a way to carefully verify the authenticity of a site.  Service authentication, a type of mutual authentication technology combined with the international standard security protocol, would prevent such pharming attacks if properly administered by providing the identity credentials of the server to the client through securely encrypted communication.  There have been several attempts within the community of IT security vendors and IAM providers to successfully incorporate the service authentication for more robust protection of the client-server communication.»
+[3] «Video browsing | Video browsing, also known as exploratory video search, is the interactive process of skimming through video content in order to satisfy some information need or to interactively check if the video content is relevant.  While originally proposed to help users inspecting a single video through visual thumbnails, modern video browsing tools enable users to quickly find desired information in a video archive by iterative human–computer interaction through an exploratory search approach.  Many of these tools presume a smart user that wants features to interactively inspect video content as well as automatic content filtering features.  For that purpose, several video interaction features are usually provided, such as sophisticated navigation in video or search by a content-based query.  Video browsing tools often build on lower-level video content analysis, such as shot transition detection, keyframe extraction, semantic concept detection, and create a structured content overview of the video file or video archive.  Furthermore, they usually provide sophisticated navigation features, such as advanced timelines, visual seeker bars or a list of selected thumbnails, as well as means for content querying.  Examples of content queries are shot filtering through visual concepts (e.g., only shots showing cars), through some specific characteristics (e.g., color or motion filtering), through user-provided sketches (e.g., a visually drawn sketch), or through content-based similarity search.»
+[4] «Custom (law) | Custom in law is the established pattern of behavior that can be objectively verified within a particular social setting.  A claim can be carried out in defense of "what has always been done and accepted by law."  Related is the idea of prescription; a right enjoyed through long custom rather than positive law.»
+[5] «Eulalia Pérez de Guillén Mariné | Eulalia Perez de Guillen Marine (1766 – June 11, 1878), better known in Spanish orthography as Eulalia Pérez de Guillén Mariné, was a Californio who was "mayordoma" of Missión San Gabriel Arcángel and grantee of Rancho del Rincón de San Pascual in the San Rafael Hills, in present-day Los Angeles County, California.  She claimed to have been born in 1766, if so making her 112 years old at the time of her death in 1878, but her case has not been verified or fully proven.»
+[6] «Object Query Language | Object Query Language (OQL) is a query language standard for object-oriented databases modeled after SQL.  OQL was developed by the Object Data Management Group (ODMG).  Because of its overall complexity nobody has ever fully implemented the complete OQL.  OQL has influenced the design of some of the newer query languages like JDOQL and EJB QL, but they can't be considered as different flavors of OQL.»
+[7] «Voter-verified paper audit trail | Voter Verifiable Paper Audit Trail (VVPAT) or Verifiable Paper Record (VPR) is a method of providing feedback to voters using a ballotless voting system.  A VVPAT is intended as an independent verification system for voting machines designed to allow voters to verify that their vote was cast correctly, to detect possible election fraud or malfunction, and to provide a means to audit the stored electronic results.It contains name of the candidate (for whom vote has been casted) and symbol of the party/ individual candidate.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The provided passages contain NO information about Mikhail Glinka, Vincenzo Bellini, the opera "I puritani," or any opera composers. The passages discuss entirely unrelated topics including:
+- Longevity claims and supercentenarians (Passage 1)
+- Service authentication and cybersecurity (Passage 2)
+- Video browsing and search tools (Passage 3)
+- Custom in law (Passage 4)
+- Eulalia Pérez de Guillén Mariné, a historical Californio figure (Passage 5)
+- Object Query Language (Passage 6)
+- Voter-verified paper audit trails (Passage 7)
+
+The context provided claims the assertion can be "FULLY VERIFIED" from the passages, but this is incorrect. The passages contain zero relevant information to verify any claims about Glinka, Bellini, their nationalities, or the opera "I puritani." The context appears to reference passages that do not match the provided text.
+
+[[ ## summary ## ]]
+The claim cannot be verified from the provided passages. While the context asserts that information about Mikhail Glinka's Russian nationality, Vincenzo Bellini's Italian nationality, and Bellini's authorship of "I puritani" is present in the passages, no such information exists in the actual passage texts provided. The passages are entirely unrelated to opera composers or their nationalities. Verification of this claim would require passages that actually contain biographical information about these composers.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## summary_1 ## ]]
+The claim can be FULLY VERIFIED from the provided passages.
+
+The claim asserts that Mikhail Glinka is not of the same nationality as the composer who wrote "I puritani," and identifies that composer as the writer of that opera.
+
+From the passages:
+- Mikhail Glinka is confirmed to be Russian (Passage [7]: "was the first Russian composer to gain wide recognition within his own country")
+- Vincenzo Bellini is confirmed as the composer of "I puritani" (Passage [1]: "Bellini's contribution being the hugely-successful 'I puritani'")
+- Vincenzo Bellini is identified as an Italian composer (Passage [1] groups him among "the outstanding Italian composers of the day")
+
+Therefore, the nationalities differ: Mikhail Glinka (Russian) vs. Vincenzo Bellini (Italian), confirming that the claim is accurate. No additional information is required for verification.
+
+[[ ## summary_2 ## ]]
+The claim cannot be verified from the provided passages. While the context asserts that information about Mikhail Glinka's Russian nationality, Vincenzo Bellini's Italian nationality, and Bellini's authorship of "I puritani" is present in the passages, no such information exists in the actual passage texts provided. The passages are entirely unrelated to opera composers or their nationalities. Verification of this claim would require passages that actually contain biographical information about these composers.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+There is a direct contradiction between summary_1 and summary_2. Summary_1 claims the passages fully verify the claim with specific references to Mikhail Glinka being Russian, Vincenzo Bellini being Italian, and Bellini composing "I puritani." Summary_2 states the passages contain no such information and are entirely unrelated to opera composers. To resolve this contradiction, I need to determine which summary is accurate by formulating a query that will establish: (1) Mikhail Glinka's nationality, (2) the composer and nationality of the author of "I puritani", and (3) whether these nationalities differ.
+
+[[ ## query ## ]]
+What is Mikhail Glinka's nationality, who composed the opera "I puritani", what is that composer's nationality, and do these nationalities differ?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+Mikhail Tushmalov | Mikhail Tushmalov "(Tushmalishvili, Georgian:თუშმალიშვილი)" (1861 - 1896) was a Russian Georgian opera conductor who held posts in Warsaw and Tiflis (Tbilisi).  He died in what is now the nation of Georgia.
+The Great Glinka | The Great Glinka (Russian: Глинка , "Glinka " ) is a 1946 Soviet biopic film directed by Lev Arnshtam.  The film is about Mikhail Glinka, a Russian composer of the 19th century.  The film was awarded the Stalin Prize of II degree (1947) and it was entered into the 1946 Cannes Film Festival.
+What Men Live By (opera) | What Men Live By ("Čím člověk žije" in Czech) is an opera in one act by Bohuslav Martinů to an English libretto by the composer, based on the story by Leo Tolstoy.  It was composed in 1951-1952 when the composer was living in the U.S.A.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+John Hardy (composer) | John Hardy (born 1957) is an English-born composer who has been commissioned by the Arts Council/National Lottery, the BBC, Welsh National Opera and the BBC National Orchestra Of Wales, among others.  His work includes opera, choral and orchestral pieces, site-specific theatre events and film.
+Mily Balakirev | Mily Alexeyevich Balakirev (Russian: Ми́лий Алексе́евич Бала́кирев , ] ; 2 January 1837  – 29 May [O.S. 16 May] 1910 ) was a Russian pianist, conductor and composer known today primarily for his work promoting musical nationalism and his encouragement of more famous Russian composers, notably Pyotr Ilyich Tchaikovsky.  He began his career as a pivotal figure, extending the fusion of traditional folk music and experimental classical music practices begun by composer Mikhail Glinka.  In the process, Balakirev developed musical patterns that could express overt nationalistic feeling.  After a nervous breakdown and consequential sabbatical, he returned to classical music but did not wield the same level of influence as before.
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Manuel Saumell | Manuel Saumell Robredo (19 April 1818 – 14 August 1870), was a Cuban composer known for his invention and development of genuinely creolized forms of music.  For this reason he gets the credit for being the first to cultivate Cuban musical nationalism, and is of similar standing to Glinka who initiated Russian musical nationalism with "A Life for the Tsar" at about the same time.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.
+Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.
+List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+Longevity claims | Longevity claims are unsubstantiated cases of asserted human longevity.  Those asserting lifespans of 110 years or more are referred to as supercentenarians.  Many have either no official verification or are backed only by partial evidence.  Cases where longevity has been fully verified, according to modern standards of longevity research, are reflected in an established list of supercentenarians based on the work of organizations such as the Gerontology Research Group (GRG) or the "Guinness World Records".  This article lists living claims greater than that of the oldest person whose age has been independently verified, Nabi Tajima at and deceased claims greater than that of the oldest person ever whose age has been verified, namely Jeanne Calment who died at the age of 122 years, 164 days.  The upper limit for both lists is 130 years.
+Service authentication | Service authentication refers to the identity verification process from the service provider to the user.  So far, virtually all types of authentication have been a user authentication where a user provides his or her credentials to the service in lieu of the service providing its identity credentials to the user.  There has been a steady rise of needs for service authentication to protect users from the malicious hacking attack, commonly known as ‘pharming’, which lures users to fake sites.  Since pharming effectively entices a user to believe the site is genuine, it is obviously vital for users to find a way to carefully verify the authenticity of a site.  Service authentication, a type of mutual authentication technology combined with the international standard security protocol, would prevent such pharming attacks if properly administered by providing the identity credentials of the server to the client through securely encrypted communication.  There have been several attempts within the community of IT security vendors and IAM providers to successfully incorporate the service authentication for more robust protection of the client-server communication.
+Video browsing | Video browsing, also known as exploratory video search, is the interactive process of skimming through video content in order to satisfy some information need or to interactively check if the video content is relevant.  While originally proposed to help users inspecting a single video through visual thumbnails, modern video browsing tools enable users to quickly find desired information in a video archive by iterative human–computer interaction through an exploratory search approach.  Many of these tools presume a smart user that wants features to interactively inspect video content as well as automatic content filtering features.  For that purpose, several video interaction features are usually provided, such as sophisticated navigation in video or search by a content-based query.  Video browsing tools often build on lower-level video content analysis, such as shot transition detection, keyframe extraction, semantic concept detection, and create a structured content overview of the video file or video archive.  Furthermore, they usually provide sophisticated navigation features, such as advanced timelines, visual seeker bars or a list of selected thumbnails, as well as means for content querying.  Examples of content queries are shot filtering through visual concepts (e.g., only shots showing cars), through some specific characteristics (e.g., color or motion filtering), through user-provided sketches (e.g., a visually drawn sketch), or through content-based similarity search.
+Custom (law) | Custom in law is the established pattern of behavior that can be objectively verified within a particular social setting.  A claim can be carried out in defense of "what has always been done and accepted by law."  Related is the idea of prescription; a right enjoyed through long custom rather than positive law.
+Eulalia Pérez de Guillén Mariné | Eulalia Perez de Guillen Marine (1766 – June 11, 1878), better known in Spanish orthography as Eulalia Pérez de Guillén Mariné, was a Californio who was "mayordoma" of Missión San Gabriel Arcángel and grantee of Rancho del Rincón de San Pascual in the San Rafael Hills, in present-day Los Angeles County, California.  She claimed to have been born in 1766, if so making her 112 years old at the time of her death in 1878, but her case has not been verified or fully proven.
+Object Query Language | Object Query Language (OQL) is a query language standard for object-oriented databases modeled after SQL.  OQL was developed by the Object Data Management Group (ODMG).  Because of its overall complexity nobody has ever fully implemented the complete OQL.  OQL has influenced the design of some of the newer query languages like JDOQL and EJB QL, but they can't be considered as different flavors of OQL.
+Voter-verified paper audit trail | Voter Verifiable Paper Audit Trail (VVPAT) or Verifiable Paper Record (VPR) is a method of providing feedback to voters using a ballotless voting system.  A VVPAT is intended as an independent verification system for voting machines designed to allow voters to verify that their vote was cast correctly, to detect possible election fraud or malfunction, and to provide a means to audit the stored electronic results.It contains name of the candidate (for whom vote has been casted) and symbol of the party/ individual candidate.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+Mikhail Tushmalov | Mikhail Tushmalov "(Tushmalishvili, Georgian:თუშმალიშვილი)" (1861 - 1896) was a Russian Georgian opera conductor who held posts in Warsaw and Tiflis (Tbilisi).  He died in what is now the nation of Georgia.
+The Great Glinka | The Great Glinka (Russian: Глинка , "Glinka " ) is a 1946 Soviet biopic film directed by Lev Arnshtam.  The film is about Mikhail Glinka, a Russian composer of the 19th century.  The film was awarded the Stalin Prize of II degree (1947) and it was entered into the 1946 Cannes Film Festival.
+What Men Live By (opera) | What Men Live By ("Čím člověk žije" in Czech) is an opera in one act by Bohuslav Martinů to an English libretto by the composer, based on the story by Leo Tolstoy.  It was composed in 1951-1952 when the composer was living in the U.S.A.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+John Hardy (composer) | John Hardy (born 1957) is an English-born composer who has been commissioned by the Arts Council/National Lottery, the BBC, Welsh National Opera and the BBC National Orchestra Of Wales, among others.  His work includes opera, choral and orchestral pieces, site-specific theatre events and film.
+Mily Balakirev | Mily Alexeyevich Balakirev (Russian: Ми́лий Алексе́евич Бала́кирев , ] ; 2 January 1837  – 29 May [O.S. 16 May] 1910 ) was a Russian pianist, conductor and composer known today primarily for his work promoting musical nationalism and his encouragement of more famous Russian composers, notably Pyotr Ilyich Tchaikovsky.  He began his career as a pivotal figure, extending the fusion of traditional folk music and experimental classical music practices begun by composer Mikhail Glinka.  In the process, Balakirev developed musical patterns that could express overt nationalistic feeling.  After a nervous breakdown and consequential sabbatical, he returned to classical music but did not wield the same level of influence as before.
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Manuel Saumell | Manuel Saumell Robredo (19 April 1818 – 14 August 1870), was a Cuban composer known for his invention and development of genuinely creolized forms of music.  For this reason he gets the credit for being the first to cultivate Cuban musical nationalism, and is of similar standing to Glinka who initiated Russian musical nationalism with "A Life for the Tsar" at about the same time.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Coordinator's second query: 'What is Mikhail Glinka's nationality, who composed the opera "I puritani", what is that composer's nationality, and do these nationalities differ?' This is a compound multi-part query bundling four separate targets (Glinka's nationality, I puritani's composer, that composer's nationality, and a comparison question) into a single natural-language question.
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: The coordinator generates query for hop 2 stating 'No query needed - the claim has been fully verified through the provided passages.' despite the system executing a retrieval that returned unrelated documents (longevity claims, service authentication, etc.). Then for hop 3, the coordinator asks the same information already verified in hop 1 passages: 'What is Mikhail Glinka's nationality, who com
+- code A.10 (Multi_Hop_Context_Degradation), anchored near step 12: evidence: Summary_2 states 'The claim cannot be verified from the provided passages. While the context asserts that information about Mikhail Glinka's Russian nationality, Vincenzo Bellini's Italian nationality, and Bellini's authorship of "I puritani" is present in the passages, no such information exists in the actual passage texts provided.' This directly contradicts Summary_1 which correctly identified 
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step 12: evidence: In Summary_2, the solver extensively analyzes hop 2's irrelevant passages, stating: 'The passages discuss entirely unrelated topics including: - Longevity claims and supercentenarians (Passage 1) - Service authentication and cybersecurity (Passage 2) - Video browsing and search tools (Passage 3) - Custom in law (Passage 4) - Eulalia Pérez de Guillén Mariné, a historical Californio figure (Passage 
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

@@ -1,0 +1,394 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.
+Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.
+National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.
+Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.
+Carlos Mejía Godoy | Carlos Mejía Godoy (born June 27, 1943) is a Nicaraguan musician, composer and singer.  He was born in Somoto, Madriz.  Son of Carlos Mejía Fajardo and María Elsa Godoy, his brother Luis Enrique Mejía Godoy, three years younger than he is, is also an acclaimed and much-loved musician.  Carlos and Luis Enrique were pivotal in the New Song Movement in Central America beginning in the 1970s.  They were both recently honored with Nicaragua's highest cultural distinction, the Order of Rubén Darío.
+Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.
+Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## passages ## ]]
+[1] «Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.»
+[2] «Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.»
+[3] «National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.»
+[4] «Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.»
+[5] «Carlos Mejía Godoy | Carlos Mejía Godoy (born June 27, 1943) is a Nicaraguan musician, composer and singer.  He was born in Somoto, Madriz.  Son of Carlos Mejía Fajardo and María Elsa Godoy, his brother Luis Enrique Mejía Godoy, three years younger than he is, is also an acclaimed and much-loved musician.  Carlos and Luis Enrique were pivotal in the New Song Movement in Central America beginning in the 1970s.  They were both recently honored with Nicaragua's highest cultural distinction, the Order of Rubén Darío.»
+[6] «Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.»
+[7] «Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+The claim states: "The award winning author of Love and Mr Lewisham and Rubén Darío were not both English."
+
+This claim makes two key assertions:
+1. There is an award-winning author of "Love and Mr Lewisham"
+2. This author and Rubén Darío were not both English (meaning at least one of them was not English)
+
+From the passages, I can establish:
+- Rubén Darío was Nicaraguan (passages [1], [2], [3] clearly identify him as a Nicaraguan poet)
+
+However, the passages do NOT contain any information about:
+- Who wrote "Love and Mr Lewisham"
+- Whether that author was award-winning
+- The nationality of the author of "Love and Mr Lewisham"
+
+To verify this claim, I need to identify the author of "Love and Mr Lewisham" and determine their nationality. Once the author is identified, I can then verify whether both the author and Rubén Darío share English nationality (which would make the claim false) or whether at least one of them is not English (which would make the claim true).
+
+[[ ## summary ## ]]
+The claim cannot be verified from the provided passages. While the passages confirm that Rubén Darío was a Nicaraguan poet (not English), they contain no information about the author of "Love and Mr Lewisham" or that author's nationality and awards.
+
+To verify this claim, the following information is required:
+1. **The identity and full details of the author of "Love and Mr Lewisham"** - specifically, who wrote this work and confirmation of any awards they received
+2. **The nationality of the author of "Love and Mr Lewisham"** - whether this author was English or non-English
+
+Once the author of "Love and Mr Lewisham" is identified and their nationality is verified, the claim can be evaluated by determining whether both the author and Rubén Darío (confirmed as Nicaraguan) were English, or whether at least one of them was not English.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified from the provided passages. While the passages confirm that Rubén Darío was a Nicaraguan poet (not English), they contain no information about the author of "Love and Mr Lewisham" or that author's nationality and awards.
+
+To verify this claim, the following information is required:
+1. **The identity and full details of the author of "Love and Mr Lewisham"** - specifically, who wrote this work and confirmation of any awards they received
+2. **The nationality of the author of "Love and Mr Lewisham"** - whether this author was English or non-English
+
+Once the author of "Love and Mr Lewisham" is identified and their nationality is verified, the claim can be evaluated by determining whether both the author and Rubén Darío (confirmed as Nicaraguan) were English, or whether at least one of them was not English.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim states that both the award-winning author of "Love and Mr Lewisham" and Rubén Darío were not English. We know from summary_1 that Rubén Darío was Nicaraguan (not English), so one part of the claim is verified. However, to fully evaluate whether the claim is true, we need to identify the author of "Love and Mr Lewisham" and determine their nationality and whether they won awards. If the author is English, the claim would be false (since both would not be "not English"). If the author is non-English, the claim would be true.
+
+[[ ## query ## ]]
+Who is the author of "Love and Mr Lewisham" and what is their nationality and major awards?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+No More Mr. Nice Guy (book) | No More Mr. Nice Guy: A Proven Plan for Getting What You Want in Love, Sex, and Life is a 2003 self-help book by Dr. Robert A. Glover.  He describes what he calls the "Nice guy Syndrome", a condition in men who appear to be always nice and avoid conflict at all costs.
+Mr. Sammler's Planet | Mr. Sammler's Planet is a 1970 novel by the American author Saul Bellow.  It won the National Book Award for Fiction in 1971.
+Catford | Catford is a district of south east London, within the London Borough of Lewisham.  It is located south west of Lewisham.  The area is the civic administrative centre for the local authority, and comprises both the Town Hall & Civic Suite.  The majority of Catford is located in the Rushey Green and Catford South wards within the Borough.
+Lewisham London Borough Council | Lewisham London Borough Council is the local authority for the London Borough of Lewisham in Greater London, England.  It is a London borough council, one of 32 in the United Kingdom capital of London.  The council is unusual in that its executive function is controlled by a directly elected mayor of Lewisham, currently Steve Bullock.  Lewisham is divided into 18 wards, each electing three councillors.  Following the May 2014 election, Lewisham London Borough Council comprises 53 Labour Party councillors and one Green Party councillor.  The council was created by the London Government Act 1963 and replaced two local authorities: Deptford Metropolitan Borough Council and Lewisham Metropolitan Borough Council.
+Mr. Rabbit and the Lovely Present | Mr. Rabbit and the Lovely Present, written by Charlotte Zolotow and illustrated by Maurice Sendak, is a 1962 picture book published by HarperCollins.  It was a Caldecott Medal Honor Book for 1963 and was one of Sendak's Caldecott Honor Medal of a total of seven during his career.  Sendak won the Caldecott Medal in 1964 for "Where the Wild Things Are", which he both authored and illustrated.  "Mr. Rabbit and the Lovely Present" was re-issued by HarperCollins in 1999 in hardcover format as part of a project to re-issue 22 Sendak works, including several authored by Zolotow.
+Valentine (novel) | Valentine (1832) was a novel published by French author George Sand.  This was the second novel published in Sand's career as an independent author, the novel is notable for displaying many of Sand's preoccupations as an emerging novelist: love, social class, greed, liberty, and family ties.  Like many of Sand's novels, the novel takes its name from its title character Valentine, who is born into an aristocratic family but falls in love with the peasant farmer, Benedict.  Star-crossed lovers belonging to different social classes were to become a major theme in Sand's works, which interrogated what the author perceived as the hypocrisy and rigidity of social norms in the Restoration-period French republic.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## context ## ]]
+The claim cannot be verified from the provided passages. While the passages confirm that Rubén Darío was a Nicaraguan poet (not English), they contain no information about the author of "Love and Mr Lewisham" or that author's nationality and awards.
+
+To verify this claim, the following information is required:
+1. **The identity and full details of the author of "Love and Mr Lewisham"** - specifically, who wrote this work and confirmation of any awards they received
+2. **The nationality of the author of "Love and Mr Lewisham"** - whether this author was English or non-English
+
+Once the author of "Love and Mr Lewisham" is identified and their nationality is verified, the claim can be evaluated by determining whether both the author and Rubén Darío (confirmed as Nicaraguan) were English, or whether at least one of them was not English.
+
+[[ ## passages ## ]]
+[1] «Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".»
+[2] «No More Mr. Nice Guy (book) | No More Mr. Nice Guy: A Proven Plan for Getting What You Want in Love, Sex, and Life is a 2003 self-help book by Dr. Robert A. Glover.  He describes what he calls the "Nice guy Syndrome", a condition in men who appear to be always nice and avoid conflict at all costs.»
+[3] «Mr. Sammler's Planet | Mr. Sammler's Planet is a 1970 novel by the American author Saul Bellow.  It won the National Book Award for Fiction in 1971.»
+[4] «Catford | Catford is a district of south east London, within the London Borough of Lewisham.  It is located south west of Lewisham.  The area is the civic administrative centre for the local authority, and comprises both the Town Hall & Civic Suite.  The majority of Catford is located in the Rushey Green and Catford South wards within the Borough.»
+[5] «Lewisham London Borough Council | Lewisham London Borough Council is the local authority for the London Borough of Lewisham in Greater London, England.  It is a London borough council, one of 32 in the United Kingdom capital of London.  The council is unusual in that its executive function is controlled by a directly elected mayor of Lewisham, currently Steve Bullock.  Lewisham is divided into 18 wards, each electing three councillors.  Following the May 2014 election, Lewisham London Borough Council comprises 53 Labour Party councillors and one Green Party councillor.  The council was created by the London Government Act 1963 and replaced two local authorities: Deptford Metropolitan Borough Council and Lewisham Metropolitan Borough Council.»
+[6] «Mr. Rabbit and the Lovely Present | Mr. Rabbit and the Lovely Present, written by Charlotte Zolotow and illustrated by Maurice Sendak, is a 1962 picture book published by HarperCollins.  It was a Caldecott Medal Honor Book for 1963 and was one of Sendak's Caldecott Honor Medal of a total of seven during his career.  Sendak won the Caldecott Medal in 1964 for "Where the Wild Things Are", which he both authored and illustrated.  "Mr. Rabbit and the Lovely Present" was re-issued by HarperCollins in 1999 in hardcover format as part of a project to re-issue 22 Sendak works, including several authored by Zolotow.»
+[7] «Valentine (novel) | Valentine (1832) was a novel published by French author George Sand.  This was the second novel published in Sand's career as an independent author, the novel is notable for displaying many of Sand's preoccupations as an emerging novelist: love, social class, greed, liberty, and family ties.  Like many of Sand's novels, the novel takes its name from its title character Valentine, who is born into an aristocratic family but falls in love with the peasant farmer, Benedict.  Star-crossed lovers belonging to different social classes were to become a major theme in Sand's works, which interrogated what the author perceived as the hypocrisy and rigidity of social norms in the Restoration-period French republic.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+From the passages provided, I can now identify the author of "Love and Mr Lewisham":
+
+Passage [1] clearly states: "Love and Mr Lewisham (subtitled 'The Story of a Very Young Couple') is a 1900 novel set in the 1880s by H. G. Wells."
+
+H. G. Wells was an English author. He is well-known as a pioneering science fiction writer and is widely recognized as English/British.
+
+The claim states: "The award winning author of Love and Mr Lewisham and Rubén Darío were not both English."
+
+Breaking this down:
+- Author of "Love and Mr Lewisham" = H. G. Wells (English)
+- Rubén Darío = Nicaraguan poet (not English, as confirmed in the context)
+
+The claim asserts that these two were NOT both English. This is TRUE because:
+- H. G. Wells WAS English
+- Rubén Darío was NOT English (he was Nicaraguan)
+
+Therefore, it is correct that they were not both English - at least one of them (Rubén Darío) was not English.
+
+[[ ## summary ## ]]
+The claim is TRUE. H. G. Wells, the author of "Love and Mr Lewisham," was English. Rubén Darío was a Nicaraguan poet, not English. Since one of the two figures was not English, the claim that "The award winning author of Love and Mr Lewisham and Rubén Darío were not both English" is accurate.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified from the provided passages. While the passages confirm that Rubén Darío was a Nicaraguan poet (not English), they contain no information about the author of "Love and Mr Lewisham" or that author's nationality and awards.
+
+To verify this claim, the following information is required:
+1. **The identity and full details of the author of "Love and Mr Lewisham"** - specifically, who wrote this work and confirmation of any awards they received
+2. **The nationality of the author of "Love and Mr Lewisham"** - whether this author was English or non-English
+
+Once the author of "Love and Mr Lewisham" is identified and their nationality is verified, the claim can be evaluated by determining whether both the author and Rubén Darío (confirmed as Nicaraguan) were English, or whether at least one of them was not English.
+
+[[ ## summary_2 ## ]]
+The claim is TRUE. H. G. Wells, the author of "Love and Mr Lewisham," was English. Rubén Darío was a Nicaraguan poet, not English. Since one of the two figures was not English, the claim that "The award winning author of Love and Mr Lewisham and Rubén Darío were not both English" is accurate.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Summary_1 indicates that the claim cannot be verified because the author of "Love and Mr Lewisham" is not identified in the passages provided. Summary_2 states that the claim is TRUE and identifies H. G. Wells as the author, confirming he was English, while Rubén Darío was Nicaraguan (not English). To resolve this discrepancy, I need to verify: (1) Who is the actual author of "Love and Mr Lewisham"? (2) Was this author award-winning? (3) What was their nationality? This will determine whether the claim is verifiable and true.
+
+[[ ## query ## ]]
+Who was the award-winning author of "Love and Mr Lewisham" and what was their nationality?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+Mr. What | Mr. What was a British-bred, Irish-trained Thoroughbred racehorse noted for winning the 1958 Grand National.
+What Chilli Wants | What Chilli Wants is an American reality television series that premiered on April 11, 2010, on VH1 starring Chilli, one-third of the Grammy Award-winning R&B trio TLC.  The series chronicles Chilli's quest to find love with the help of Tionna T. Smalls, an author and relationship coach.  Not only is she looking for love, but also a husband and hopes to have another baby.  The series was renewed for a second season on May 26, 2010.
+Truly Madly Deeply (novel) | Truly Madly Deeply... Memoirs of a Broken Heart's First Love!  is a romance novel written by Indian author Faraaz Kazi.  It was first published in 2010 by Cedar publishers.  The book was republished again in October 2012 and went on to become a national award-winning title apart from becoming the first book by an Indian author to win the Goodreads Choice Award for Best Debut (Romance).  It remains the only Indian book in the Top 100 YA Global Fiction list.
+No More Mr. Nice Guy (book) | No More Mr. Nice Guy: A Proven Plan for Getting What You Want in Love, Sex, and Life is a 2003 self-help book by Dr. Robert A. Glover.  He describes what he calls the "Nice guy Syndrome", a condition in men who appear to be always nice and avoid conflict at all costs.
+What Was Asked of Us | What Was Asked of Us: An Oral History of the Iraq War by the Soldiers Who Fought It is a 2006 book presenting the oral history of soldiers who participated in the Iraq War.  It was written by Trish Wood, an award-winning author who has been honoured by the Canadian Association of Journalists, among other organizations.  Its interviews are a qualitative approach to documenting the war.
+You Are What You Love (album) | You Are What You Love is the third studio album by Juno Award winning Canadian singer-songwriter Melanie Doane.  It was first released independently on February 14, 2003 via Melanie's official website and later distributed by Warner Music Canada to retail outlets in Canada on May 6, 2003.
+Hard Love (disambiguation) | Hard Love is an award-winning young adult novel written by author Ellen Wittlinger.
+Hard Love | Hard Love is an award-winning young adult novel written by author Ellen Wittlinger.  It was published in 1999.
+Mr. Sammler's Planet | Mr. Sammler's Planet is a 1970 novel by the American author Saul Bellow.  It won the National Book Award for Fiction in 1971.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.
+Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.
+National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.
+Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.
+Carlos Mejía Godoy | Carlos Mejía Godoy (born June 27, 1943) is a Nicaraguan musician, composer and singer.  He was born in Somoto, Madriz.  Son of Carlos Mejía Fajardo and María Elsa Godoy, his brother Luis Enrique Mejía Godoy, three years younger than he is, is also an acclaimed and much-loved musician.  Carlos and Luis Enrique were pivotal in the New Song Movement in Central America beginning in the 1970s.  They were both recently honored with Nicaragua's highest cultural distinction, the Order of Rubén Darío.
+Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.
+Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+No More Mr. Nice Guy (book) | No More Mr. Nice Guy: A Proven Plan for Getting What You Want in Love, Sex, and Life is a 2003 self-help book by Dr. Robert A. Glover.  He describes what he calls the "Nice guy Syndrome", a condition in men who appear to be always nice and avoid conflict at all costs.
+Mr. Sammler's Planet | Mr. Sammler's Planet is a 1970 novel by the American author Saul Bellow.  It won the National Book Award for Fiction in 1971.
+Catford | Catford is a district of south east London, within the London Borough of Lewisham.  It is located south west of Lewisham.  The area is the civic administrative centre for the local authority, and comprises both the Town Hall & Civic Suite.  The majority of Catford is located in the Rushey Green and Catford South wards within the Borough.
+Lewisham London Borough Council | Lewisham London Borough Council is the local authority for the London Borough of Lewisham in Greater London, England.  It is a London borough council, one of 32 in the United Kingdom capital of London.  The council is unusual in that its executive function is controlled by a directly elected mayor of Lewisham, currently Steve Bullock.  Lewisham is divided into 18 wards, each electing three councillors.  Following the May 2014 election, Lewisham London Borough Council comprises 53 Labour Party councillors and one Green Party councillor.  The council was created by the London Government Act 1963 and replaced two local authorities: Deptford Metropolitan Borough Council and Lewisham Metropolitan Borough Council.
+Mr. Rabbit and the Lovely Present | Mr. Rabbit and the Lovely Present, written by Charlotte Zolotow and illustrated by Maurice Sendak, is a 1962 picture book published by HarperCollins.  It was a Caldecott Medal Honor Book for 1963 and was one of Sendak's Caldecott Honor Medal of a total of seven during his career.  Sendak won the Caldecott Medal in 1964 for "Where the Wild Things Are", which he both authored and illustrated.  "Mr. Rabbit and the Lovely Present" was re-issued by HarperCollins in 1999 in hardcover format as part of a project to re-issue 22 Sendak works, including several authored by Zolotow.
+Valentine (novel) | Valentine (1832) was a novel published by French author George Sand.  This was the second novel published in Sand's career as an independent author, the novel is notable for displaying many of Sand's preoccupations as an emerging novelist: love, social class, greed, liberty, and family ties.  Like many of Sand's novels, the novel takes its name from its title character Valentine, who is born into an aristocratic family but falls in love with the peasant farmer, Benedict.  Star-crossed lovers belonging to different social classes were to become a major theme in Sand's works, which interrogated what the author perceived as the hypocrisy and rigidity of social norms in the Restoration-period French republic.
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+Mr. What | Mr. What was a British-bred, Irish-trained Thoroughbred racehorse noted for winning the 1958 Grand National.
+What Chilli Wants | What Chilli Wants is an American reality television series that premiered on April 11, 2010, on VH1 starring Chilli, one-third of the Grammy Award-winning R&B trio TLC.  The series chronicles Chilli's quest to find love with the help of Tionna T. Smalls, an author and relationship coach.  Not only is she looking for love, but also a husband and hopes to have another baby.  The series was renewed for a second season on May 26, 2010.
+Truly Madly Deeply (novel) | Truly Madly Deeply... Memoirs of a Broken Heart's First Love!  is a romance novel written by Indian author Faraaz Kazi.  It was first published in 2010 by Cedar publishers.  The book was republished again in October 2012 and went on to become a national award-winning title apart from becoming the first book by an Indian author to win the Goodreads Choice Award for Best Debut (Romance).  It remains the only Indian book in the Top 100 YA Global Fiction list.
+No More Mr. Nice Guy (book) | No More Mr. Nice Guy: A Proven Plan for Getting What You Want in Love, Sex, and Life is a 2003 self-help book by Dr. Robert A. Glover.  He describes what he calls the "Nice guy Syndrome", a condition in men who appear to be always nice and avoid conflict at all costs.
+What Was Asked of Us | What Was Asked of Us: An Oral History of the Iraq War by the Soldiers Who Fought It is a 2006 book presenting the oral history of soldiers who participated in the Iraq War.  It was written by Trish Wood, an award-winning author who has been honoured by the Canadian Association of Journalists, among other organizations.  Its interviews are a qualitative approach to documenting the war.
+You Are What You Love (album) | You Are What You Love is the third studio album by Juno Award winning Canadian singer-songwriter Melanie Doane.  It was first released independently on February 14, 2003 via Melanie's official website and later distributed by Warner Music Canada to retail outlets in Canada on May 6, 2003.
+Hard Love (disambiguation) | Hard Love is an award-winning young adult novel written by author Ellen Wittlinger.
+Hard Love | Hard Love is an award-winning young adult novel written by author Ellen Wittlinger.  It was published in 1999.
+Mr. Sammler's Planet | Mr. Sammler's Planet is a 1970 novel by the American author Saul Bellow.  It won the National Book Award for Fiction in 1971.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step 5: evidence: Summary_1 states 'To verify this claim, the following information is required: 1. **The identity and full details of the author of "Love and Mr Lewisham"** - specifically, who wrote this work and confirmation of any awards they received 2. **The nationality of the author of "Love and Mr Lewisham"** - whether this author was English or non-English' but does not name H. G. Wells explicitly as the mi
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: Summary_1 claims 'they contain no information about the author of "Love and Mr Lewisham" or that author's nationality and awards' when passage [1] from hop 1 clearly states 'Love and Mr Lewisham... is a 1900 novel set in the 1880s by H. G. Wells.' The solver failed to identify H. G. Wells from passage [1] already available in hop 1.
+- code B.12 (Verdict_Despite_Insufficiency), anchored near step UNKNOWN: evidence: Summary_2 renders verdict 'The claim is TRUE' and definitively states 'H. G. Wells, the author of "Love and Mr Lewisham," was English' without any passage confirming H. G. Wells was English or award-winning. The passages only identify Wells as the author but provide no nationality or award information.
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query hop 2: 'Who is the author of "Love and Mr Lewisham" and what is their nationality and major awards?' versus Query hop 3: 'Who was the award-winning author of "Love and Mr Lewisham" and what was their nationality?' Both queries ask nearly identical questions about the same book's author and nationality despite hop 2 already retrieving the author information.
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

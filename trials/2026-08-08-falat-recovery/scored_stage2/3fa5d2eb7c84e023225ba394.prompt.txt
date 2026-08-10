@@ -1,0 +1,518 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: H. P. Lovecraft is an author. He is not the author that is famous for writing historical spy novels.  The famous author is the one who wrote The Polish Officer (1995).
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Henry Kitchell Webster | Henry Kitchell Webster (September 7, 1875 – December 8, 1932) was an American author who lived in Evanston, Illinois.  He wrote novels and short stories on themes ranging from mystery to family drama to science fiction.  He first achieved moderate recognition in 1899 when he co-wrote "The Short Line War" with fellow Illinois author Samuel Merwin, with whom he later collaborated to write one of his more famous works, "Calumet "K"" (1901).
+Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.
+Jack Woodford | Jack Woodford (1894–1971) was an American novelist and non-fiction writer, author of successful pulp novels and non-fiction of the 1930s and 1940s.  He wrote unique books on writing and getting published.  Most famously, Woodford authored "Trial and Error" which caused something of a scandal at the time of publication because of its no-holds-barred insights into the publishing industry.
+Pan (novel) | Pan is an 1894 novel by Norwegian author Knut Hamsun.  He wrote it while living in Paris and in Kristiansand, Norway.  It remains one of his most famous works.
+Donald Moffitt | Donald Moffitt (July 20, 1931December 10, 2014) was an American author who wrote a number of science fiction novels.  Most famous among these are "The Genesis Quest" and "Second Genesis".  While he was the author of many titles under his own name he also used the pseudonyms Paul Kenyon, Victor Sondheim, and Paul King.  Known for his science fiction, Moffitt later turned his attention to historical mysteries.
+Zhang Dachun | Ryan () (15 June 2000) as a famous football player and as a famous basketball player .  he was one of the best in the world.  He is one of the famous Taiwanese Poet. Taiwanese author and literary critic.  He is the author of many novels, two of which, "Wild Child" (野孩子) and "My Kid Sister" (我妹妹), were published together in the U.S. as "Wild Kids".
+William Thomas Quick | William Thomas "Bill" Quick (born 1946), who sometimes writes under the pseudonym Margaret Allan, is a science fiction author and self-described libertarian conservative blogger.  Quick is the author of 28 novels, the most famous of which is the cyberpunk "Dreams of Flesh and Sand", and co-authored a six-novel series with William Shatner.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        5. **CRITICAL: For every distinct entity mentioned in the claim (whether explicitly named or referenced indirectly), ensure that passages about that specific entity are available. If passages are missing for any entity in the claim, identify those missing evidence documents.**
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        **Critical requirement for identifying missing evidence documents**:
+        - **If a claim mentions multiple distinct entities (e.g., "Entity A is X. Entity B is not X."), you must have passages about EACH entity mentioned**
+        - **Even if the claim can be partially verified, if any entity in the claim lacks corresponding passages, you must identify that entity's evidence document as missing**
+        - **For comparison claims (e.g., "A is perennial. B is not perennial"), you need passages about both A and B, even if one can be verified**
+        - **When a claim mentions an entity only to negate something about it (e.g., "Duranta is not a perennial"), that entity still requires evidence documents**
+        - **The fact that you can verify part of a claim does not mean you should ignore entities that lack passages - explicitly identify all entities that need but lack evidence documents**
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - **List ALL entities from the claim that lack corresponding passages, even if other parts of the claim are verifiable**
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+        - **When identifying missing evidence documents, use the entity name or subject matter that would be the title/topic of the needed passage (e.g., if the claim mentions "Duranta" but no passages discuss it, identify "duranta" as a missing evidence document)**
+[STEP 4] (user) [[ ## claim ## ]]
+H. P. Lovecraft is an author. He is not the author that is famous for writing historical spy novels.  The famous author is the one who wrote The Polish Officer (1995).
+
+[[ ## passages ## ]]
+[1] «Henry Kitchell Webster | Henry Kitchell Webster (September 7, 1875 – December 8, 1932) was an American author who lived in Evanston, Illinois.  He wrote novels and short stories on themes ranging from mystery to family drama to science fiction.  He first achieved moderate recognition in 1899 when he co-wrote "The Short Line War" with fellow Illinois author Samuel Merwin, with whom he later collaborated to write one of his more famous works, "Calumet "K"" (1901).»
+[2] «Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.»
+[3] «Jack Woodford | Jack Woodford (1894–1971) was an American novelist and non-fiction writer, author of successful pulp novels and non-fiction of the 1930s and 1940s.  He wrote unique books on writing and getting published.  Most famously, Woodford authored "Trial and Error" which caused something of a scandal at the time of publication because of its no-holds-barred insights into the publishing industry.»
+[4] «Pan (novel) | Pan is an 1894 novel by Norwegian author Knut Hamsun.  He wrote it while living in Paris and in Kristiansand, Norway.  It remains one of his most famous works.»
+[5] «Donald Moffitt | Donald Moffitt (July 20, 1931December 10, 2014) was an American author who wrote a number of science fiction novels.  Most famous among these are "The Genesis Quest" and "Second Genesis".  While he was the author of many titles under his own name he also used the pseudonyms Paul Kenyon, Victor Sondheim, and Paul King.  Known for his science fiction, Moffitt later turned his attention to historical mysteries.»
+[6] «Zhang Dachun | Ryan () (15 June 2000) as a famous football player and as a famous basketball player .  he was one of the best in the world.  He is one of the famous Taiwanese Poet. Taiwanese author and literary critic.  He is the author of many novels, two of which, "Wild Child" (野孩子) and "My Kid Sister" (我妹妹), were published together in the U.S. as "Wild Kids".»
+[7] «William Thomas Quick | William Thomas "Bill" Quick (born 1946), who sometimes writes under the pseudonym Margaret Allan, is a science fiction author and self-described libertarian conservative blogger.  Quick is the author of 28 novels, the most famous of which is the cyberpunk "Dreams of Flesh and Sand", and co-authored a six-novel series with William Shatner.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze this claim systematically.
+
+The claim has multiple components:
+1. H. P. Lovecraft is an author
+2. H. P. Lovecraft is NOT the author famous for writing historical spy novels
+3. There exists an author who IS famous for writing historical spy novels
+4. This author (famous for historical spy novels) wrote "The Polish Officer" (1995)
+
+To verify this claim, I need:
+- Information about H. P. Lovecraft (to confirm he's an author and what he's known for)
+- Information about who wrote "The Polish Officer" (1995)
+- Information about that author to confirm they're famous for historical spy novels
+
+Looking through the passages:
+- Passage [1]: Henry Kitchell Webster - wrote various genres including mystery, science fiction, family drama. No mention of spy novels or "The Polish Officer"
+- Passage [2]: R.L. Stine - wrote horror, children's fiction. Not relevant to spy novels or "The Polish Officer"
+- Passage [3]: Jack Woodford - wrote pulp novels and non-fiction about writing/publishing. No mention of spy novels or "The Polish Officer"
+- Passage [4]: Knut Hamsun - wrote "Pan" (1894), a Norwegian novel. Not relevant
+- Passage [5]: Donald Moffitt - science fiction author who "later turned his attention to historical mysteries." This is the closest match to "historical" fiction, but there's no mention of "The Polish Officer" or spy novels specifically
+- Passage [6]: Zhang Dachun - Taiwanese author/poet. No mention of spy novels or "The Polish Officer"
+- Passage [7]: William Thomas Quick - science fiction author. No mention of spy novels or "The Polish Officer"
+
+Critical missing information:
+- NO PASSAGES about H. P. Lovecraft exist in the provided material
+- NO PASSAGES identify who wrote "The Polish Officer" (1995)
+- NO PASSAGES confirm which author is famous for historical spy novels
+
+The passages do not contain sufficient evidence to verify any component of this claim.
+
+[[ ## summary ## ]]
+The provided passages are insufficient to verify this claim. Critical evidence is missing:
+
+1. **Missing evidence document: H. P. Lovecraft** - No passages provide information about H. P. Lovecraft, his biography, or what genres/themes he is known for. This is essential to verify that he is not the author famous for historical spy novels.
+
+2. **Missing evidence document: "The Polish Officer" (1995)** - No passages identify who authored this work or provide any information about it. This is the key work mentioned in the claim that should connect to the author famous for historical spy novels.
+
+3. **Missing evidence document: Author famous for historical spy novels** - While passage [5] mentions Donald Moffitt "later turned his attention to historical mysteries," there is no explicit identification of which author is famous for writing historical spy novels, nor confirmation that this author wrote "The Polish Officer" (1995).
+
+Without passages containing direct information about H. P. Lovecraft and about the author who wrote "The Polish Officer" (1995), the claim cannot be verified or refuted.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+H. P. Lovecraft is an author. He is not the author that is famous for writing historical spy novels.  The famous author is the one who wrote The Polish Officer (1995).
+
+[[ ## summary_1 ## ]]
+The provided passages are insufficient to verify this claim. Critical evidence is missing:
+
+1. **Missing evidence document: H. P. Lovecraft** - No passages provide information about H. P. Lovecraft, his biography, or what genres/themes he is known for. This is essential to verify that he is not the author famous for historical spy novels.
+
+2. **Missing evidence document: "The Polish Officer" (1995)** - No passages identify who authored this work or provide any information about it. This is the key work mentioned in the claim that should connect to the author famous for historical spy novels.
+
+3. **Missing evidence document: Author famous for historical spy novels** - While passage [5] mentions Donald Moffitt "later turned his attention to historical mysteries," there is no explicit identification of which author is famous for writing historical spy novels, nor confirmation that this author wrote "The Polish Officer" (1995).
+
+Without passages containing direct information about H. P. Lovecraft and about the author who wrote "The Polish Officer" (1995), the claim cannot be verified or refuted.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary identifies three critical gaps in the evidence needed to verify the claim:
+
+1. The claim asserts H. P. Lovecraft is "not the author famous for writing historical spy novels," but there is no information about what H. P. Lovecraft is actually known for or his literary genres.
+
+2. The claim identifies "The Polish Officer" (1995) as a key work by "the famous author" of historical spy novels, but no passages confirm who wrote this book.
+
+3. There is no explicit identification of which specific author is renowned for historical spy novels, making it impossible to verify the distinction being made.
+
+To verify this claim, we need direct evidence about: (a) H. P. Lovecraft's actual literary reputation and genre focus, (b) the authorship and nature of "The Polish Officer" (1995), and (c) confirmation of which author is famous for historical spy novels.
+
+[[ ## query ## ]]
+Who is the author of "The Polish Officer" (1995)? What is H. P. Lovecraft known for writing? Which author is famous for writing historical spy novels?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Miscellaneous Writings (Lovecraft) | Miscellaneous Writings is a collection of short stories, essays and letters by author H. P. Lovecraft.  It was released in 1995 by Arkham House in an edition of 4,959 copies.  The volume was originally conceived by August Derleth and ultimately edited by S.T. Joshi with input from James Turner.
+Howard Lovecraft and the Frozen Kingdom | Howard Lovecraft and the Frozen Kingdom is a 2016 animated film based on the graphic novel of the same name.  The inspiration comes from the writings of American horror author H. P. Lovecraft.
+Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.
+Len Deighton bibliography | Len Deighton (born 18 February 1929) is an English author known for his novels, works of military history, screenplays and cookery writing.  He had a varied career, including as a pastry cook, waiter, co-editor of a magazine, teacher and air steward before writing his first novel in 1962: "The IPCRESS File".  He continued to produce what his biographer John Reilly considers "stylish, witty, well-crafted novels" in spy fiction, including three trilogies and a prequel featuring Bernard Samson.
+William Thomas Quick | William Thomas "Bill" Quick (born 1946), who sometimes writes under the pseudonym Margaret Allan, is a science fiction author and self-described libertarian conservative blogger.  Quick is the author of 28 novels, the most famous of which is the cyberpunk "Dreams of Flesh and Sand", and co-authored a six-novel series with William Shatner.
+John le Carré | David John Moore Cornwell (born 19 October 1931), known by the pseudonym John le Carré ( ), is a British author of espionage novels.  During the 1950s and the 1960s, he worked for both the Security Service and the Secret Intelligence Service, and began writing novels under his pen name.  His third novel, "The Spy Who Came in from the Cold" (1963), became an international best-seller and remains one of his best-known works.  Following the success of this novel, he left MI6 to become a full-time author.
+Ian Adams | Ian Adams (born 1937) is a Canadian author of fiction and non-fiction novels, television, and movies.  Originally a journalist, he is now best known for his writing: his most successful novels to date are "S – Portrait of a Spy" and "Agent of Influence", which has also been made into a film.  He currently lives in Toronto, Ontario.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+H. P. Lovecraft is an author. He is not the author that is famous for writing historical spy novels.  The famous author is the one who wrote The Polish Officer (1995).
+
+[[ ## context ## ]]
+The provided passages are insufficient to verify this claim. Critical evidence is missing:
+
+1. **Missing evidence document: H. P. Lovecraft** - No passages provide information about H. P. Lovecraft, his biography, or what genres/themes he is known for. This is essential to verify that he is not the author famous for historical spy novels.
+
+2. **Missing evidence document: "The Polish Officer" (1995)** - No passages identify who authored this work or provide any information about it. This is the key work mentioned in the claim that should connect to the author famous for historical spy novels.
+
+3. **Missing evidence document: Author famous for historical spy novels** - While passage [5] mentions Donald Moffitt "later turned his attention to historical mysteries," there is no explicit identification of which author is famous for writing historical spy novels, nor confirmation that this author wrote "The Polish Officer" (1995).
+
+Without passages containing direct information about H. P. Lovecraft and about the author who wrote "The Polish Officer" (1995), the claim cannot be verified or refuted.
+
+[[ ## passages ## ]]
+[1] «Miscellaneous Writings (Lovecraft) | Miscellaneous Writings is a collection of short stories, essays and letters by author H. P. Lovecraft.  It was released in 1995 by Arkham House in an edition of 4,959 copies.  The volume was originally conceived by August Derleth and ultimately edited by S.T. Joshi with input from James Turner.»
+[2] «Howard Lovecraft and the Frozen Kingdom | Howard Lovecraft and the Frozen Kingdom is a 2016 animated film based on the graphic novel of the same name.  The inspiration comes from the writings of American horror author H. P. Lovecraft.»
+[3] «Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.»
+[4] «Len Deighton bibliography | Len Deighton (born 18 February 1929) is an English author known for his novels, works of military history, screenplays and cookery writing.  He had a varied career, including as a pastry cook, waiter, co-editor of a magazine, teacher and air steward before writing his first novel in 1962: "The IPCRESS File".  He continued to produce what his biographer John Reilly considers "stylish, witty, well-crafted novels" in spy fiction, including three trilogies and a prequel featuring Bernard Samson.»
+[5] «William Thomas Quick | William Thomas "Bill" Quick (born 1946), who sometimes writes under the pseudonym Margaret Allan, is a science fiction author and self-described libertarian conservative blogger.  Quick is the author of 28 novels, the most famous of which is the cyberpunk "Dreams of Flesh and Sand", and co-authored a six-novel series with William Shatner.»
+[6] «John le Carré | David John Moore Cornwell (born 19 October 1931), known by the pseudonym John le Carré ( ), is a British author of espionage novels.  During the 1950s and the 1960s, he worked for both the Security Service and the Secret Intelligence Service, and began writing novels under his pen name.  His third novel, "The Spy Who Came in from the Cold" (1963), became an international best-seller and remains one of his best-known works.  Following the success of this novel, he left MI6 to become a full-time author.»
+[7] «Ian Adams | Ian Adams (born 1937) is a Canadian author of fiction and non-fiction novels, television, and movies.  Originally a journalist, he is now best known for his writing: his most successful novels to date are "S – Portrait of a Spy" and "Agent of Influence", which has also been made into a film.  He currently lives in Toronto, Ontario.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze what the claim requires and what the passages provide:
+
+**Claim Analysis:**
+The claim makes three assertions:
+1. H. P. Lovecraft is an author
+2. He is NOT the author famous for writing historical spy novels
+3. The author famous for historical spy novels wrote "The Polish Officer" (1995)
+
+**What passages provide:**
+
+From passage [1] and [2]: H. P. Lovecraft is confirmed as an American horror author. This verifies assertion #1.
+
+From passages [4], [6], and [7]: These identify authors known for spy/espionage fiction:
+- Len Deighton: English author known for spy fiction novels
+- John le Carré: British author of espionage novels
+- Ian Adams: Canadian author known for spy-related novels
+
+From passage [4]: Len Deighton is described as an English author known for "spy fiction" and had a varied career before writing his first novel in 1962.
+
+**Critical Missing Information:**
+
+1. **"The Polish Officer" (1995) - Author identification**: None of the passages identify who wrote "The Polish Officer" (1995). This is crucial because the claim hinges on this being written by the author famous for historical spy novels.
+
+2. **Connection between "The Polish Officer" and spy fiction authors**: There is no passage stating that any of the spy fiction authors (Deighton, le Carré, or Adams) wrote "The Polish Officer."
+
+3. **Historical spy novels vs. spy fiction**: The claim specifically mentions "historical spy novels." While the passages mention spy fiction generally, none explicitly confirm whether "The Polish Officer" is a historical spy novel or who wrote it.
+
+**Verification Status:**
+- Assertion #1 (Lovecraft is an author) can be verified ✓
+- Assertion #2 (He's not famous for historical spy novels) can be verified by inference - the passages show he's a horror author, and the spy novelists are clearly different people ✓
+- Assertion #3 (Author of "The Polish Officer" wrote historical spy novels) CANNOT be verified ✗
+
+[[ ## summary ## ]]
+
+**Verification Status: Cannot be fully verified**
+
+**What can be verified:**
+- H. P. Lovecraft is confirmed as an American horror author (passages [1] and [2])
+- He is clearly distinct from authors known for spy fiction, as the passages identify him as a horror author while showing other authors (Len Deighton, John le Carré, Ian Adams) as spy/espionage novelists
+
+**What cannot be verified:**
+The critical missing evidence is a passage identifying the author of "The Polish Officer" (1995). None of the provided passages mention this work or its author. Without this passage, the claim's final assertion—that the author famous for historical spy novels wrote "The Polish Officer" (1995)—cannot be verified.
+
+**Specific passages needed:**
+- A passage about "The Polish Officer" (1995) that identifies its author
+- Confirmation that the identified author is known for historical spy novels (not just general spy fiction)
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+H. P. Lovecraft is an author. He is not the author that is famous for writing historical spy novels.  The famous author is the one who wrote The Polish Officer (1995).
+
+[[ ## summary_1 ## ]]
+The provided passages are insufficient to verify this claim. Critical evidence is missing:
+
+1. **Missing evidence document: H. P. Lovecraft** - No passages provide information about H. P. Lovecraft, his biography, or what genres/themes he is known for. This is essential to verify that he is not the author famous for historical spy novels.
+
+2. **Missing evidence document: "The Polish Officer" (1995)** - No passages identify who authored this work or provide any information about it. This is the key work mentioned in the claim that should connect to the author famous for historical spy novels.
+
+3. **Missing evidence document: Author famous for historical spy novels** - While passage [5] mentions Donald Moffitt "later turned his attention to historical mysteries," there is no explicit identification of which author is famous for writing historical spy novels, nor confirmation that this author wrote "The Polish Officer" (1995).
+
+Without passages containing direct information about H. P. Lovecraft and about the author who wrote "The Polish Officer" (1995), the claim cannot be verified or refuted.
+
+[[ ## summary_2 ## ]]
+**Verification Status: Cannot be fully verified**
+
+**What can be verified:**
+- H. P. Lovecraft is confirmed as an American horror author (passages [1] and [2])
+- He is clearly distinct from authors known for spy fiction, as the passages identify him as a horror author while showing other authors (Len Deighton, John le Carré, Ian Adams) as spy/espionage novelists
+
+**What cannot be verified:**
+The critical missing evidence is a passage identifying the author of "The Polish Officer" (1995). None of the provided passages mention this work or its author. Without this passage, the claim's final assertion—that the author famous for historical spy novels wrote "The Polish Officer" (1995)—cannot be verified.
+
+**Specific passages needed:**
+- A passage about "The Polish Officer" (1995) that identifies its author
+- Confirmation that the identified author is known for historical spy novels (not just general spy fiction)
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries indicate that the claim cannot be fully verified with the available evidence. Summary_1 identifies three critical gaps: (1) no information about H. P. Lovecraft's genres/themes, (2) no identification of who authored "The Polish Officer" (1995), and (3) no explicit confirmation of which author is famous for historical spy novels. Summary_2 confirms that while H. P. Lovecraft is verified as a horror author (distinct from spy novelists), the crucial missing piece is identification of "The Polish Officer" (1995)'s author and their connection to historical spy novels. The core issue is that to verify the claim's final assertion—that the author of "The Polish Officer" (1995) is the one famous for historical spy novels—we need a direct source connecting this work to that author.
+
+[[ ## query ## ]]
+Who is the author of "The Polish Officer" (1995), and is this author known for writing historical spy novels?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+John le Carré | David John Moore Cornwell (born 19 October 1931), known by the pseudonym John le Carré ( ), is a British author of espionage novels.  During the 1950s and the 1960s, he worked for both the Security Service and the Secret Intelligence Service, and began writing novels under his pen name.  His third novel, "The Spy Who Came in from the Cold" (1963), became an international best-seller and remains one of his best-known works.  Following the success of this novel, he left MI6 to become a full-time author.
+Owen John | Leonard Owen-John (1 May 1918 - 23 January 1995) was a Welsh author of spy fiction who is mostly remembered for his series of novels starring the Russian-born MI-6 agent Haggai Godin.  He is not to be confused with Welsh children books author John Owen.
+Gary Blackwood (author) | Gary Blackwood (born October 23, 1945) is an American author known for "The Shakespeare Stealer" trilogy.  Born in Meadville, Pennsylvania, Blackwood sold his first story when he was nineteen.  In 1998, he published "The Shakespeare Stealer", a historical fiction novel about an orphan, Widge, who is sent to steal "Hamlet" from William Shakespeare and The Lord Chamberlain's Men.  After it won the 1999 ALA Best Book for Young Adults, Blackwood published two sequels, "Shakespeare's Scribe" (2000) and "Shakespeare's Spy" (2003).  Since then, he has continued writing historical fiction, such as "Around the World in 100 Days" (2010), which the "Smithsonian" named a 2010 Notable Book for Children and "Kirkus Book Reviews" one of 2010's Best Books for Teens.
+List of works by Georgette Heyer | Georgette Heyer (1902–1974) was an English author particularly known for her historical romance novels set in the Regency and Georgian eras.  A best-selling author, Heyer's writing career saw her produce works from a variety of genres; in total she published 32 novels in the romance genre, 6 historical novels, 4 contemporary novels, and 12 in the detective fiction genre.
+Ian Fleming | Ian Lancaster Fleming (28 May 1908 – 12 August 1964) was an English author, journalist and naval intelligence officer who is best known for his James Bond series of spy novels. Fleming came from a wealthy family connected to the merchant bank Robert Fleming & Co., and his father was the Member of Parliament for Henley from 1910 until his death on the Western Front in 1917.  Educated at Eton, Sandhurst and, briefly, the universities of Munich and Geneva, Fleming moved through several jobs before he started writing.
+Kathryn Le Veque | Kathryn Elizabeth Bouse Le Veque Hogan is an American USA Today bestselling independent author of Historical Romance fiction novels.  She is the author of over 60 historical romance novels, as well as ten contemporary romance novels.  She is most known for writing "The Dark One: Dark Knight", "Rise of the Defender", "The Wolfe", "The Savage Curtain", and "Island of Glass".
+Joanna Bourne | Joanna Watkins Bourne is an American, best-selling author of historical romance novels set in Europe during the Napoleonic wars.  Her novels about a group of spies have won numerous awards.  Her books have been described as "witty, beautifully descriptive, [and] cleverly plotted".  "The Spymaster's Lady" is frequently cited as a reader favorite, with a spy hero who is both 'alpha' and 'beta' and a spy heroine who is "brave and clever".  "Rogue Spy", which features a code-breaker and a British service agent, was listed by "Library Journal" as one of the ten best romances of 2014.
+Pharaoh (novel) | Pharaoh (Polish: "Faraon" ) is the fourth and last major novel by the Polish writer Bolesław Prus (1847–1912).  Composed over a year's time in 1894–95, serialized in 1895–96, and published in book form in 1897, it was the sole historical novel by an author who had earlier disapproved of historical novels on the ground that they inevitably distort history.
+Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.
+Ian Adams | Ian Adams (born 1937) is a Canadian author of fiction and non-fiction novels, television, and movies.  Originally a journalist, he is now best known for his writing: his most successful novels to date are "S – Portrait of a Spy" and "Agent of Influence", which has also been made into a film.  He currently lives in Toronto, Ontario.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Henry Kitchell Webster | Henry Kitchell Webster (September 7, 1875 – December 8, 1932) was an American author who lived in Evanston, Illinois.  He wrote novels and short stories on themes ranging from mystery to family drama to science fiction.  He first achieved moderate recognition in 1899 when he co-wrote "The Short Line War" with fellow Illinois author Samuel Merwin, with whom he later collaborated to write one of his more famous works, "Calumet "K"" (1901).
+Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.
+Jack Woodford | Jack Woodford (1894–1971) was an American novelist and non-fiction writer, author of successful pulp novels and non-fiction of the 1930s and 1940s.  He wrote unique books on writing and getting published.  Most famously, Woodford authored "Trial and Error" which caused something of a scandal at the time of publication because of its no-holds-barred insights into the publishing industry.
+Pan (novel) | Pan is an 1894 novel by Norwegian author Knut Hamsun.  He wrote it while living in Paris and in Kristiansand, Norway.  It remains one of his most famous works.
+Donald Moffitt | Donald Moffitt (July 20, 1931December 10, 2014) was an American author who wrote a number of science fiction novels.  Most famous among these are "The Genesis Quest" and "Second Genesis".  While he was the author of many titles under his own name he also used the pseudonyms Paul Kenyon, Victor Sondheim, and Paul King.  Known for his science fiction, Moffitt later turned his attention to historical mysteries.
+Zhang Dachun | Ryan () (15 June 2000) as a famous football player and as a famous basketball player .  he was one of the best in the world.  He is one of the famous Taiwanese Poet. Taiwanese author and literary critic.  He is the author of many novels, two of which, "Wild Child" (野孩子) and "My Kid Sister" (我妹妹), were published together in the U.S. as "Wild Kids".
+William Thomas Quick | William Thomas "Bill" Quick (born 1946), who sometimes writes under the pseudonym Margaret Allan, is a science fiction author and self-described libertarian conservative blogger.  Quick is the author of 28 novels, the most famous of which is the cyberpunk "Dreams of Flesh and Sand", and co-authored a six-novel series with William Shatner.
+Miscellaneous Writings (Lovecraft) | Miscellaneous Writings is a collection of short stories, essays and letters by author H. P. Lovecraft.  It was released in 1995 by Arkham House in an edition of 4,959 copies.  The volume was originally conceived by August Derleth and ultimately edited by S.T. Joshi with input from James Turner.
+Howard Lovecraft and the Frozen Kingdom | Howard Lovecraft and the Frozen Kingdom is a 2016 animated film based on the graphic novel of the same name.  The inspiration comes from the writings of American horror author H. P. Lovecraft.
+Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.
+Len Deighton bibliography | Len Deighton (born 18 February 1929) is an English author known for his novels, works of military history, screenplays and cookery writing.  He had a varied career, including as a pastry cook, waiter, co-editor of a magazine, teacher and air steward before writing his first novel in 1962: "The IPCRESS File".  He continued to produce what his biographer John Reilly considers "stylish, witty, well-crafted novels" in spy fiction, including three trilogies and a prequel featuring Bernard Samson.
+William Thomas Quick | William Thomas "Bill" Quick (born 1946), who sometimes writes under the pseudonym Margaret Allan, is a science fiction author and self-described libertarian conservative blogger.  Quick is the author of 28 novels, the most famous of which is the cyberpunk "Dreams of Flesh and Sand", and co-authored a six-novel series with William Shatner.
+John le Carré | David John Moore Cornwell (born 19 October 1931), known by the pseudonym John le Carré ( ), is a British author of espionage novels.  During the 1950s and the 1960s, he worked for both the Security Service and the Secret Intelligence Service, and began writing novels under his pen name.  His third novel, "The Spy Who Came in from the Cold" (1963), became an international best-seller and remains one of his best-known works.  Following the success of this novel, he left MI6 to become a full-time author.
+Ian Adams | Ian Adams (born 1937) is a Canadian author of fiction and non-fiction novels, television, and movies.  Originally a journalist, he is now best known for his writing: his most successful novels to date are "S – Portrait of a Spy" and "Agent of Influence", which has also been made into a film.  He currently lives in Toronto, Ontario.
+John le Carré | David John Moore Cornwell (born 19 October 1931), known by the pseudonym John le Carré ( ), is a British author of espionage novels.  During the 1950s and the 1960s, he worked for both the Security Service and the Secret Intelligence Service, and began writing novels under his pen name.  His third novel, "The Spy Who Came in from the Cold" (1963), became an international best-seller and remains one of his best-known works.  Following the success of this novel, he left MI6 to become a full-time author.
+Owen John | Leonard Owen-John (1 May 1918 - 23 January 1995) was a Welsh author of spy fiction who is mostly remembered for his series of novels starring the Russian-born MI-6 agent Haggai Godin.  He is not to be confused with Welsh children books author John Owen.
+Gary Blackwood (author) | Gary Blackwood (born October 23, 1945) is an American author known for "The Shakespeare Stealer" trilogy.  Born in Meadville, Pennsylvania, Blackwood sold his first story when he was nineteen.  In 1998, he published "The Shakespeare Stealer", a historical fiction novel about an orphan, Widge, who is sent to steal "Hamlet" from William Shakespeare and The Lord Chamberlain's Men.  After it won the 1999 ALA Best Book for Young Adults, Blackwood published two sequels, "Shakespeare's Scribe" (2000) and "Shakespeare's Spy" (2003).  Since then, he has continued writing historical fiction, such as "Around the World in 100 Days" (2010), which the "Smithsonian" named a 2010 Notable Book for Children and "Kirkus Book Reviews" one of 2010's Best Books for Teens.
+List of works by Georgette Heyer | Georgette Heyer (1902–1974) was an English author particularly known for her historical romance novels set in the Regency and Georgian eras.  A best-selling author, Heyer's writing career saw her produce works from a variety of genres; in total she published 32 novels in the romance genre, 6 historical novels, 4 contemporary novels, and 12 in the detective fiction genre.
+Ian Fleming | Ian Lancaster Fleming (28 May 1908 – 12 August 1964) was an English author, journalist and naval intelligence officer who is best known for his James Bond series of spy novels. Fleming came from a wealthy family connected to the merchant bank Robert Fleming & Co., and his father was the Member of Parliament for Henley from 1910 until his death on the Western Front in 1917.  Educated at Eton, Sandhurst and, briefly, the universities of Munich and Geneva, Fleming moved through several jobs before he started writing.
+Kathryn Le Veque | Kathryn Elizabeth Bouse Le Veque Hogan is an American USA Today bestselling independent author of Historical Romance fiction novels.  She is the author of over 60 historical romance novels, as well as ten contemporary romance novels.  She is most known for writing "The Dark One: Dark Knight", "Rise of the Defender", "The Wolfe", "The Savage Curtain", and "Island of Glass".
+Joanna Bourne | Joanna Watkins Bourne is an American, best-selling author of historical romance novels set in Europe during the Napoleonic wars.  Her novels about a group of spies have won numerous awards.  Her books have been described as "witty, beautifully descriptive, [and] cleverly plotted".  "The Spymaster's Lady" is frequently cited as a reader favorite, with a spy hero who is both 'alpha' and 'beta' and a spy heroine who is "brave and clever".  "Rogue Spy", which features a code-breaker and a British service agent, was listed by "Library Journal" as one of the ten best romances of 2014.
+Pharaoh (novel) | Pharaoh (Polish: "Faraon" ) is the fourth and last major novel by the Polish writer Bolesław Prus (1847–1912).  Composed over a year's time in 1894–95, serialized in 1895–96, and published in book form in 1897, it was the sole historical novel by an author who had earlier disapproved of historical novels on the ground that they inevitably distort history.
+Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.
+Ian Adams | Ian Adams (born 1937) is a Canadian author of fiction and non-fiction novels, television, and movies.  Originally a journalist, he is now best known for his writing: his most successful novels to date are "S – Portrait of a Spy" and "Agent of Influence", which has also been made into a film.  He currently lives in Toronto, Ontario.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary_2 explicitly identifies the missing entity: 'The critical missing evidence is a passage identifying the author of "The Polish Officer" (1995). None of the provided passages mention this work or its author.' The hop 3 query targets this entity: 'Who is the author of "The Polish Officer" (1995), and is this author known for writing historical spy novels?' However, the retrieved documents in 
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Hop 2 query: 'H. P. Lovecraft author biography and writing genres' - This is an unstructured keyword phrase rather than a well-formed query with clear target entity structure.
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Hop 3 query: 'Who is the author of "The Polish Officer" (1995), and is this author known for writing historical spy novels?' - This is a compound multi-part natural-language question bundling two distinct targets (author identification + genre verification) rather than a focused query.
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

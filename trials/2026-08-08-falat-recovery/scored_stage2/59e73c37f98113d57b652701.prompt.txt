@@ -1,0 +1,461 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## passages ## ]]
+[1] «Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.»
+[2] «John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.»
+[3] «List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.»
+[4] «Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.»
+[5] «John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.»
+[6] «Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.»
+[7] «Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze each component of the claim against the provided passages:
+
+1. **"Formerly titled the Collegiate Church of St Peter at Westminster"**: Passage [6] confirms that "Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster" - this establishes the formal title.
+
+2. **"Geoffrey Chaucer was the first poet to be buried in Poets' Corner"**: Passage [1] explicitly states "He was the first poet to be buried in Poets' Corner of Westminster Abbey." This directly verifies this part of the claim.
+
+3. **"of this place" (referring to Westminster Abbey/the Collegiate Church of St Peter at Westminster)**: Passage [7] confirms that "Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey" - establishing that Poets' Corner is indeed part of Westminster Abbey/the Collegiate Church of St Peter at Westminster.
+
+4. **"John Fecknam was the last abbot of this place"**: Passage [2] states "John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster." This confirms John Fecknam (variant spelling of Feckenham) was the last abbot of Westminster (the same place referenced in the claim).
+
+All components of the claim are directly supported by the provided passages with clear, explicit verification.
+
+[[ ## summary ## ]]
+The claim can be **FULLY VERIFIED** from the provided passages.
+
+**Verification of all components:**
+
+1. **Westminster Abbey's formal title**: Confirmed in passage [6] - Westminster Abbey is formally titled "the Collegiate Church of St Peter at Westminster"
+
+2. **Geoffrey Chaucer as first poet buried in Poets' Corner**: Confirmed in passage [1] - Geoffrey Chaucer is explicitly identified as "the first poet to be buried in Poets' Corner of Westminster Abbey"
+
+3. **Poets' Corner location**: Confirmed in passage [7] - Poets' Corner is a section of the South Transept of Westminster Abbey
+
+4. **John Fecknam as last abbot**: Confirmed in passage [2] - John Feckenham (also known as John Fecknam) is explicitly identified as "the last abbot of Westminster"
+
+5. **Entity identity verification**: The place referenced throughout is Westminster Abbey, which is formally known as the Collegiate Church of St Peter at Westminster (passage [6]), confirming all references are to the same institution
+
+No additional information or retrieval is needed. All factual assertions in the claim are directly supported by the provided passages.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## summary_1 ## ]]
+The claim can be **FULLY VERIFIED** from the provided passages.
+
+**Verification of all components:**
+
+1. **Westminster Abbey's formal title**: Confirmed in passage [6] - Westminster Abbey is formally titled "the Collegiate Church of St Peter at Westminster"
+
+2. **Geoffrey Chaucer as first poet buried in Poets' Corner**: Confirmed in passage [1] - Geoffrey Chaucer is explicitly identified as "the first poet to be buried in Poets' Corner of Westminster Abbey"
+
+3. **Poets' Corner location**: Confirmed in passage [7] - Poets' Corner is a section of the South Transept of Westminster Abbey
+
+4. **John Fecknam as last abbot**: Confirmed in passage [2] - John Feckenham (also known as John Fecknam) is explicitly identified as "the last abbot of Westminster"
+
+5. **Entity identity verification**: The place referenced throughout is Westminster Abbey, which is formally known as the Collegiate Church of St Peter at Westminster (passage [6]), confirming all references are to the same institution
+
+No additional information or retrieval is needed. All factual assertions in the claim are directly supported by the provided passages.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+While the summary indicates that all components of the claim have been fully verified from the provided passages, the task requirements specify that I must generate queries for both unverified AND baseline entities. This is necessary to ensure complete evidence retrieval across multiple hops and to build a comprehensive evidence base. Even though the summary confirms verification, the critical requirement states: "Even when the summary states that certain facts are 'fully verified' or 'directly confirmed,' you must still generate queries that would retrieve the foundational documents about those entities."
+
+Therefore, I need to generate queries that would retrieve documents about:
+1. Westminster Abbey and its formal title as the Collegiate Church of St Peter at Westminster
+2. Geoffrey Chaucer and his burial in Poets' Corner
+3. Poets' Corner as a location within Westminster Abbey
+4. John Fecknam/Feckenham and his role as the last abbot of Westminster Abbey
+
+These queries will establish the foundational evidence base for verifying each component of the claim, even though the summary indicates the information is already available in the current passages.
+
+[[ ## query ## ]]
+What is Westminster Abbey's formal title and history? Who was Geoffrey Chaucer and where was he buried, specifically regarding Poets' Corner? What is Poets' Corner and where is it located within Westminster Abbey? Who was John Fecknam (also spelled Feckenham) and what was his role at Westminster Abbey, particularly as the last abbot?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+Richard Brinsley Sheridan | Richard Brinsley Butler Sheridan (30 October 17517 July 1816) was an Irish satirist, a playwright and poet, and long-term owner of the London Theatre Royal, Drury Lane.  He is known for his plays such as "The Rivals", "The School for Scandal", "The Duenna", and "A Trip to Scarborough".  He was also a Whig MP for 32 years in the British House of Commons for Stafford (1780–1806), Westminster (1806–1807), and Ilchester (1807–1812).  He is buried at Poets' Corner in Westminster Abbey.  His plays remain a central part of the canon and are regularly performed worldwide.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+John Hutchison (sculptor) | John Hutchison (1 June 1832 – 23 May 1910) was a Scottish sculptor based in Edinburgh.  His most notable public work is the bust of Sir Walter Scott in Poets’ Corner in Westminster Abbey.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## context ## ]]
+The claim can be **FULLY VERIFIED** from the provided passages.
+
+**Verification of all components:**
+
+1. **Westminster Abbey's formal title**: Confirmed in passage [6] - Westminster Abbey is formally titled "the Collegiate Church of St Peter at Westminster"
+
+2. **Geoffrey Chaucer as first poet buried in Poets' Corner**: Confirmed in passage [1] - Geoffrey Chaucer is explicitly identified as "the first poet to be buried in Poets' Corner of Westminster Abbey"
+
+3. **Poets' Corner location**: Confirmed in passage [7] - Poets' Corner is a section of the South Transept of Westminster Abbey
+
+4. **John Fecknam as last abbot**: Confirmed in passage [2] - John Feckenham (also known as John Fecknam) is explicitly identified as "the last abbot of Westminster"
+
+5. **Entity identity verification**: The place referenced throughout is Westminster Abbey, which is formally known as the Collegiate Church of St Peter at Westminster (passage [6]), confirming all references are to the same institution
+
+No additional information or retrieval is needed. All factual assertions in the claim are directly supported by the provided passages.
+
+[[ ## passages ## ]]
+[1] «Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.»
+[2] «Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.»
+[3] «John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.»
+[4] «Richard Brinsley Sheridan | Richard Brinsley Butler Sheridan (30 October 17517 July 1816) was an Irish satirist, a playwright and poet, and long-term owner of the London Theatre Royal, Drury Lane.  He is known for his plays such as "The Rivals", "The School for Scandal", "The Duenna", and "A Trip to Scarborough".  He was also a Whig MP for 32 years in the British House of Commons for Stafford (1780–1806), Westminster (1806–1807), and Ilchester (1807–1812).  He is buried at Poets' Corner in Westminster Abbey.  His plays remain a central part of the canon and are regularly performed worldwide.»
+[5] «List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.»
+[6] «John Hutchison (sculptor) | John Hutchison (1 June 1832 – 23 May 1910) was a Scottish sculptor based in Edinburgh.  His most notable public work is the bust of Sir Walter Scott in Poets’ Corner in Westminster Abbey.»
+[7] «Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+The claim makes four distinct factual assertions that need verification:
+
+1. **Westminster Abbey's formal title as "the Collegiate Church of St Peter at Westminster"**: Passage [7] directly states "Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster" - VERIFIED
+
+2. **Geoffrey Chaucer as the first poet buried in Poets' Corner**: Passage [1] explicitly confirms "He was the first poet to be buried in Poets' Corner of Westminster Abbey" - VERIFIED
+
+3. **Poets' Corner being a location within Westminster Abbey**: Passage [2] identifies Poets' Corner as "a section of the South Transept of Westminster Abbey" - VERIFIED
+
+4. **John Fecknam as the last abbot of Westminster Abbey**: Passage [3] explicitly states John Feckenham "also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster" - VERIFIED
+
+All four components of the claim are directly and explicitly supported by the provided passages. There are no contradictions, and no claims extend beyond what the passages substantiate.
+
+[[ ## summary ## ]]
+
+The claim is **FULLY VERIFIED**. All factual assertions are directly supported by the passages: Westminster Abbey is formally titled the Collegiate Church of St Peter at Westminster (passage [7]); Geoffrey Chaucer was the first poet buried in Poets' Corner of Westminster Abbey (passage [1]); and John Fecknam was the last abbot of Westminster Abbey (passage [3]). The identity of the institution referenced throughout is consistent and confirmed.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## summary_1 ## ]]
+The claim can be **FULLY VERIFIED** from the provided passages.
+
+**Verification of all components:**
+
+1. **Westminster Abbey's formal title**: Confirmed in passage [6] - Westminster Abbey is formally titled "the Collegiate Church of St Peter at Westminster"
+
+2. **Geoffrey Chaucer as first poet buried in Poets' Corner**: Confirmed in passage [1] - Geoffrey Chaucer is explicitly identified as "the first poet to be buried in Poets' Corner of Westminster Abbey"
+
+3. **Poets' Corner location**: Confirmed in passage [7] - Poets' Corner is a section of the South Transept of Westminster Abbey
+
+4. **John Fecknam as last abbot**: Confirmed in passage [2] - John Feckenham (also known as John Fecknam) is explicitly identified as "the last abbot of Westminster"
+
+5. **Entity identity verification**: The place referenced throughout is Westminster Abbey, which is formally known as the Collegiate Church of St Peter at Westminster (passage [6]), confirming all references are to the same institution
+
+No additional information or retrieval is needed. All factual assertions in the claim are directly supported by the provided passages.
+
+[[ ## summary_2 ## ]]
+The claim is **FULLY VERIFIED**. All factual assertions are directly supported by the passages: Westminster Abbey is formally titled the Collegiate Church of St Peter at Westminster (passage [7]); Geoffrey Chaucer was the first poet buried in Poets' Corner of Westminster Abbey (passage [1]); and John Fecknam was the last abbot of Westminster Abbey (passage [3]). The identity of the institution referenced throughout is consistent and confirmed.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summary_1 and summary_2 reach the same conclusion: the claim is FULLY VERIFIED. They both confirm all three major components of the claim:
+
+1. Westminster Abbey's formal title as "the Collegiate Church of St Peter at Westminster"
+2. Geoffrey Chaucer being the first poet buried in Poets' Corner of Westminster Abbey
+3. John Fecknam being the last abbot of Westminster
+
+The summaries cite supporting passages that directly verify each assertion. There are minor discrepancies in passage citations between the two summaries (summary_1 cites passages [6], [1], [7], [2]; summary_2 cites passages [7], [1], [3]), but both reach consistent verification conclusions. No contradictions exist between the summaries regarding the factual accuracy of the claim's content.
+
+[[ ## query ## ]]
+Is Westminster Abbey (formerly titled the Collegiate Church of St Peter at Westminster) the place where Geoffrey Chaucer was the first poet buried in Poets' Corner, and where John Fecknam served as the last abbot?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+John Denham (poet) | Sir John Denham FRS (1614 or 1615 – 19 March 1669) was an Anglo-Irish poet and courtier.  He served as Surveyor of the King's Works and is buried in Westminster Abbey.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+Dean of Westminster | The Dean of Westminster is the head of the chapter at Westminster Abbey.  Due to the Abbey's status as a Royal Peculiar, the dean answers directly to the Queen (not to the Bishop of London as ordinary, nor to the Archbishop of Canterbury as metropolitan).  Initially, the office was a successor to that of abbot of Westminster, and was for the first 10 years cathedral dean for the Diocese of Westminster.  The current dean is John Hall.
+Westminster Abbey (disambiguation) | Westminster Abbey is a large Anglican church in Westminster, London, where the British monarchs are crowned.
+John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+Richard Brinsley Sheridan | Richard Brinsley Butler Sheridan (30 October 17517 July 1816) was an Irish satirist, a playwright and poet, and long-term owner of the London Theatre Royal, Drury Lane.  He is known for his plays such as "The Rivals", "The School for Scandal", "The Duenna", and "A Trip to Scarborough".  He was also a Whig MP for 32 years in the British House of Commons for Stafford (1780–1806), Westminster (1806–1807), and Ilchester (1807–1812).  He is buried at Poets' Corner in Westminster Abbey.  His plays remain a central part of the canon and are regularly performed worldwide.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+John Hutchison (sculptor) | John Hutchison (1 June 1832 – 23 May 1910) was a Scottish sculptor based in Edinburgh.  His most notable public work is the bust of Sir Walter Scott in Poets’ Corner in Westminster Abbey.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+John Denham (poet) | Sir John Denham FRS (1614 or 1615 – 19 March 1669) was an Anglo-Irish poet and courtier.  He served as Surveyor of the King's Works and is buried in Westminster Abbey.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+Dean of Westminster | The Dean of Westminster is the head of the chapter at Westminster Abbey.  Due to the Abbey's status as a Royal Peculiar, the dean answers directly to the Queen (not to the Bishop of London as ordinary, nor to the Archbishop of Canterbury as metropolitan).  Initially, the office was a successor to that of abbot of Westminster, and was for the first 10 years cathedral dean for the Diocese of Westminster.  The current dean is John Hall.
+Westminster Abbey (disambiguation) | Westminster Abbey is a large Anglican church in Westminster, London, where the British monarchs are crowned.
+John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 query: 'Is Westminster Abbey (formerly titled the Collegiate Church of St Peter at Westminster) the place where Geoffrey Chaucer was the first poet buried in Poets' Corner, and where John Fecknam served as the last abbot?' Hop 3 query: 'Is Westminster Abbey (formerly titled the Collegiate Church of St Peter at Westminster) the place where Geoffrey Chaucer was the first poet buried in Poets' 
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Both hop 2 and hop 3 queries are formulated as natural-language yes/no questions: 'Is Westminster Abbey (formerly titled the Collegiate Church of St Peter at Westminster) the place where...' rather than as entity-focused retrieval queries targeting specific documents about Westminster Abbey, Geoffrey Chaucer, Poets' Corner, or John Fecknam.
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

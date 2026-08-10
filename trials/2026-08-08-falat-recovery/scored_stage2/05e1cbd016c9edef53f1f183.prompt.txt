@@ -1,0 +1,486 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Route 611 (Afghanistan) is not 100 kilometers and does not pass through the town that is found in the valley of the primary watershed for Sistan Basin.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Route 611 (Afghanistan) | Route 611 is the main road between Nahri Saraj District and Kajaki District in Helmand Province, Afghanistan.  The southern terminus is at Highway 1 in the town of Girishk and the northern terminus is in the village of Kajaki.  The road is approximately 100 kilometers and passes through the town of Sangin.
+Sistan Basin | The Sistan Basin is an inland endorheic basin encompassing large parts of southwestern Afghanistan and minor parts of southeastern Iran, one of the driest regions in the world and an area subjected to prolonged droughts. Its watershed is a system of rivers flowing from the highlands of Afghanistan into freshwater lakes and marshes and then to its ultimate destination: Afghanistan's saline Godzareh depression, part of the extensive Sistan terminal basin.  The Helmand River drains the basin's largest watershed, fed mainly by snowmelt from the mountains of Hindu Kush, but other rivers contribute also.
+Sangin | Sangin (Pashto: سنگين‎ ) is a town in Helmand province of Afghanistan, with population of approximately 14,000 people.  It is located on in the valley of the Helmand River at 888 m altitude, 95 km to the north-east of Lashkargah.  Sangin is notorious as one of the central locations of the opium trade in the south of the country, and is also a town that has traditionally supported the Taliban.  It was described by British newspaper "The Guardian" as "the deadliest area in Afghanistan".  Sangin also houses the main bazaar for Sangin District.  Route 611 passes through Sangin.
+Helmand River | The Helmand River (also spelled "Helmend, Helmund, Hirmand"; Pashto/Persian: هیرمند, هلمند "Hīrmand, Helmand ", Greek: "Ἐτύμανδρος " ("Etýmandros"), Latin: "Erymandrus ") is the longest river in Afghanistan and the primary watershed for the endorheic Sistan Basin.
+Steptoe Valley | The Steptoe Valley is a long basin located in White Pine County, in northeastern Nevada in the western United States.  From the historic community of Currie, the valley runs south for approximately 100 miles (160 km).  To the west are the high Egan Range and the Cherry Creek Range, while to the east is the even higher Schell Creek Range.  U.S. Route 93 passes through much of the northern section of the valley, past the historic mining town of Cherry Creek and the communities of McGill and Ely, before crossing the Schell Creek Range at Connors Pass.  Also found in this valley are the Ward Charcoal Ovens State Historic Park, the Steptoe Valley Wildlife Management Area, and Cave Lake State Park.  At Egan Canyon and Schellbourne Pass (near Cherry Creek), the Overland Stage Line and the subsequent Pony Express and Transcontinental Telegraph made their way through the mountains of central Nevada in the 1860s.
+Hollywood Freeway | The Hollywood Freeway is one of the principal freeways of Los Angeles, California (the boundaries of which it does not leave) and one of the busiest in the United States.  It is the principal route through the Cahuenga Pass, the primary shortcut between the Los Angeles Basin and the San Fernando Valley.  It is considered one of the most important freeways in the history of Los Angeles and instrumental in the development of the San Fernando Valley.  It is the second oldest freeway in Los Angeles (after the Arroyo Seco Parkway).  From its southern end at the Four Level Interchange to its intersection with the Ventura Freeway in the southeastern San Fernando Valley (the Hollywood Split), it is signed as part of U.S. Route 101.  It is then signed as State Route 170 (SR 170) north to its terminus at the Golden State Freeway (Interstate 5).
+Drangiana | Drangiana or Zarangiana (Greek: Δραγγιανή , "Drangianē"; also attested in Old Western Iranian as "Zranka" was a historical region and administrative division of the Achaemenid Empire.  This region comprises territory around Hamun Lake, wetlands in endorheic Sistan Basin on the Iran-Afghan border, and its primary watershed Helmand river in what is nowadays southwestern region of Afghanistan.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+Route 611 (Afghanistan) is not 100 kilometers and does not pass through the town that is found in the valley of the primary watershed for Sistan Basin.
+
+[[ ## passages ## ]]
+[1] «Route 611 (Afghanistan) | Route 611 is the main road between Nahri Saraj District and Kajaki District in Helmand Province, Afghanistan.  The southern terminus is at Highway 1 in the town of Girishk and the northern terminus is in the village of Kajaki.  The road is approximately 100 kilometers and passes through the town of Sangin.»
+[2] «Sistan Basin | The Sistan Basin is an inland endorheic basin encompassing large parts of southwestern Afghanistan and minor parts of southeastern Iran, one of the driest regions in the world and an area subjected to prolonged droughts. Its watershed is a system of rivers flowing from the highlands of Afghanistan into freshwater lakes and marshes and then to its ultimate destination: Afghanistan's saline Godzareh depression, part of the extensive Sistan terminal basin.  The Helmand River drains the basin's largest watershed, fed mainly by snowmelt from the mountains of Hindu Kush, but other rivers contribute also.»
+[3] «Sangin | Sangin (Pashto: سنگين‎ ) is a town in Helmand province of Afghanistan, with population of approximately 14,000 people.  It is located on in the valley of the Helmand River at 888 m altitude, 95 km to the north-east of Lashkargah.  Sangin is notorious as one of the central locations of the opium trade in the south of the country, and is also a town that has traditionally supported the Taliban.  It was described by British newspaper "The Guardian" as "the deadliest area in Afghanistan".  Sangin also houses the main bazaar for Sangin District.  Route 611 passes through Sangin.»
+[4] «Helmand River | The Helmand River (also spelled "Helmend, Helmund, Hirmand"; Pashto/Persian: هیرمند, هلمند "Hīrmand, Helmand ", Greek: "Ἐτύμανδρος " ("Etýmandros"), Latin: "Erymandrus ") is the longest river in Afghanistan and the primary watershed for the endorheic Sistan Basin.»
+[5] «Steptoe Valley | The Steptoe Valley is a long basin located in White Pine County, in northeastern Nevada in the western United States.  From the historic community of Currie, the valley runs south for approximately 100 miles (160 km).  To the west are the high Egan Range and the Cherry Creek Range, while to the east is the even higher Schell Creek Range.  U.S. Route 93 passes through much of the northern section of the valley, past the historic mining town of Cherry Creek and the communities of McGill and Ely, before crossing the Schell Creek Range at Connors Pass.  Also found in this valley are the Ward Charcoal Ovens State Historic Park, the Steptoe Valley Wildlife Management Area, and Cave Lake State Park.  At Egan Canyon and Schellbourne Pass (near Cherry Creek), the Overland Stage Line and the subsequent Pony Express and Transcontinental Telegraph made their way through the mountains of central Nevada in the 1860s.»
+[6] «Hollywood Freeway | The Hollywood Freeway is one of the principal freeways of Los Angeles, California (the boundaries of which it does not leave) and one of the busiest in the United States.  It is the principal route through the Cahuenga Pass, the primary shortcut between the Los Angeles Basin and the San Fernando Valley.  It is considered one of the most important freeways in the history of Los Angeles and instrumental in the development of the San Fernando Valley.  It is the second oldest freeway in Los Angeles (after the Arroyo Seco Parkway).  From its southern end at the Four Level Interchange to its intersection with the Ventura Freeway in the southeastern San Fernando Valley (the Hollywood Split), it is signed as part of U.S. Route 101.  It is then signed as State Route 170 (SR 170) north to its terminus at the Golden State Freeway (Interstate 5).»
+[7] «Drangiana | Drangiana or Zarangiana (Greek: Δραγγιανή , "Drangianē"; also attested in Old Western Iranian as "Zranka" was a historical region and administrative division of the Achaemenid Empire.  This region comprises territory around Hamun Lake, wetlands in endorheic Sistan Basin on the Iran-Afghan border, and its primary watershed Helmand river in what is nowadays southwestern region of Afghanistan.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze the claim systematically against the provided passages.
+
+The claim states: "Route 611 (Afghanistan) is not 100 kilometers and does not pass through the town that is found in the valley of the primary watershed for Sistan Basin."
+
+Breaking down the claim into components:
+1. Route 611 (Afghanistan) is not 100 kilometers
+2. Route 611 does not pass through [a specific town]
+3. That town is found in the valley of the primary watershed for Sistan Basin
+
+Cross-referencing with passages:
+
+From Passage [1]: "The road is approximately 100 kilometers and passes through the town of Sangin."
+- This directly contradicts the first part of the claim (Route 611 IS approximately 100 kilometers)
+- This confirms Route 611 passes through Sangin
+
+From Passage [3]: "Sangin is a town in Helmand province of Afghanistan... It is located on in the valley of the Helmand River"
+- Sangin is located in the valley of the Helmand River
+
+From Passage [4]: "The Helmand River... is the longest river in Afghanistan and the primary watershed for the endorheic Sistan Basin."
+- The Helmand River IS the primary watershed for Sistan Basin
+
+From Passage [2]: Confirms that the Helmand River drains the basin's largest watershed
+
+Logical chain:
+- Helmand River = primary watershed for Sistan Basin (Passage [4])
+- Sangin is in the valley of the Helmand River (Passage [3])
+- Therefore, Sangin is in the valley of the primary watershed for Sistan Basin
+- Route 611 passes through Sangin (Passages [1] and [3])
+- Route 611 is approximately 100 kilometers (Passage [1])
+
+The claim asserts two negatives, but the passages verify both parts of what the claim negates.
+
+[[ ## summary ## ]]
+
+**Verification Status: CLAIM NOT VERIFIED - CONTRADICTED BY PASSAGES**
+
+The claim makes two assertions:
+1. That Route 611 (Afghanistan) is not 100 kilometers
+2. That Route 611 does not pass through the town found in the valley of the primary watershed for Sistan Basin
+
+**Evidence contradicting the claim:**
+
+The passages establish a clear chain of evidence:
+- The Helmand River is explicitly identified as "the primary watershed for the endorheic Sistan Basin" (Passage [4])
+- Sangin is explicitly stated to be "located in the valley of the Helmand River" (Passage [3])
+- Therefore, Sangin is the town located in the valley of the primary watershed for Sistan Basin
+- Route 611 is documented as "approximately 100 kilometers" in length (Passage [1])
+- Route 611 explicitly "passes through the town of Sangin" (Passages [1] and [3])
+
+All factual assertions in the claim are contradicted by the provided passages. The claim's negations are directly refuted by verified information about Route 611's length and its passage through Sangin, which is confirmed to be situated in the valley of the Helmand River (the primary watershed for Sistan Basin).
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+Route 611 (Afghanistan) is not 100 kilometers and does not pass through the town that is found in the valley of the primary watershed for Sistan Basin.
+
+[[ ## summary_1 ## ]]
+**Verification Status: CLAIM NOT VERIFIED - CONTRADICTED BY PASSAGES**
+
+The claim makes two assertions:
+1. That Route 611 (Afghanistan) is not 100 kilometers
+2. That Route 611 does not pass through the town found in the valley of the primary watershed for Sistan Basin
+
+**Evidence contradicting the claim:**
+
+The passages establish a clear chain of evidence:
+- The Helmand River is explicitly identified as "the primary watershed for the endorheic Sistan Basin" (Passage [4])
+- Sangin is explicitly stated to be "located in the valley of the Helmand River" (Passage [3])
+- Therefore, Sangin is the town located in the valley of the primary watershed for Sistan Basin
+- Route 611 is documented as "approximately 100 kilometers" in length (Passage [1])
+- Route 611 explicitly "passes through the town of Sangin" (Passages [1] and [3])
+
+All factual assertions in the claim are contradicted by the provided passages. The claim's negations are directly refuted by verified information about Route 611's length and its passage through Sangin, which is confirmed to be situated in the valley of the Helmand River (the primary watershed for Sistan Basin).
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that the claim has been thoroughly contradicted by existing passages. The evidence chain is complete:
+1. Route 611 is approximately 100 kilometers (contradicting the first assertion)
+2. Route 611 passes through Sangin (contradicting the second assertion)
+3. Sangin is located in the valley of the Helmand River
+4. The Helmand River is the primary watershed for Sistan Basin
+
+However, to ensure comprehensive verification and establish a complete baseline evidence record, I should generate a query that would retrieve foundational documents about all key entities involved in this claim chain: Route 611 itself, Sangin as a town, the Helmand River as a watershed, and Sistan Basin. This ensures the retrieval system has captured the essential geographic and infrastructural relationships needed for complete claim verification.
+[[ ## query ## ]]
+What is Route 611 in Afghanistan? What is the length of Route 611? What towns does Route 611 pass through? What is Sangin and where is it located? What is the Helmand River and what is its relationship to the Sistan Basin? What watershed drains into Sistan Basin? What is the geography of the Helmand River valley?
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Sangin | Sangin (Pashto: سنگين‎ ) is a town in Helmand province of Afghanistan, with population of approximately 14,000 people.  It is located on in the valley of the Helmand River at 888 m altitude, 95 km to the north-east of Lashkargah.  Sangin is notorious as one of the central locations of the opium trade in the south of the country, and is also a town that has traditionally supported the Taliban.  It was described by British newspaper "The Guardian" as "the deadliest area in Afghanistan".  Sangin also houses the main bazaar for Sangin District.  Route 611 passes through Sangin.
+Route 611 (Afghanistan) | Route 611 is the main road between Nahri Saraj District and Kajaki District in Helmand Province, Afghanistan.  The southern terminus is at Highway 1 in the town of Girishk and the northern terminus is in the village of Kajaki.  The road is approximately 100 kilometers and passes through the town of Sangin.
+Drangiana | Drangiana or Zarangiana (Greek: Δραγγιανή , "Drangianē"; also attested in Old Western Iranian as "Zranka" was a historical region and administrative division of the Achaemenid Empire.  This region comprises territory around Hamun Lake, wetlands in endorheic Sistan Basin on the Iran-Afghan border, and its primary watershed Helmand river in what is nowadays southwestern region of Afghanistan.
+Sistan Basin | The Sistan Basin is an inland endorheic basin encompassing large parts of southwestern Afghanistan and minor parts of southeastern Iran, one of the driest regions in the world and an area subjected to prolonged droughts. Its watershed is a system of rivers flowing from the highlands of Afghanistan into freshwater lakes and marshes and then to its ultimate destination: Afghanistan's saline Godzareh depression, part of the extensive Sistan terminal basin.  The Helmand River drains the basin's largest watershed, fed mainly by snowmelt from the mountains of Hindu Kush, but other rivers contribute also.
+Beale's Crossing | Beale's Crossing, was a river crossing of the Colorado River, near the head of the Mohave Valley, between New Mexico Territory (now Arizona) and California along the along the 35th Parallel route of Beale's Wagon Road.  The crossing was located at what became the site of Fort Mohave in what is now Fort Mohave, Arizona and west of Beaver Lake, Nevada.  The crossing was named for Edward Fitzgerald Beale who lead the expedition that built what came to be called Beale's Wagon Road from Albuquerque, New Mexico to Beale's Crossing in California, then by way of the Mohave Trail/Old Spanish Trail, and another old route west from the Mojave River to Fort Tejon, California.
+Helmand River | The Helmand River (also spelled "Helmend, Helmund, Hirmand"; Pashto/Persian: هیرمند, هلمند "Hīrmand, Helmand ", Greek: "Ἐτύμανδρος " ("Etýmandros"), Latin: "Erymandrus ") is the longest river in Afghanistan and the primary watershed for the endorheic Sistan Basin.
+Kajaki District | Kajaki is a district in the east of Helmand Province, Afghanistan.  Its population is by a vast majority Pashtun, and stood at 69,300 in 2012.  The district centre is the village of Kajaki.  Route 611 passes through the district to the district center.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Route 611 (Afghanistan) is not 100 kilometers and does not pass through the town that is found in the valley of the primary watershed for Sistan Basin.
+
+[[ ## context ## ]]
+**Verification Status: CLAIM NOT VERIFIED - CONTRADICTED BY PASSAGES**
+
+The claim makes two assertions:
+1. That Route 611 (Afghanistan) is not 100 kilometers
+2. That Route 611 does not pass through the town found in the valley of the primary watershed for Sistan Basin
+
+**Evidence contradicting the claim:**
+
+The passages establish a clear chain of evidence:
+- The Helmand River is explicitly identified as "the primary watershed for the endorheic Sistan Basin" (Passage [4])
+- Sangin is explicitly stated to be "located in the valley of the Helmand River" (Passage [3])
+- Therefore, Sangin is the town located in the valley of the primary watershed for Sistan Basin
+- Route 611 is documented as "approximately 100 kilometers" in length (Passage [1])
+- Route 611 explicitly "passes through the town of Sangin" (Passages [1] and [3])
+
+All factual assertions in the claim are contradicted by the provided passages. The claim's negations are directly refuted by verified information about Route 611's length and its passage through Sangin, which is confirmed to be situated in the valley of the Helmand River (the primary watershed for Sistan Basin).
+
+[[ ## passages ## ]]
+[1] «Sangin | Sangin (Pashto: سنگين‎ ) is a town in Helmand province of Afghanistan, with population of approximately 14,000 people.  It is located on in the valley of the Helmand River at 888 m altitude, 95 km to the north-east of Lashkargah.  Sangin is notorious as one of the central locations of the opium trade in the south of the country, and is also a town that has traditionally supported the Taliban.  It was described by British newspaper "The Guardian" as "the deadliest area in Afghanistan".  Sangin also houses the main bazaar for Sangin District.  Route 611 passes through Sangin.»
+[2] «Route 611 (Afghanistan) | Route 611 is the main road between Nahri Saraj District and Kajaki District in Helmand Province, Afghanistan.  The southern terminus is at Highway 1 in the town of Girishk and the northern terminus is in the village of Kajaki.  The road is approximately 100 kilometers and passes through the town of Sangin.»
+[3] «Drangiana | Drangiana or Zarangiana (Greek: Δραγγιανή , "Drangianē"; also attested in Old Western Iranian as "Zranka" was a historical region and administrative division of the Achaemenid Empire.  This region comprises territory around Hamun Lake, wetlands in endorheic Sistan Basin on the Iran-Afghan border, and its primary watershed Helmand river in what is nowadays southwestern region of Afghanistan.»
+[4] «Sistan Basin | The Sistan Basin is an inland endorheic basin encompassing large parts of southwestern Afghanistan and minor parts of southeastern Iran, one of the driest regions in the world and an area subjected to prolonged droughts. Its watershed is a system of rivers flowing from the highlands of Afghanistan into freshwater lakes and marshes and then to its ultimate destination: Afghanistan's saline Godzareh depression, part of the extensive Sistan terminal basin.  The Helmand River drains the basin's largest watershed, fed mainly by snowmelt from the mountains of Hindu Kush, but other rivers contribute also.»
+[5] «Beale's Crossing | Beale's Crossing, was a river crossing of the Colorado River, near the head of the Mohave Valley, between New Mexico Territory (now Arizona) and California along the along the 35th Parallel route of Beale's Wagon Road.  The crossing was located at what became the site of Fort Mohave in what is now Fort Mohave, Arizona and west of Beaver Lake, Nevada.  The crossing was named for Edward Fitzgerald Beale who lead the expedition that built what came to be called Beale's Wagon Road from Albuquerque, New Mexico to Beale's Crossing in California, then by way of the Mohave Trail/Old Spanish Trail, and another old route west from the Mojave River to Fort Tejon, California.»
+[6] «Helmand River | The Helmand River (also spelled "Helmend, Helmund, Hirmand"; Pashto/Persian: هیرمند, هلمند "Hīrmand, Helmand ", Greek: "Ἐτύμανδρος " ("Etýmandros"), Latin: "Erymandrus ") is the longest river in Afghanistan and the primary watershed for the endorheic Sistan Basin.»
+[7] «Kajaki District | Kajaki is a district in the east of Helmand Province, Afghanistan.  Its population is by a vast majority Pashtun, and stood at 69,300 in 2012.  The district centre is the village of Kajaki.  Route 611 passes through the district to the district center.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim asserts two negative propositions that are directly contradicted by the evidence in the passages:
+
+1. **Regarding the length of Route 611**: Passage [2] explicitly states "The road is approximately 100 kilometers," which directly contradicts the claim's assertion that Route 611 is "not 100 kilometers."
+
+2. **Regarding Route 611's passage through the town in the Sistan Basin's primary watershed valley**: 
+   - Passage [6] identifies the Helmand River as "the primary watershed for the endorheic Sistan Basin"
+   - Passage [1] states that Sangin is "located in the valley of the Helmand River"
+   - Therefore, Sangin is the town located in the valley of the primary watershed for Sistan Basin
+   - Passage [1] and [2] both confirm that "Route 611 passes through the town of Sangin"
+   
+This contradicts the claim's assertion that Route 611 does "not pass through the town that is found in the valley of the primary watershed for Sistan Basin."
+
+All factual components of the claim are refuted by the provided passages. The claim's negations are categorically false based on the evidence presented.
+
+[[ ## summary ## ]]
+The claim is **NOT VERIFIED and is CONTRADICTED by the passages**. Route 611 (Afghanistan) is documented as approximately 100 kilometers in length and definitively passes through Sangin, which is located in the valley of the Helmand River—the primary watershed of the Sistan Basin. Both assertions made in the negative form by the claim are factually incorrect according to the provided sources.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Route 611 (Afghanistan) is not 100 kilometers and does not pass through the town that is found in the valley of the primary watershed for Sistan Basin.
+
+[[ ## summary_1 ## ]]
+**Verification Status: CLAIM NOT VERIFIED - CONTRADICTED BY PASSAGES**
+
+The claim makes two assertions:
+1. That Route 611 (Afghanistan) is not 100 kilometers
+2. That Route 611 does not pass through the town found in the valley of the primary watershed for Sistan Basin
+
+**Evidence contradicting the claim:**
+
+The passages establish a clear chain of evidence:
+- The Helmand River is explicitly identified as "the primary watershed for the endorheic Sistan Basin" (Passage [4])
+- Sangin is explicitly stated to be "located in the valley of the Helmand River" (Passage [3])
+- Therefore, Sangin is the town located in the valley of the primary watershed for Sistan Basin
+- Route 611 is documented as "approximately 100 kilometers" in length (Passage [1])
+- Route 611 explicitly "passes through the town of Sangin" (Passages [1] and [3])
+
+All factual assertions in the claim are contradicted by the provided passages. The claim's negations are directly refuted by verified information about Route 611's length and its passage through Sangin, which is confirmed to be situated in the valley of the Helmand River (the primary watershed for Sistan Basin).
+
+[[ ## summary_2 ## ]]
+The claim is **NOT VERIFIED and is CONTRADICTED by the passages**. Route 611 (Afghanistan) is documented as approximately 100 kilometers in length and definitively passes through Sangin, which is located in the valley of the Helmand River—the primary watershed of the Sistan Basin. Both assertions made in the negative form by the claim are factually incorrect according to the provided sources.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summary_1 and summary_2 reach the same conclusion: the claim is contradicted by the passages provided. The claim makes two negative assertions that are both demonstrably false based on the evidence:
+
+1. The claim states Route 611 is "not 100 kilometers" - but the passages confirm it is "approximately 100 kilometers"
+2. The claim states Route 611 does not pass through the town in the valley of the primary watershed for Sistan Basin - but the passages establish that:
+   - The Helmand River is the primary watershed for Sistan Basin
+   - Sangin is located in the valley of the Helmand River
+   - Route 611 passes through Sangin
+
+The summaries are in complete agreement about the verification status and the specific evidence contradicting each part of the claim.
+
+[[ ## query ## ]]
+Verify the following facts about Route 611 (Afghanistan): (1) What is the length of Route 611 in kilometers? (2) What towns does Route 611 pass through? (3) Which river forms the primary watershed for the Sistan Basin? (4) In what valley is Sangin located?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Route 611 (Afghanistan) | Route 611 is the main road between Nahri Saraj District and Kajaki District in Helmand Province, Afghanistan.  The southern terminus is at Highway 1 in the town of Girishk and the northern terminus is in the village of Kajaki.  The road is approximately 100 kilometers and passes through the town of Sangin.
+Sangin | Sangin (Pashto: سنگين‎ ) is a town in Helmand province of Afghanistan, with population of approximately 14,000 people.  It is located on in the valley of the Helmand River at 888 m altitude, 95 km to the north-east of Lashkargah.  Sangin is notorious as one of the central locations of the opium trade in the south of the country, and is also a town that has traditionally supported the Taliban.  It was described by British newspaper "The Guardian" as "the deadliest area in Afghanistan".  Sangin also houses the main bazaar for Sangin District.  Route 611 passes through Sangin.
+Pennsylvania Route 611 | Pennsylvania Route 611 (PA 611), formerly U.S. Route 611 (US 611), is a major state highway in Pennsylvania, United States, running from Interstate 95 south of downtown Philadelphia north to Interstate 380 in Coolbaugh Township, Pennsylvania in The Poconos.
+Pennsylvania Route 314 | Pennsylvania Route 314 (PA 314) is an 7.26 mi state highway located in Monroe County, Pennsylvania.  The western terminus is at PA 940 in Pocono Summit.  The eastern terminus is at PA 715 in Pocono Township.  The route is a two-lane undivided road that passes through forested areas of the Pocono Mountains.  In Swiftwater, PA 314 has a short concurrency with PA 611.  The road between Pocono Summit and U.S. Route 611 (US 611) in Swiftwater was designated as PA 15 in 1927 and became PA 115 a year later.  PA 940 replaced the PA 115 designation on this stretch in 1935.  PA 314 was designated to its current alignment in 1964, replacing this section of PA 940 which was rerouted to the north.
+Virginia State Route 611 (Fairfax County) | State Route 611 is a secondary state highway in the U.S. state of Virginia.  It traverses eastern Fairfax County.  SR 611 provides a major artery for commuters, connecting the Eisenhower Valley section of Alexandria with Lorton and points south along US 1.  SR 611 is known by three names: Telegraph Road, Old Colchester Road, and Furnace Road.
+Portland–Columbia Toll Bridge | The Portland–Columbia Toll Bridge is a toll bridge that carries New Jersey Route 94 (which ends at the Pennsylvania State Line over the river) over the Delaware River, between Pennsylvania Route 611 at Portland, Pennsylvania and Columbia in Knowlton Township, New Jersey, United States.  It is owned and operated by the Delaware River Joint Toll Bridge Commission.  U.S. Route 46 merges with Interstate 80 located just north of the bridge on the New Jersey approach.  All maps sign the bridge as U.S. Route 611 Alternate.
+Ohio State Route 611 | State Route 611 (SR 611) is an east–west state highway in the northern portion of the U.S. state of Ohio.  The western terminus of SR 611 is at a partial interchange with US 6 in Lorain.  Its eastern terminus is at a signalized intersection with SR 254 in Avon.
+Virginia State Route 611 | State Route 611 may refer to (among other minor secondary routes):
+Pennsylvania Route 212 | Pennsylvania Route 212 (PA 212) is a 14.9 mi state highway in Bucks County, Pennsylvania.  The route runs from PA 313 in Quakertown northeast to PA 611 in Durham Township, just south of the borough of Riegelsville.  The route, which is a two-lane undivided road its entire length, passes through rural areas of northern Bucks County, serving Richlandtown and Springtown.  PA 212 has a concurrency with PA 412 through the Springtown area.
+New Jersey Route 94 | Route 94 is a state highway in the northwestern part of the New Jersey, United States.  It runs 45.94 mi from the Portland–Columbia Toll Bridge over the Delaware River in Knowlton Township, Warren County, where it connects to Pennsylvania Route 611 (PA 611), northeast to the New York state line in Vernon Township, Sussex County.  At the New York border, New York State Route 94 (NY 94) continues to Newburgh, New York.  Route 94 is mostly a two-lane undivided road that runs through mountain and valley areas of Warren and Sussex counties, serving Columbia, Blairstown, Newton, and Hamburg.  The route intersects several roads, including U.S. Route 46 (US 46) and Interstate 80 (I-80) in Knowlton Township, US 206 in Newton, Route 15 in Lafayette Township, and Route 23 in Hamburg.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Route 611 (Afghanistan) | Route 611 is the main road between Nahri Saraj District and Kajaki District in Helmand Province, Afghanistan.  The southern terminus is at Highway 1 in the town of Girishk and the northern terminus is in the village of Kajaki.  The road is approximately 100 kilometers and passes through the town of Sangin.
+Sistan Basin | The Sistan Basin is an inland endorheic basin encompassing large parts of southwestern Afghanistan and minor parts of southeastern Iran, one of the driest regions in the world and an area subjected to prolonged droughts. Its watershed is a system of rivers flowing from the highlands of Afghanistan into freshwater lakes and marshes and then to its ultimate destination: Afghanistan's saline Godzareh depression, part of the extensive Sistan terminal basin.  The Helmand River drains the basin's largest watershed, fed mainly by snowmelt from the mountains of Hindu Kush, but other rivers contribute also.
+Sangin | Sangin (Pashto: سنگين‎ ) is a town in Helmand province of Afghanistan, with population of approximately 14,000 people.  It is located on in the valley of the Helmand River at 888 m altitude, 95 km to the north-east of Lashkargah.  Sangin is notorious as one of the central locations of the opium trade in the south of the country, and is also a town that has traditionally supported the Taliban.  It was described by British newspaper "The Guardian" as "the deadliest area in Afghanistan".  Sangin also houses the main bazaar for Sangin District.  Route 611 passes through Sangin.
+Helmand River | The Helmand River (also spelled "Helmend, Helmund, Hirmand"; Pashto/Persian: هیرمند, هلمند "Hīrmand, Helmand ", Greek: "Ἐτύμανδρος " ("Etýmandros"), Latin: "Erymandrus ") is the longest river in Afghanistan and the primary watershed for the endorheic Sistan Basin.
+Steptoe Valley | The Steptoe Valley is a long basin located in White Pine County, in northeastern Nevada in the western United States.  From the historic community of Currie, the valley runs south for approximately 100 miles (160 km).  To the west are the high Egan Range and the Cherry Creek Range, while to the east is the even higher Schell Creek Range.  U.S. Route 93 passes through much of the northern section of the valley, past the historic mining town of Cherry Creek and the communities of McGill and Ely, before crossing the Schell Creek Range at Connors Pass.  Also found in this valley are the Ward Charcoal Ovens State Historic Park, the Steptoe Valley Wildlife Management Area, and Cave Lake State Park.  At Egan Canyon and Schellbourne Pass (near Cherry Creek), the Overland Stage Line and the subsequent Pony Express and Transcontinental Telegraph made their way through the mountains of central Nevada in the 1860s.
+Hollywood Freeway | The Hollywood Freeway is one of the principal freeways of Los Angeles, California (the boundaries of which it does not leave) and one of the busiest in the United States.  It is the principal route through the Cahuenga Pass, the primary shortcut between the Los Angeles Basin and the San Fernando Valley.  It is considered one of the most important freeways in the history of Los Angeles and instrumental in the development of the San Fernando Valley.  It is the second oldest freeway in Los Angeles (after the Arroyo Seco Parkway).  From its southern end at the Four Level Interchange to its intersection with the Ventura Freeway in the southeastern San Fernando Valley (the Hollywood Split), it is signed as part of U.S. Route 101.  It is then signed as State Route 170 (SR 170) north to its terminus at the Golden State Freeway (Interstate 5).
+Drangiana | Drangiana or Zarangiana (Greek: Δραγγιανή , "Drangianē"; also attested in Old Western Iranian as "Zranka" was a historical region and administrative division of the Achaemenid Empire.  This region comprises territory around Hamun Lake, wetlands in endorheic Sistan Basin on the Iran-Afghan border, and its primary watershed Helmand river in what is nowadays southwestern region of Afghanistan.
+Sangin | Sangin (Pashto: سنگين‎ ) is a town in Helmand province of Afghanistan, with population of approximately 14,000 people.  It is located on in the valley of the Helmand River at 888 m altitude, 95 km to the north-east of Lashkargah.  Sangin is notorious as one of the central locations of the opium trade in the south of the country, and is also a town that has traditionally supported the Taliban.  It was described by British newspaper "The Guardian" as "the deadliest area in Afghanistan".  Sangin also houses the main bazaar for Sangin District.  Route 611 passes through Sangin.
+Route 611 (Afghanistan) | Route 611 is the main road between Nahri Saraj District and Kajaki District in Helmand Province, Afghanistan.  The southern terminus is at Highway 1 in the town of Girishk and the northern terminus is in the village of Kajaki.  The road is approximately 100 kilometers and passes through the town of Sangin.
+Drangiana | Drangiana or Zarangiana (Greek: Δραγγιανή , "Drangianē"; also attested in Old Western Iranian as "Zranka" was a historical region and administrative division of the Achaemenid Empire.  This region comprises territory around Hamun Lake, wetlands in endorheic Sistan Basin on the Iran-Afghan border, and its primary watershed Helmand river in what is nowadays southwestern region of Afghanistan.
+Sistan Basin | The Sistan Basin is an inland endorheic basin encompassing large parts of southwestern Afghanistan and minor parts of southeastern Iran, one of the driest regions in the world and an area subjected to prolonged droughts. Its watershed is a system of rivers flowing from the highlands of Afghanistan into freshwater lakes and marshes and then to its ultimate destination: Afghanistan's saline Godzareh depression, part of the extensive Sistan terminal basin.  The Helmand River drains the basin's largest watershed, fed mainly by snowmelt from the mountains of Hindu Kush, but other rivers contribute also.
+Beale's Crossing | Beale's Crossing, was a river crossing of the Colorado River, near the head of the Mohave Valley, between New Mexico Territory (now Arizona) and California along the along the 35th Parallel route of Beale's Wagon Road.  The crossing was located at what became the site of Fort Mohave in what is now Fort Mohave, Arizona and west of Beaver Lake, Nevada.  The crossing was named for Edward Fitzgerald Beale who lead the expedition that built what came to be called Beale's Wagon Road from Albuquerque, New Mexico to Beale's Crossing in California, then by way of the Mohave Trail/Old Spanish Trail, and another old route west from the Mojave River to Fort Tejon, California.
+Helmand River | The Helmand River (also spelled "Helmend, Helmund, Hirmand"; Pashto/Persian: هیرمند, هلمند "Hīrmand, Helmand ", Greek: "Ἐτύμανδρος " ("Etýmandros"), Latin: "Erymandrus ") is the longest river in Afghanistan and the primary watershed for the endorheic Sistan Basin.
+Kajaki District | Kajaki is a district in the east of Helmand Province, Afghanistan.  Its population is by a vast majority Pashtun, and stood at 69,300 in 2012.  The district centre is the village of Kajaki.  Route 611 passes through the district to the district center.
+Route 611 (Afghanistan) | Route 611 is the main road between Nahri Saraj District and Kajaki District in Helmand Province, Afghanistan.  The southern terminus is at Highway 1 in the town of Girishk and the northern terminus is in the village of Kajaki.  The road is approximately 100 kilometers and passes through the town of Sangin.
+Sangin | Sangin (Pashto: سنگين‎ ) is a town in Helmand province of Afghanistan, with population of approximately 14,000 people.  It is located on in the valley of the Helmand River at 888 m altitude, 95 km to the north-east of Lashkargah.  Sangin is notorious as one of the central locations of the opium trade in the south of the country, and is also a town that has traditionally supported the Taliban.  It was described by British newspaper "The Guardian" as "the deadliest area in Afghanistan".  Sangin also houses the main bazaar for Sangin District.  Route 611 passes through Sangin.
+Pennsylvania Route 611 | Pennsylvania Route 611 (PA 611), formerly U.S. Route 611 (US 611), is a major state highway in Pennsylvania, United States, running from Interstate 95 south of downtown Philadelphia north to Interstate 380 in Coolbaugh Township, Pennsylvania in The Poconos.
+Pennsylvania Route 314 | Pennsylvania Route 314 (PA 314) is an 7.26 mi state highway located in Monroe County, Pennsylvania.  The western terminus is at PA 940 in Pocono Summit.  The eastern terminus is at PA 715 in Pocono Township.  The route is a two-lane undivided road that passes through forested areas of the Pocono Mountains.  In Swiftwater, PA 314 has a short concurrency with PA 611.  The road between Pocono Summit and U.S. Route 611 (US 611) in Swiftwater was designated as PA 15 in 1927 and became PA 115 a year later.  PA 940 replaced the PA 115 designation on this stretch in 1935.  PA 314 was designated to its current alignment in 1964, replacing this section of PA 940 which was rerouted to the north.
+Virginia State Route 611 (Fairfax County) | State Route 611 is a secondary state highway in the U.S. state of Virginia.  It traverses eastern Fairfax County.  SR 611 provides a major artery for commuters, connecting the Eisenhower Valley section of Alexandria with Lorton and points south along US 1.  SR 611 is known by three names: Telegraph Road, Old Colchester Road, and Furnace Road.
+Portland–Columbia Toll Bridge | The Portland–Columbia Toll Bridge is a toll bridge that carries New Jersey Route 94 (which ends at the Pennsylvania State Line over the river) over the Delaware River, between Pennsylvania Route 611 at Portland, Pennsylvania and Columbia in Knowlton Township, New Jersey, United States.  It is owned and operated by the Delaware River Joint Toll Bridge Commission.  U.S. Route 46 merges with Interstate 80 located just north of the bridge on the New Jersey approach.  All maps sign the bridge as U.S. Route 611 Alternate.
+Ohio State Route 611 | State Route 611 (SR 611) is an east–west state highway in the northern portion of the U.S. state of Ohio.  The western terminus of SR 611 is at a partial interchange with US 6 in Lorain.  Its eastern terminus is at a signalized intersection with SR 254 in Avon.
+Virginia State Route 611 | State Route 611 may refer to (among other minor secondary routes):
+Pennsylvania Route 212 | Pennsylvania Route 212 (PA 212) is a 14.9 mi state highway in Bucks County, Pennsylvania.  The route runs from PA 313 in Quakertown northeast to PA 611 in Durham Township, just south of the borough of Riegelsville.  The route, which is a two-lane undivided road its entire length, passes through rural areas of northern Bucks County, serving Richlandtown and Springtown.  PA 212 has a concurrency with PA 412 through the Springtown area.
+New Jersey Route 94 | Route 94 is a state highway in the northwestern part of the New Jersey, United States.  It runs 45.94 mi from the Portland–Columbia Toll Bridge over the Delaware River in Knowlton Township, Warren County, where it connects to Pennsylvania Route 611 (PA 611), northeast to the New York state line in Vernon Township, Sussex County.  At the New York border, New York State Route 94 (NY 94) continues to Newburgh, New York.  Route 94 is mostly a two-lane undivided road that runs through mountain and valley areas of Warren and Sussex counties, serving Columbia, Blairstown, Newton, and Hamburg.  The route intersects several roads, including U.S. Route 46 (US 46) and Interstate 80 (I-80) in Knowlton Township, US 206 in Newton, Route 15 in Lafayette Township, and Route 23 in Hamburg.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step UNKNOWN: evidence: After hop 1, the solver already had all necessary evidence (Route 611 is ~100km, passes through Sangin, Sangin is in Helmand River valley, Helmand is primary watershed for Sistan Basin), yet hop 3 returned and the final output included extensive irrelevant passages about U.S. Route 611 variants (Pennsylvania Route 611, Virginia State Route 611, Ohio State Route 611, New Jersey Route 94 connecting 
+- code B.14 (Query_Stagnation), anchored near step 15: evidence: Hop 2 query: 'Route 611 Afghanistan length Sangin Helmand River Sistan Basin primary watershed'. Hop 3 query: 'Verify the following facts about Route 611 (Afghanistan): (1) What is the length of Route 611 in kilometers? (2) What towns does Route 611 pass through? (3) Which river forms the primary watershed for the Sistan Basin? (4) In what valley is Sangin located?' Both queries target the exact s
+- code B.12 (Verdict_Despite_Insufficiency), anchored near step UNKNOWN: evidence: After hop 1, summary_1 states: 'Verification Status: CLAIM NOT VERIFIED - CONTRADICTED BY PASSAGES' and 'All factual assertions in the claim are contradicted by the provided passages.' After hop 2, summary_2 states: 'The claim is **NOT VERIFIED and is CONTRADICTED by the passages**.' Both summaries render definitive contradiction verdicts. However, the coordinator then generates a hop 3 query aski
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

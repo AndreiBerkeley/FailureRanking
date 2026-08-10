@@ -1,0 +1,386 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.
+Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.
+List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+[STEP 4] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## passages ## ]]
+[1] «Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.»
+[2] «Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.»
+[3] «The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.»
+[4] «Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.»
+[5] «List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.»
+[6] «Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.»
+[7] «Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me work through this claim step by step.
+
+The claim states: "Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera 'I puritani'"
+
+First, I need to identify Mikhail Glinka's nationality from the passages.
+From passage [7]: "Mikhail Ivanovich Glinka...was the first Russian composer to gain wide recognition within his own country..." - So Glinka is Russian.
+
+Next, I need to identify who wrote "I puritani".
+From passage [1]: "Bellini's contribution being the hugely-successful 'I puritani'." - So Vincenzo Bellini wrote "I puritani".
+
+The passage also states: "Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful 'I puritani'. Donizetti's opera..." - The context mentions "outstanding Italian composers of the day—Donizetti and Vincenzo Bellini." This indicates that Bellini was Italian.
+
+So:
+- Mikhail Glinka: Russian
+- Vincenzo Bellini (composer of "I puritani"): Italian
+
+Russian ≠ Italian, so Mikhail Glinka IS NOT the same nationality as the composer who wrote "I puritani".
+
+The claim is TRUE.
+
+[[ ## summary ## ]]
+The claim is true. Mikhail Glinka was Russian (passage [7]), while Vincenzo Bellini, the composer of "I puritani" (passage [1]), was Italian. Therefore, Glinka and Bellini are not of the same nationality.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## summary_1 ## ]]
+The claim is true. Mikhail Glinka was Russian (passage [7]), while Vincenzo Bellini, the composer of "I puritani" (passage [1]), was Italian. Therefore, Glinka and Bellini are not of the same nationality.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary confirms that the claim is accurate. Mikhail Glinka was Russian, and Vincenzo Bellini, who composed "I puritani," was Italian. These are different nationalities, which supports the claim that Glinka is not of the same nationality as the composer of "I puritani."
+
+[[ ## query ## ]]
+Who composed the opera "I puritani" and what was their nationality?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+I puritani | I puritani ("The Puritans") is an opera in by Vincenzo Bellini.  It was originally written in two acts and later changed to three acts on the advice of Gioachino Rossini, with whom the young composer had become friends.  The music was set to a libretto by Count Carlo Pepoli, an Italian émigré poet whom Bellini had met at a salon run by the exile Princess Belgiojoso, which became a meeting place for many Italian revolutionaries.
+What Men Live By (opera) | What Men Live By ("Čím člověk žije" in Czech) is an opera in one act by Bohuslav Martinů to an English libretto by the composer, based on the story by Leo Tolstoy.  It was composed in 1951-1952 when the composer was living in the U.S.A.
+La dame blanche | La dame blanche ("The White Lady") is an opéra comique in three acts by the French composer François-Adrien Boieldieu.  The libretto was written by Eugène Scribe and is based on episodes from no fewer than five works of the Scottish writer Sir Walter Scott, including his novels "The Monastery", "Guy Mannering", and "The Abbot".  The opera has typical elements of the Romantic in its Gothic mode, including an exotic Scottish locale, a lost heir, a mysterious castle, a hidden fortune, and a ghost, in this case benevolent.  The work was one of the first attempts to introduce the fantastic into opera and is a model for works such as Giacomo Meyerbeer's "Robert le diable" and Charles Gounod's "Faust".  The opera's musical style also heavily influenced later operas like "Lucia di Lammermoor", "I puritani" and "La jolie fille de Perth".
+Mes amis, écoutez l'histoire | "Mes amis, écoutez l'histoire", is a tenor aria in Adolphe Adam's 1836 opera "Le postillon de Lonjumeau".  The D in the final verse is the highest commonly sung note for tenors in opera.  Donizetti wrote an E♭ for Edgardo in the first act of his opera "Lucia di Lammermoor", though it is very seldom sung.  Higher notes are occasionally sung in interpolations and ornaments in other bel canto operas, and exceptionally the written F at the end of "Credeasi, misera" in Bellini's "I puritani".
+Hexameron (musical composition) | Hexaméron, Morceau de concert S.392 is a collaborative composition for solo piano.  It consists of six variations on a theme, along with an introduction, connecting interludes and a finale.  The theme is the "March of the Puritans" from Vincenzo Bellini's opera "I puritani".
+John Hardy (composer) | John Hardy (born 1957) is an English-born composer who has been commissioned by the Arts Council/National Lottery, the BBC, Welsh National Opera and the BBC National Orchestra Of Wales, among others.  His work includes opera, choral and orchestral pieces, site-specific theatre events and film.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## context ## ]]
+The claim is true. Mikhail Glinka was Russian (passage [7]), while Vincenzo Bellini, the composer of "I puritani" (passage [1]), was Italian. Therefore, Glinka and Bellini are not of the same nationality.
+
+[[ ## passages ## ]]
+[1] «Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.»
+[2] «I puritani | I puritani ("The Puritans") is an opera in by Vincenzo Bellini.  It was originally written in two acts and later changed to three acts on the advice of Gioachino Rossini, with whom the young composer had become friends.  The music was set to a libretto by Count Carlo Pepoli, an Italian émigré poet whom Bellini had met at a salon run by the exile Princess Belgiojoso, which became a meeting place for many Italian revolutionaries.»
+[3] «What Men Live By (opera) | What Men Live By ("Čím člověk žije" in Czech) is an opera in one act by Bohuslav Martinů to an English libretto by the composer, based on the story by Leo Tolstoy.  It was composed in 1951-1952 when the composer was living in the U.S.A.»
+[4] «La dame blanche | La dame blanche ("The White Lady") is an opéra comique in three acts by the French composer François-Adrien Boieldieu.  The libretto was written by Eugène Scribe and is based on episodes from no fewer than five works of the Scottish writer Sir Walter Scott, including his novels "The Monastery", "Guy Mannering", and "The Abbot".  The opera has typical elements of the Romantic in its Gothic mode, including an exotic Scottish locale, a lost heir, a mysterious castle, a hidden fortune, and a ghost, in this case benevolent.  The work was one of the first attempts to introduce the fantastic into opera and is a model for works such as Giacomo Meyerbeer's "Robert le diable" and Charles Gounod's "Faust".  The opera's musical style also heavily influenced later operas like "Lucia di Lammermoor", "I puritani" and "La jolie fille de Perth".»
+[5] «Mes amis, écoutez l'histoire | "Mes amis, écoutez l'histoire", is a tenor aria in Adolphe Adam's 1836 opera "Le postillon de Lonjumeau".  The D in the final verse is the highest commonly sung note for tenors in opera.  Donizetti wrote an E♭ for Edgardo in the first act of his opera "Lucia di Lammermoor", though it is very seldom sung.  Higher notes are occasionally sung in interpolations and ornaments in other bel canto operas, and exceptionally the written F at the end of "Credeasi, misera" in Bellini's "I puritani".»
+[6] «Hexameron (musical composition) | Hexaméron, Morceau de concert S.392 is a collaborative composition for solo piano.  It consists of six variations on a theme, along with an introduction, connecting interludes and a finale.  The theme is the "March of the Puritans" from Vincenzo Bellini's opera "I puritani".»
+[7] «John Hardy (composer) | John Hardy (born 1957) is an English-born composer who has been commissioned by the Arts Council/National Lottery, the BBC, Welsh National Opera and the BBC National Orchestra Of Wales, among others.  His work includes opera, choral and orchestral pieces, site-specific theatre events and film.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim states that Mikhail Glinka is not the same nationality as another opera composer who wrote "I puritani". 
+
+From the passages provided:
+- Passages [1], [2], [5], and [6] all confirm that Vincenzo Bellini composed the opera "I puritani"
+- Passage [2] explicitly states that "I puritani" is "an opera in by Vincenzo Bellini"
+- Passage [1] describes Bellini as "the outstanding Italian composers of the day"
+
+However, the provided passages do not contain information about Mikhail Glinka's nationality. Passage [7] discusses John Hardy, an English-born composer, but does not mention Glinka. The context provided in the prompt states that Glinka was Russian, but this information does not appear in the actual passages provided.
+
+Based solely on the passages: Vincenzo Bellini was an Italian composer who wrote "I puritani". The claim would be verified if Mikhail Glinka is indeed not Italian (i.e., not the same nationality as Bellini), but the passages do not provide information about Glinka's nationality to confirm this.
+
+[[ ## summary ## ]]
+The claim can be partially verified from the passages: Vincenzo Bellini, who composed the opera "I puritani," was Italian (confirmed in passages [1] and [2]). However, the provided passages do not contain information about Mikhail Glinka's nationality, so the claim cannot be fully verified from the passages alone. The context assertion that Glinka was Russian is not supported by the passage material provided.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve the key evidence documents needed to verify the claim. The query should be designed to work with a retrieval system that finds Wikipedia articles or similar documents based on entity names and key phrases.
+        
+        ## Key Instructions:
+        
+        1. **Identify the core entities in the claim**: Extract the main subjects, people, places, organizations, events, or concepts mentioned in the claim. These are typically proper nouns.
+        
+        2. **Focus on entity names rather than questions**: The retrieval system works best with specific entity names and key phrases. Instead of asking full questions, structure your query around the specific entities that need to be retrieved as documents.
+        
+        3. **Use simple, direct entity references**: For each key entity in the claim, use its most common or official name. For example:
+           - For a person, use their full name (e.g., "John Woo", "Scott Kelly", "Michael Fincke")
+           - For a specific mission or event, use its official designation (e.g., "Soyuz TMA-4")
+           - For dog breeds, use the breed name (e.g., "Taigan", "Nureongi", "Korean Jindo")
+           - For films, use the film title (e.g., "Vibes film")
+        
+        4. **Include all entities mentioned in the claim**: Even if the summaries suggest some parts are verified or unverified, include queries for ALL key entities in the claim to ensure comprehensive retrieval.
+        
+        5. **Consider related entities**: If the claim compares two things or mentions records being broken, include both the record holder and the person who broke the record as separate entities.
+        
+        6. **Avoid complex question formats**: Instead of "Did John Woo direct films in the 1980s?", prefer a format that targets the entity directly like "John Woo" or lists multiple entities.
+        
+        7. **Structure for multi-hop retrieval**: The query should enable a three-hop retrieval process where documents about related entities can be discovered. This means including all primary entities explicitly.
+        
+        ## Format:
+        Provide a `reasoning` section explaining what entities need to be retrieved and why, then provide a `query` that lists the key entities or uses simple phrases to target those entities.
+        
+        ## Examples of Good Query Structures:
+        - List format: "Entity1, Entity2, Entity3"
+        - Simple phrase format: "Entity1 Entity2 related topic"
+        - Avoid: Long questions with multiple clauses
+[STEP 14] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## summary_1 ## ]]
+The claim is true. Mikhail Glinka was Russian (passage [7]), while Vincenzo Bellini, the composer of "I puritani" (passage [1]), was Italian. Therefore, Glinka and Bellini are not of the same nationality.
+
+[[ ## summary_2 ## ]]
+The claim can be partially verified from the passages: Vincenzo Bellini, who composed the opera "I puritani," was Italian (confirmed in passages [1] and [2]). However, the provided passages do not contain information about Mikhail Glinka's nationality, so the claim cannot be fully verified from the passages alone. The context assertion that Glinka was Russian is not supported by the passage material provided.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The claim involves two opera composers and requires verification of their nationalities. The key entities that need to be retrieved are:
+
+1. **Mikhail Glinka** - A composer whose nationality needs to be verified (summary_1 claims he was Russian, but summary_2 notes this isn't supported by provided passages)
+2. **Vincenzo Bellini** - The composer of "I puritani" whose Italian nationality is confirmed in both summaries
+3. **"I puritani"** - The opera that helps identify the second composer
+
+To fully verify the claim, we need documents that establish:
+- Mikhail Glinka's nationality (Russian or otherwise)
+- Vincenzo Bellini's nationality (Italian, as already confirmed)
+- The connection between Vincenzo Bellini and the opera "I puritani"
+
+This is a multi-hop retrieval task where we need to confirm both composers' nationalities to verify they are different.
+
+[[ ## query ## ]]
+Mikhail Glinka, Vincenzo Bellini, I puritani
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+I puritani | I puritani ("The Puritans") is an opera in by Vincenzo Bellini.  It was originally written in two acts and later changed to three acts on the advice of Gioachino Rossini, with whom the young composer had become friends.  The music was set to a libretto by Count Carlo Pepoli, an Italian émigré poet whom Bellini had met at a salon run by the exile Princess Belgiojoso, which became a meeting place for many Italian revolutionaries.
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Hexameron (musical composition) | Hexaméron, Morceau de concert S.392 is a collaborative composition for solo piano.  It consists of six variations on a theme, along with an introduction, connecting interludes and a finale.  The theme is the "March of the Puritans" from Vincenzo Bellini's opera "I puritani".
+Carlo Pepoli | Count Carlo Pepoli (22 July 1796 – 7 December 1881) was an Italian politician and journalist.  He was also acclaimed as a poet, his most well-known work being the libretto for Vincenzo Bellini's final opera, "I puritani" which was given its premiere in Paris in January 1835.
+La Danza | "La danza" (1835) is a patter song by Gioachino Rossini, in Tarantella napoletana time, the eighth song of the collection "Les soirées musicales" (1830–1835).  The lyrics are by Count Carlo Pepoli (), librettist of Vincenzo Bellini's opera "I puritani".  "La danza" is a stand-alone chamber vocal piece, rather than part of a larger work.
+The Proscribed Royalist, 1651 | The Proscribed Royalist, 1651 (1853) is a painting by John Everett Millais which depicts a young Puritan woman protecting a fleeing Royalist after the Battle of Worcester in 1651, the decisive defeat of Charles II by Oliver Cromwell.  The Royalist is hiding in a hollow tree, a reference to a famous incident in which Charles himself hid in a tree to escape from his pursuers.  Millais was also influenced by Vincenzo Bellini's opera "I Puritani".
+La sonnambula (Balanchine) | La sonnambula "(The Sleepwalker)" is a ballet by the co-founder and ballet master of New York City Ballet, George Balanchine, made to Vittorio Rieti's music using themes from the operas of Vincenzo Bellini including "La Sonnambula", "Norma", "I Puritani" and "I Capuleti e i Montecchi" (1830–35) and with costumes by Karinska.  The premiere took place with the Ballet Russe de Monte Carlo on Wednesday, 27 February , at City Center of Music and Drama, New York; the City Ballet premiere was on 6 January 1965.
+List of compositions by Mikhail Glinka | Below is a list of compositions by Mikhail Glinka.  The works are categorized by genre, date of composition and titles.
+Catania–Fontanarossa Airport | Catania–Fontanarossa Airport (Italian: "aeroporto internazionale Vincenzo Bellini di Catania-Fontanarossa" , English: Catania International Airport) (IATA: CTA, ICAO: LICC) also named as Vincenzo Bellini Airport, is an international airport 2.3 NM southwest of Catania, the second largest city on the Italian island of Sicily.  It is named after the opera composer Vincenzo Bellini who was born in Catania.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.
+Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.
+List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+I puritani | I puritani ("The Puritans") is an opera in by Vincenzo Bellini.  It was originally written in two acts and later changed to three acts on the advice of Gioachino Rossini, with whom the young composer had become friends.  The music was set to a libretto by Count Carlo Pepoli, an Italian émigré poet whom Bellini had met at a salon run by the exile Princess Belgiojoso, which became a meeting place for many Italian revolutionaries.
+What Men Live By (opera) | What Men Live By ("Čím člověk žije" in Czech) is an opera in one act by Bohuslav Martinů to an English libretto by the composer, based on the story by Leo Tolstoy.  It was composed in 1951-1952 when the composer was living in the U.S.A.
+La dame blanche | La dame blanche ("The White Lady") is an opéra comique in three acts by the French composer François-Adrien Boieldieu.  The libretto was written by Eugène Scribe and is based on episodes from no fewer than five works of the Scottish writer Sir Walter Scott, including his novels "The Monastery", "Guy Mannering", and "The Abbot".  The opera has typical elements of the Romantic in its Gothic mode, including an exotic Scottish locale, a lost heir, a mysterious castle, a hidden fortune, and a ghost, in this case benevolent.  The work was one of the first attempts to introduce the fantastic into opera and is a model for works such as Giacomo Meyerbeer's "Robert le diable" and Charles Gounod's "Faust".  The opera's musical style also heavily influenced later operas like "Lucia di Lammermoor", "I puritani" and "La jolie fille de Perth".
+Mes amis, écoutez l'histoire | "Mes amis, écoutez l'histoire", is a tenor aria in Adolphe Adam's 1836 opera "Le postillon de Lonjumeau".  The D in the final verse is the highest commonly sung note for tenors in opera.  Donizetti wrote an E♭ for Edgardo in the first act of his opera "Lucia di Lammermoor", though it is very seldom sung.  Higher notes are occasionally sung in interpolations and ornaments in other bel canto operas, and exceptionally the written F at the end of "Credeasi, misera" in Bellini's "I puritani".
+Hexameron (musical composition) | Hexaméron, Morceau de concert S.392 is a collaborative composition for solo piano.  It consists of six variations on a theme, along with an introduction, connecting interludes and a finale.  The theme is the "March of the Puritans" from Vincenzo Bellini's opera "I puritani".
+John Hardy (composer) | John Hardy (born 1957) is an English-born composer who has been commissioned by the Arts Council/National Lottery, the BBC, Welsh National Opera and the BBC National Orchestra Of Wales, among others.  His work includes opera, choral and orchestral pieces, site-specific theatre events and film.
+I puritani | I puritani ("The Puritans") is an opera in by Vincenzo Bellini.  It was originally written in two acts and later changed to three acts on the advice of Gioachino Rossini, with whom the young composer had become friends.  The music was set to a libretto by Count Carlo Pepoli, an Italian émigré poet whom Bellini had met at a salon run by the exile Princess Belgiojoso, which became a meeting place for many Italian revolutionaries.
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Hexameron (musical composition) | Hexaméron, Morceau de concert S.392 is a collaborative composition for solo piano.  It consists of six variations on a theme, along with an introduction, connecting interludes and a finale.  The theme is the "March of the Puritans" from Vincenzo Bellini's opera "I puritani".
+Carlo Pepoli | Count Carlo Pepoli (22 July 1796 – 7 December 1881) was an Italian politician and journalist.  He was also acclaimed as a poet, his most well-known work being the libretto for Vincenzo Bellini's final opera, "I puritani" which was given its premiere in Paris in January 1835.
+La Danza | "La danza" (1835) is a patter song by Gioachino Rossini, in Tarantella napoletana time, the eighth song of the collection "Les soirées musicales" (1830–1835).  The lyrics are by Count Carlo Pepoli (), librettist of Vincenzo Bellini's opera "I puritani".  "La danza" is a stand-alone chamber vocal piece, rather than part of a larger work.
+The Proscribed Royalist, 1651 | The Proscribed Royalist, 1651 (1853) is a painting by John Everett Millais which depicts a young Puritan woman protecting a fleeing Royalist after the Battle of Worcester in 1651, the decisive defeat of Charles II by Oliver Cromwell.  The Royalist is hiding in a hollow tree, a reference to a famous incident in which Charles himself hid in a tree to escape from his pursuers.  Millais was also influenced by Vincenzo Bellini's opera "I Puritani".
+La sonnambula (Balanchine) | La sonnambula "(The Sleepwalker)" is a ballet by the co-founder and ballet master of New York City Ballet, George Balanchine, made to Vittorio Rieti's music using themes from the operas of Vincenzo Bellini including "La Sonnambula", "Norma", "I Puritani" and "I Capuleti e i Montecchi" (1830–35) and with costumes by Karinska.  The premiere took place with the Ballet Russe de Monte Carlo on Wednesday, 27 February , at City Center of Music and Drama, New York; the City Ballet premiere was on 6 January 1965.
+List of compositions by Mikhail Glinka | Below is a list of compositions by Mikhail Glinka.  The works are categorized by genre, date of composition and titles.
+Catania–Fontanarossa Airport | Catania–Fontanarossa Airport (Italian: "aeroporto internazionale Vincenzo Bellini di Catania-Fontanarossa" , English: Catania International Airport) (IATA: CTA, ICAO: LICC) also named as Vincenzo Bellini Airport, is an international airport 2.3 NM southwest of Catania, the second largest city on the Italian island of Sicily.  It is named after the opera composer Vincenzo Bellini who was born in Catania.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query at hop 2: 'Who composed the opera "I puritani" and what was their nationality?' re-asks information already retrieved in hop 1. Query at hop 3: 'Mikhail Glinka, Vincenzo Bellini, I puritani' retrieves substantially the same documents (Marino Faliero, I puritani, Hexameron, Mikhail Glinka article all appear in multiple hops). Hop 3 returns 'Marino Faliero (opera)', 'I puritani', 'Hexameron (m
+- code B.10 (Evidence_Present_But_Missed), anchored near step 14: evidence: Summary 2 states: 'However, the provided passages do not contain information about Mikhail Glinka's nationality, so the claim cannot be fully verified from the passages alone. The context assertion that Glinka was Russian is not supported by the passage material provided.' Yet passage [7] from hop 1 explicitly states: 'Mikhail Ivanovich Glinka...was the first Russian composer to gain wide recognit
+- code A.10 (Multi_Hop_Context_Degradation), anchored near step UNKNOWN: evidence: Summary 1 correctly identifies that 'Mikhail Glinka was Russian (passage [7])' from hop 1. However, by hop 2, Summary 2 contradicts this, stating 'the provided passages do not contain information about Mikhail Glinka's nationality' and 'The context assertion that Glinka was Russian is not supported by the passage material provided' — losing track of the evidence from passage [7] in hop 1.
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

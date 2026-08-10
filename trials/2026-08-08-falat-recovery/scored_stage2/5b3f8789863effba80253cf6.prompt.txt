@@ -1,0 +1,448 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The type of dog that Spike from Old Yeller was, not the Tibetan Terrier, is a type of gun dog.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Hunting dog | A hunting dog refers to a canine that hunts with or for humans.  There are several types of hunting dogs developed for various tasks.  The major categories of hunting dogs include hounds, terriers, dachshunds, cur type dogs, and gun dogs. Among these categories further divisions can be made based upon the dogs' skill sets.
+Tibetan Terrier | The Tibetan Terrier is a medium-size breed of dog that originated in Tibet.  Despite its name, it is not a member of the terrier group.  The breed was given its English name by European travelers due to its resemblance to known terrier breeds.  The Tibetan name for the breed, Tsang Apso, roughly translates to "shaggy or bearded ("apso") dog, from the province of Tsang".  Some old travelers' accounts refer to the dog as Dokhi Apso or "outdoor" Apso, indicating a shaggy or bearded working dog which lives outdoors.
+Australian Terrier | The Australian Terrier is a small breed of dog of the terrier dog type.  The breed was developed in Australia, although the ancestral types of dogs from which the breed descends were from Great Britain.
+Old English Terrier | The Old English Terrier is a dog breed of the terrier type.
+Airedale Terrier | The Airedale Terrier (often shortened to "Airedale"), also called Bingley Terrier and Waterside Terrier, is a dog breed of the terrier type that originated in the valley ("dale") of the River Aire, in the West Riding of Yorkshire, England.  It is traditionally called the "King of Terriers" because it is the largest of the terrier breeds.  The Airedale was bred from the Old English Black and Tan Terrier (now extinct), the Bull Terrier, the Otterhound and probably some other Terrier breeds, originally to serve as an all around working farm dog.  In Britain this breed has also been used as a war dog, guide dog and police dog.  In the United States, this breed has been used to hunt big game, upland birds, and water fowl, and serve in many other working capacities.
+Braque Francais | The Braques français are hunting dogs, from a very old type of gun dog used for pointing the location of game birds for a hunter.  There are two breeds of Braque français, both from the south of France, the Braque français, type Gascogne (French Pointing Dog - Gascogne type, larger size) and the Braque français, type Pyrénées (French Pointing Dog - Pyrenean type, smaller size) They are popular hunting dogs in France, but are seldom seen elsewhere.
+Australian Silky Terrier | The Australian Silky Terrier is a small breed of dog of the terrier dog type.  The breed was developed in Australia, although the ancestral types and breeds were from Great Britain.  It is closely related to the Australian Terrier and the Yorkshire Terrier.  The breed is called the "Silky Terrier" in North America, but is called the "Australian Silky Terrier" in its country of origin and in the rest of the world.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+The type of dog that Spike from Old Yeller was, not the Tibetan Terrier, is a type of gun dog.
+
+[[ ## passages ## ]]
+[1] «Hunting dog | A hunting dog refers to a canine that hunts with or for humans.  There are several types of hunting dogs developed for various tasks.  The major categories of hunting dogs include hounds, terriers, dachshunds, cur type dogs, and gun dogs. Among these categories further divisions can be made based upon the dogs' skill sets.»
+[2] «Tibetan Terrier | The Tibetan Terrier is a medium-size breed of dog that originated in Tibet.  Despite its name, it is not a member of the terrier group.  The breed was given its English name by European travelers due to its resemblance to known terrier breeds.  The Tibetan name for the breed, Tsang Apso, roughly translates to "shaggy or bearded ("apso") dog, from the province of Tsang".  Some old travelers' accounts refer to the dog as Dokhi Apso or "outdoor" Apso, indicating a shaggy or bearded working dog which lives outdoors.»
+[3] «Australian Terrier | The Australian Terrier is a small breed of dog of the terrier dog type.  The breed was developed in Australia, although the ancestral types of dogs from which the breed descends were from Great Britain.»
+[4] «Old English Terrier | The Old English Terrier is a dog breed of the terrier type.»
+[5] «Airedale Terrier | The Airedale Terrier (often shortened to "Airedale"), also called Bingley Terrier and Waterside Terrier, is a dog breed of the terrier type that originated in the valley ("dale") of the River Aire, in the West Riding of Yorkshire, England.  It is traditionally called the "King of Terriers" because it is the largest of the terrier breeds.  The Airedale was bred from the Old English Black and Tan Terrier (now extinct), the Bull Terrier, the Otterhound and probably some other Terrier breeds, originally to serve as an all around working farm dog.  In Britain this breed has also been used as a war dog, guide dog and police dog.  In the United States, this breed has been used to hunt big game, upland birds, and water fowl, and serve in many other working capacities.»
+[6] «Braque Francais | The Braques français are hunting dogs, from a very old type of gun dog used for pointing the location of game birds for a hunter.  There are two breeds of Braque français, both from the south of France, the Braque français, type Gascogne (French Pointing Dog - Gascogne type, larger size) and the Braque français, type Pyrénées (French Pointing Dog - Pyrenean type, smaller size) They are popular hunting dogs in France, but are seldom seen elsewhere.»
+[7] «Australian Silky Terrier | The Australian Silky Terrier is a small breed of dog of the terrier dog type.  The breed was developed in Australia, although the ancestral types and breeds were from Great Britain.  It is closely related to the Australian Terrier and the Yorkshire Terrier.  The breed is called the "Silky Terrier" in North America, but is called the "Australian Silky Terrier" in its country of origin and in the rest of the world.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+The claim requires verification of several specific facts:
+
+1. The claim refers to "Spike from Old Yeller" - this requires identification of what breed of dog Spike actually was in the work "Old Yeller"
+2. The claim states this breed is NOT a Tibetan Terrier (which is confirmed in the passages as not being a terrier despite its name)
+3. The claim asserts that Spike's breed IS a type of gun dog
+
+From the passages provided:
+- Passage [1] defines gun dogs as one category of hunting dogs
+- Passage [6] provides an example of gun dogs (Braque français breeds)
+- However, NONE of the passages contain any information about "Old Yeller" or "Spike"
+- NONE of the passages identify what breed of dog Spike actually was
+
+The passages establish context about gun dogs and the Tibetan Terrier, but they do not provide the essential information needed to verify whether Spike's breed is actually a gun dog.
+
+[[ ## summary ## ]]
+The claim CANNOT BE VERIFIED with the provided passages. 
+
+To verify this claim, the following critical information is needed:
+
+1. **Spike's breed identity**: The passages do not identify what breed of dog "Spike" from the work "Old Yeller" actually was. Information about the character Spike in "Old Yeller" and his specific dog breed classification is required.
+
+2. **Verification of breed classification**: Once Spike's breed is identified, verification is needed that this breed is classified as a type of gun dog (as defined in Passage [1]: a category of hunting dogs that includes breeds like the Braque français mentioned in Passage [6]).
+
+3. **Confirmation of what Spike is NOT**: While the passages confirm that the Tibetan Terrier is not a member of the terrier group despite its name, this does not establish what Spike actually is, only what he is not.
+
+The passages provide definitional context about gun dogs and hunting dogs, but lack the specific information about Spike's character, breed, and breed classification necessary to verify the claim.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+The type of dog that Spike from Old Yeller was, not the Tibetan Terrier, is a type of gun dog.
+
+[[ ## summary_1 ## ]]
+The claim CANNOT BE VERIFIED with the provided passages. 
+
+To verify this claim, the following critical information is needed:
+
+1. **Spike's breed identity**: The passages do not identify what breed of dog "Spike" from the work "Old Yeller" actually was. Information about the character Spike in "Old Yeller" and his specific dog breed classification is required.
+
+2. **Verification of breed classification**: Once Spike's breed is identified, verification is needed that this breed is classified as a type of gun dog (as defined in Passage [1]: a category of hunting dogs that includes breeds like the Braque français mentioned in Passage [6]).
+
+3. **Confirmation of what Spike is NOT**: While the passages confirm that the Tibetan Terrier is not a member of the terrier group despite its name, this does not establish what Spike actually is, only what he is not.
+
+The passages provide definitional context about gun dogs and hunting dogs, but lack the specific information about Spike's character, breed, and breed classification necessary to verify the claim.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary identifies three critical gaps in the evidence base:
+
+1. **Spike's breed identity**: The passages do not specify what breed Spike from "Old Yeller" is. This is the foundational fact needed to verify the claim.
+
+2. **Breed classification as gun dog**: Once Spike's breed is identified, we need confirmation that this breed is classified as a gun dog (hunting dog category).
+
+3. **Clarification of the negative assertion**: The claim uses a double negative ("not the Tibetan Terrier"), which creates complexity. We need to identify Spike's actual breed to confirm it is different from and distinct in classification from the Tibetan Terrier.
+
+The query must retrieve documents about: (a) the character Spike in "Old Yeller" and his breed, (b) the identified breed's classification as a gun dog, and (c) supporting information about gun dog classifications to establish the positive assertion about Spike's breed type. This requires a multi-layered retrieval approach to connect the literary character to the specific breed and then verify the breed's hunting dog classification.
+[[ ## query ## ]]
+What breed of dog is Spike from Old Yeller? Is Spike's breed classified as a gun dog or hunting dog? What are the characteristics and classification of gun dogs? How does the Tibetan Terrier differ from gun dog breeds?
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Tibetan Terrier | The Tibetan Terrier is a medium-size breed of dog that originated in Tibet.  Despite its name, it is not a member of the terrier group.  The breed was given its English name by European travelers due to its resemblance to known terrier breeds.  The Tibetan name for the breed, Tsang Apso, roughly translates to "shaggy or bearded ("apso") dog, from the province of Tsang".  Some old travelers' accounts refer to the dog as Dokhi Apso or "outdoor" Apso, indicating a shaggy or bearded working dog which lives outdoors.
+Ariege Pointer | The Braque de l’Ariège, translated into English as the Ariege Pointing Dog or Ariege Pointer, is a breed of dog, a French hunting dog of pointing gun dog type.  The breed is kept primarily as a hunting dog, not as a pet or showdog.
+Gun dog | Gun dogs, or bird dogs, are types of hunting dogs developed to assist hunters in finding and retrieving game, usually birds. Gun dogs are divided into three primary types: retrievers, flushing dogs, and pointing breeds.  Some kennel clubs define a Gundog Group for gun dogs, while other kennel clubs include them in the Sporting Group.
+Airedale Terrier | The Airedale Terrier (often shortened to "Airedale"), also called Bingley Terrier and Waterside Terrier, is a dog breed of the terrier type that originated in the valley ("dale") of the River Aire, in the West Riding of Yorkshire, England.  It is traditionally called the "King of Terriers" because it is the largest of the terrier breeds.  The Airedale was bred from the Old English Black and Tan Terrier (now extinct), the Bull Terrier, the Otterhound and probably some other Terrier breeds, originally to serve as an all around working farm dog.  In Britain this breed has also been used as a war dog, guide dog and police dog.  In the United States, this breed has been used to hunt big game, upland birds, and water fowl, and serve in many other working capacities.
+Retriever | A retriever is a type of gun dog that retrieves game for a hunter.  Generally gun dogs are divided into three major classifications: retrievers, flushing spaniels, and pointing breeds. Retrievers were bred primarily to retrieve birds or other prey and return them to the hunter without damage; retrievers are distinguished in that nonslip retrieval is their primary function.  As a result, retriever breeds are bred for soft mouths and a great willingness to please, learn, and obey.  A soft mouth refers to the willingness of the dog to carry game in its mouth without biting into it.  "Hard mouth" is a serious fault in a hunting dog and is very difficult to correct.  A hard-mouthed dog renders game unpresentable or at worst inedible.
+Bird dog | A bird dog is a type of gun dog or hunting dog used to hunt or retrieve birds or other small game animals.  by tracking their scent in the air.  Bird dog breeds are receptive to being trained to retrieve hunted birds.
+Braque Saint-Germain | The Braque Saint-Germain (FCI No. 115) (translated into English as the St. Germain Pointing Dog) is a medium-large breed of dog, a versatile hunter used for hunting as a gun dog and pointer as well as for hunting other small game.  "Braque" is a term meaning pointing dogs.  The breed was created around 1830 by crossing English and French pointing type dogs.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+The type of dog that Spike from Old Yeller was, not the Tibetan Terrier, is a type of gun dog.
+
+[[ ## context ## ]]
+The claim CANNOT BE VERIFIED with the provided passages. 
+
+To verify this claim, the following critical information is needed:
+
+1. **Spike's breed identity**: The passages do not identify what breed of dog "Spike" from the work "Old Yeller" actually was. Information about the character Spike in "Old Yeller" and his specific dog breed classification is required.
+
+2. **Verification of breed classification**: Once Spike's breed is identified, verification is needed that this breed is classified as a type of gun dog (as defined in Passage [1]: a category of hunting dogs that includes breeds like the Braque français mentioned in Passage [6]).
+
+3. **Confirmation of what Spike is NOT**: While the passages confirm that the Tibetan Terrier is not a member of the terrier group despite its name, this does not establish what Spike actually is, only what he is not.
+
+The passages provide definitional context about gun dogs and hunting dogs, but lack the specific information about Spike's character, breed, and breed classification necessary to verify the claim.
+
+[[ ## passages ## ]]
+[1] «Tibetan Terrier | The Tibetan Terrier is a medium-size breed of dog that originated in Tibet.  Despite its name, it is not a member of the terrier group.  The breed was given its English name by European travelers due to its resemblance to known terrier breeds.  The Tibetan name for the breed, Tsang Apso, roughly translates to "shaggy or bearded ("apso") dog, from the province of Tsang".  Some old travelers' accounts refer to the dog as Dokhi Apso or "outdoor" Apso, indicating a shaggy or bearded working dog which lives outdoors.»
+[2] «Ariege Pointer | The Braque de l’Ariège, translated into English as the Ariege Pointing Dog or Ariege Pointer, is a breed of dog, a French hunting dog of pointing gun dog type.  The breed is kept primarily as a hunting dog, not as a pet or showdog.»
+[3] «Gun dog | Gun dogs, or bird dogs, are types of hunting dogs developed to assist hunters in finding and retrieving game, usually birds. Gun dogs are divided into three primary types: retrievers, flushing dogs, and pointing breeds.  Some kennel clubs define a Gundog Group for gun dogs, while other kennel clubs include them in the Sporting Group.»
+[4] «Airedale Terrier | The Airedale Terrier (often shortened to "Airedale"), also called Bingley Terrier and Waterside Terrier, is a dog breed of the terrier type that originated in the valley ("dale") of the River Aire, in the West Riding of Yorkshire, England.  It is traditionally called the "King of Terriers" because it is the largest of the terrier breeds.  The Airedale was bred from the Old English Black and Tan Terrier (now extinct), the Bull Terrier, the Otterhound and probably some other Terrier breeds, originally to serve as an all around working farm dog.  In Britain this breed has also been used as a war dog, guide dog and police dog.  In the United States, this breed has been used to hunt big game, upland birds, and water fowl, and serve in many other working capacities.»
+[5] «Retriever | A retriever is a type of gun dog that retrieves game for a hunter.  Generally gun dogs are divided into three major classifications: retrievers, flushing spaniels, and pointing breeds. Retrievers were bred primarily to retrieve birds or other prey and return them to the hunter without damage; retrievers are distinguished in that nonslip retrieval is their primary function.  As a result, retriever breeds are bred for soft mouths and a great willingness to please, learn, and obey.  A soft mouth refers to the willingness of the dog to carry game in its mouth without biting into it.  "Hard mouth" is a serious fault in a hunting dog and is very difficult to correct.  A hard-mouthed dog renders game unpresentable or at worst inedible.»
+[6] «Bird dog | A bird dog is a type of gun dog or hunting dog used to hunt or retrieve birds or other small game animals.  by tracking their scent in the air.  Bird dog breeds are receptive to being trained to retrieve hunted birds.»
+[7] «Braque Saint-Germain | The Braque Saint-Germain (FCI No. 115) (translated into English as the St. Germain Pointing Dog) is a medium-large breed of dog, a versatile hunter used for hunting as a gun dog and pointer as well as for hunting other small game.  "Braque" is a term meaning pointing dogs.  The breed was created around 1830 by crossing English and French pointing type dogs.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+The claim states that "The type of dog that Spike from Old Yeller was, not the Tibetan Terrier, is a type of gun dog."
+
+To evaluate this claim, we need to determine:
+1. What breed Spike was in the story "Old Yeller"
+2. Whether that breed is classified as a gun dog
+3. Whether this is different from a Tibetan Terrier (which the passages confirm is NOT a terrier)
+
+The provided passages contain definitions and examples of gun dogs (retrievers, flushing dogs, pointing breeds) and information about various dog breeds. However, critically, the passages do not contain any information about the character Spike from "Old Yeller," his breed identity, or his breed classification.
+
+Passage [1] confirms that the Tibetan Terrier is not a member of the terrier group, which establishes one part of the claim's contrast. However, without information identifying Spike's actual breed from "Old Yeller," there is no way to verify whether he was a gun dog or any other type of dog.
+
+The context correctly identifies that verification cannot proceed without knowing Spike's breed and his breed classification relative to gun dogs.
+
+[[ ## summary ## ]]
+
+The claim cannot be verified with the provided passages. While the passages contain detailed information about gun dog classifications and confirm that the Tibetan Terrier is not a terrier, they do not include any information about the character Spike from "Old Yeller," his breed, or his breed classification. To verify this claim, passages would need to explicitly identify Spike's breed and confirm that breed is classified as a type of gun dog.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The type of dog that Spike from Old Yeller was, not the Tibetan Terrier, is a type of gun dog.
+
+[[ ## summary_1 ## ]]
+The claim CANNOT BE VERIFIED with the provided passages. 
+
+To verify this claim, the following critical information is needed:
+
+1. **Spike's breed identity**: The passages do not identify what breed of dog "Spike" from the work "Old Yeller" actually was. Information about the character Spike in "Old Yeller" and his specific dog breed classification is required.
+
+2. **Verification of breed classification**: Once Spike's breed is identified, verification is needed that this breed is classified as a type of gun dog (as defined in Passage [1]: a category of hunting dogs that includes breeds like the Braque français mentioned in Passage [6]).
+
+3. **Confirmation of what Spike is NOT**: While the passages confirm that the Tibetan Terrier is not a member of the terrier group despite its name, this does not establish what Spike actually is, only what he is not.
+
+The passages provide definitional context about gun dogs and hunting dogs, but lack the specific information about Spike's character, breed, and breed classification necessary to verify the claim.
+
+[[ ## summary_2 ## ]]
+The claim cannot be verified with the provided passages. While the passages contain detailed information about gun dog classifications and confirm that the Tibetan Terrier is not a terrier, they do not include any information about the character Spike from "Old Yeller," his breed, or his breed classification. To verify this claim, passages would need to explicitly identify Spike's breed and confirm that breed is classified as a type of gun dog.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries confirm that the claim cannot be verified because the provided passages lack critical information about Spike from "Old Yeller." Specifically:
+
+1. The passages do not identify what breed Spike actually was
+2. While the passages define gun dogs and confirm the Tibetan Terrier is not a terrier, they provide no information linking Spike's breed to the gun dog classification
+3. The claim requires knowledge of: (a) Spike's breed identity, (b) verification that this breed is classified as a gun dog, and (c) confirmation that this breed is NOT the Tibetan Terrier
+
+To resolve this verification gap, a targeted search query is needed to establish Spike's actual breed from "Old Yeller" and confirm its classification as a gun dog.
+
+[[ ## query ## ]]
+What breed of dog is Spike from Old Yeller, and is that breed classified as a gun dog?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Northern Breed Group | Northern Breed Group is the name of a breed group of dogs, used by kennel clubs to classify a defined collection of dog breeds. Dogs listed in the "Northern Breed Group" may not all be of the same type of dog.
+Malinois dog | The Malinois is a medium-to-large breed of dog, sometimes classified as a variety of the Belgian Shepherd dog rather than as a separate breed.  The name "Malinois" is derived from Malines, the French name for the breed's city of origin.
+Rare breed (dog) | Rare breed (dog) is any breed of dog that is small in number and is used to refer to both old established breeds such as the Stabyhoun and Glen of Imaal Terrier or newer creations.  Since dogs have greater genetic variability than other domesticated animals the number of possible breeds is vast with new crosses constantly occurring, from these both selected and random crosses may come new breeds should offspring reliably breed true to type.  New breeds from the wild such as the Carolina Dog are quite rare compared to attempts at breed creation from man as found in the American Hairless Terrier which sought to exploit a mutation.
+Pointer (dog breed) | The Pointer, often called the English Pointer, is a medium to large-sized breed of dog developed in England as a gun dog.  It is one of several pointing breeds.
+Bernese Mountain Dog | The Bernese Mountain Dog (German: "Berner Sennenhund" ) is a large-sized breed of dog, one of the four breeds of Sennenhund-type dogs from the Swiss Alps.  The name "Sennenhund" is derived from the German "Senne" ("alpine pasture") and "Hund" ("dog"), as they accompanied the alpine herders and dairymen called "Senn".  "Berner" (or "Bernese" in English) refers to the area of the breed’s origin, in the canton of Bern.  This mountain dog was originally kept as a general farm dog.  Large Sennenhunde in the past were also used as draft animals, pulling carts.  The breed was officially established in 1907.  In 1937, the American Kennel Club recognized it; today, the club classifies it as a member of the Working Group.
+Old English Sheepdog | The Old English Sheepdog (OES) is a large breed of dog which was developed in England from early herding types of dog.  The Old English Sheepdog can grow a very long coat, with fur covering the face and eyes.  Obsolete names of the breed include Shepherd's Dog and bob-tailed sheep-dog .  It is still nicknamed "Bob-tail" (or "Bobtail") because historically, the tail was traditionally docked in this breed.
+Spinone Italiano | The Spinone Italiano (] ) is an Italian dog breed.  It was originally bred as a versatile gun dog.  To this day, the breed is still a capable dog for that purpose.  The Spinone is a loyal, friendly and alert dog with a close lying, wiry coat.  It is an ancient breed that can be traced back to approximately 500 BC.
+Ariege Pointer | The Braque de l’Ariège, translated into English as the Ariege Pointing Dog or Ariege Pointer, is a breed of dog, a French hunting dog of pointing gun dog type.  The breed is kept primarily as a hunting dog, not as a pet or showdog.
+Breed type (dog) | Breed type in the parlance of dog fanciers refers to the qualities that define a dog breed and separate it from all other dog breeds.  "Breed type" is outlined in the written standard for each breed, and "breed type" is the basis of judging in conformation dog shows.
+Working Group (dogs) | Working Group is the name of a breed group of dogs, used by kennel clubs to classify a defined collection of dog breeds. Most major English-language kennel clubs include a "Working Group", although different kennel clubs may not include the same breeds in their "Working Group".  "Working Group" does not define one particular type of dog.  It is not a scientific classification.  "Working Group" is not a term used by the international kennel club association, the Fédération Cynologique Internationale, which more finely divides its breed groupings by dog type and breed history.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Hunting dog | A hunting dog refers to a canine that hunts with or for humans.  There are several types of hunting dogs developed for various tasks.  The major categories of hunting dogs include hounds, terriers, dachshunds, cur type dogs, and gun dogs. Among these categories further divisions can be made based upon the dogs' skill sets.
+Tibetan Terrier | The Tibetan Terrier is a medium-size breed of dog that originated in Tibet.  Despite its name, it is not a member of the terrier group.  The breed was given its English name by European travelers due to its resemblance to known terrier breeds.  The Tibetan name for the breed, Tsang Apso, roughly translates to "shaggy or bearded ("apso") dog, from the province of Tsang".  Some old travelers' accounts refer to the dog as Dokhi Apso or "outdoor" Apso, indicating a shaggy or bearded working dog which lives outdoors.
+Australian Terrier | The Australian Terrier is a small breed of dog of the terrier dog type.  The breed was developed in Australia, although the ancestral types of dogs from which the breed descends were from Great Britain.
+Old English Terrier | The Old English Terrier is a dog breed of the terrier type.
+Airedale Terrier | The Airedale Terrier (often shortened to "Airedale"), also called Bingley Terrier and Waterside Terrier, is a dog breed of the terrier type that originated in the valley ("dale") of the River Aire, in the West Riding of Yorkshire, England.  It is traditionally called the "King of Terriers" because it is the largest of the terrier breeds.  The Airedale was bred from the Old English Black and Tan Terrier (now extinct), the Bull Terrier, the Otterhound and probably some other Terrier breeds, originally to serve as an all around working farm dog.  In Britain this breed has also been used as a war dog, guide dog and police dog.  In the United States, this breed has been used to hunt big game, upland birds, and water fowl, and serve in many other working capacities.
+Braque Francais | The Braques français are hunting dogs, from a very old type of gun dog used for pointing the location of game birds for a hunter.  There are two breeds of Braque français, both from the south of France, the Braque français, type Gascogne (French Pointing Dog - Gascogne type, larger size) and the Braque français, type Pyrénées (French Pointing Dog - Pyrenean type, smaller size) They are popular hunting dogs in France, but are seldom seen elsewhere.
+Australian Silky Terrier | The Australian Silky Terrier is a small breed of dog of the terrier dog type.  The breed was developed in Australia, although the ancestral types and breeds were from Great Britain.  It is closely related to the Australian Terrier and the Yorkshire Terrier.  The breed is called the "Silky Terrier" in North America, but is called the "Australian Silky Terrier" in its country of origin and in the rest of the world.
+Tibetan Terrier | The Tibetan Terrier is a medium-size breed of dog that originated in Tibet.  Despite its name, it is not a member of the terrier group.  The breed was given its English name by European travelers due to its resemblance to known terrier breeds.  The Tibetan name for the breed, Tsang Apso, roughly translates to "shaggy or bearded ("apso") dog, from the province of Tsang".  Some old travelers' accounts refer to the dog as Dokhi Apso or "outdoor" Apso, indicating a shaggy or bearded working dog which lives outdoors.
+Ariege Pointer | The Braque de l’Ariège, translated into English as the Ariege Pointing Dog or Ariege Pointer, is a breed of dog, a French hunting dog of pointing gun dog type.  The breed is kept primarily as a hunting dog, not as a pet or showdog.
+Gun dog | Gun dogs, or bird dogs, are types of hunting dogs developed to assist hunters in finding and retrieving game, usually birds. Gun dogs are divided into three primary types: retrievers, flushing dogs, and pointing breeds.  Some kennel clubs define a Gundog Group for gun dogs, while other kennel clubs include them in the Sporting Group.
+Airedale Terrier | The Airedale Terrier (often shortened to "Airedale"), also called Bingley Terrier and Waterside Terrier, is a dog breed of the terrier type that originated in the valley ("dale") of the River Aire, in the West Riding of Yorkshire, England.  It is traditionally called the "King of Terriers" because it is the largest of the terrier breeds.  The Airedale was bred from the Old English Black and Tan Terrier (now extinct), the Bull Terrier, the Otterhound and probably some other Terrier breeds, originally to serve as an all around working farm dog.  In Britain this breed has also been used as a war dog, guide dog and police dog.  In the United States, this breed has been used to hunt big game, upland birds, and water fowl, and serve in many other working capacities.
+Retriever | A retriever is a type of gun dog that retrieves game for a hunter.  Generally gun dogs are divided into three major classifications: retrievers, flushing spaniels, and pointing breeds. Retrievers were bred primarily to retrieve birds or other prey and return them to the hunter without damage; retrievers are distinguished in that nonslip retrieval is their primary function.  As a result, retriever breeds are bred for soft mouths and a great willingness to please, learn, and obey.  A soft mouth refers to the willingness of the dog to carry game in its mouth without biting into it.  "Hard mouth" is a serious fault in a hunting dog and is very difficult to correct.  A hard-mouthed dog renders game unpresentable or at worst inedible.
+Bird dog | A bird dog is a type of gun dog or hunting dog used to hunt or retrieve birds or other small game animals.  by tracking their scent in the air.  Bird dog breeds are receptive to being trained to retrieve hunted birds.
+Braque Saint-Germain | The Braque Saint-Germain (FCI No. 115) (translated into English as the St. Germain Pointing Dog) is a medium-large breed of dog, a versatile hunter used for hunting as a gun dog and pointer as well as for hunting other small game.  "Braque" is a term meaning pointing dogs.  The breed was created around 1830 by crossing English and French pointing type dogs.
+Northern Breed Group | Northern Breed Group is the name of a breed group of dogs, used by kennel clubs to classify a defined collection of dog breeds. Dogs listed in the "Northern Breed Group" may not all be of the same type of dog.
+Malinois dog | The Malinois is a medium-to-large breed of dog, sometimes classified as a variety of the Belgian Shepherd dog rather than as a separate breed.  The name "Malinois" is derived from Malines, the French name for the breed's city of origin.
+Rare breed (dog) | Rare breed (dog) is any breed of dog that is small in number and is used to refer to both old established breeds such as the Stabyhoun and Glen of Imaal Terrier or newer creations.  Since dogs have greater genetic variability than other domesticated animals the number of possible breeds is vast with new crosses constantly occurring, from these both selected and random crosses may come new breeds should offspring reliably breed true to type.  New breeds from the wild such as the Carolina Dog are quite rare compared to attempts at breed creation from man as found in the American Hairless Terrier which sought to exploit a mutation.
+Pointer (dog breed) | The Pointer, often called the English Pointer, is a medium to large-sized breed of dog developed in England as a gun dog.  It is one of several pointing breeds.
+Bernese Mountain Dog | The Bernese Mountain Dog (German: "Berner Sennenhund" ) is a large-sized breed of dog, one of the four breeds of Sennenhund-type dogs from the Swiss Alps.  The name "Sennenhund" is derived from the German "Senne" ("alpine pasture") and "Hund" ("dog"), as they accompanied the alpine herders and dairymen called "Senn".  "Berner" (or "Bernese" in English) refers to the area of the breed’s origin, in the canton of Bern.  This mountain dog was originally kept as a general farm dog.  Large Sennenhunde in the past were also used as draft animals, pulling carts.  The breed was officially established in 1907.  In 1937, the American Kennel Club recognized it; today, the club classifies it as a member of the Working Group.
+Old English Sheepdog | The Old English Sheepdog (OES) is a large breed of dog which was developed in England from early herding types of dog.  The Old English Sheepdog can grow a very long coat, with fur covering the face and eyes.  Obsolete names of the breed include Shepherd's Dog and bob-tailed sheep-dog .  It is still nicknamed "Bob-tail" (or "Bobtail") because historically, the tail was traditionally docked in this breed.
+Spinone Italiano | The Spinone Italiano (] ) is an Italian dog breed.  It was originally bred as a versatile gun dog.  To this day, the breed is still a capable dog for that purpose.  The Spinone is a loyal, friendly and alert dog with a close lying, wiry coat.  It is an ancient breed that can be traced back to approximately 500 BC.
+Ariege Pointer | The Braque de l’Ariège, translated into English as the Ariege Pointing Dog or Ariege Pointer, is a breed of dog, a French hunting dog of pointing gun dog type.  The breed is kept primarily as a hunting dog, not as a pet or showdog.
+Breed type (dog) | Breed type in the parlance of dog fanciers refers to the qualities that define a dog breed and separate it from all other dog breeds.  "Breed type" is outlined in the written standard for each breed, and "breed type" is the basis of judging in conformation dog shows.
+Working Group (dogs) | Working Group is the name of a breed group of dogs, used by kennel clubs to classify a defined collection of dog breeds. Most major English-language kennel clubs include a "Working Group", although different kennel clubs may not include the same breeds in their "Working Group".  "Working Group" does not define one particular type of dog.  It is not a scientific classification.  "Working Group" is not a term used by the international kennel club association, the Fédération Cynologique Internationale, which more finely divides its breed groupings by dog type and breed history.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: All three solver summaries state that 'the passages do not identify what breed of dog "Spike" from the work "Old Yeller" actually was' and that 'passages would need to explicitly identify Spike's breed,' but none of the summaries ever specify the missing entity by name. They repeatedly state what TYPE of information is missing (Spike's breed identity, Old Yeller character information) but never na
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: The query generated for hop 2 is: 'Old Yeller Spike dog breed gun dog classification.' This is unstructured keyword soup with no clear target entity or question structure. The query generated for hop 3 is: 'What breed of dog is Spike from Old Yeller, and is that breed classified as a gun dog?' This is a natural-language yes/no question bundling multiple targets (breed identity AND classification),
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary 1 states: 'The passages do not identify what breed of dog "Spike" from the work "Old Yeller" actually was. Information about the character Spike in "Old Yeller" and his specific dog breed classification is required.' The query for hop 2 targets 'Old Yeller Spike dog breed' and hop 3 targets 'What breed of dog is Spike from Old Yeller.' Despite these queries targeting Old Yeller and Spike a
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query hop 2: 'Old Yeller Spike dog breed gun dog classification.' Query hop 3: 'What breed of dog is Spike from Old Yeller, and is that breed classified as a gun dog?' Both queries target the same core information (Spike's breed from Old Yeller and its gun dog classification) with only superficial rewording. The queries do not advance substantively—both ask for Spike's breed and gun dog status, ju
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

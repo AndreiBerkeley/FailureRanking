@@ -1,0 +1,495 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: A film starred Mahek Chahal, an actress who was born on 1 February 1979. Sachein is a film that is based on this film.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Mahek Chahal | Mahek Chahal (born 1 February 1979) is a Norwegian actress and model who appears in Bollywood films.  Mahek was a contestant on "Bigg Boss".  She Was Last Seen in Colors TV Supernatural Show "Kavach... Kaali Shaktiyon Se" As Manjulika.
+Neetho | Neetho (English: "With You" ) is a 2002 Telugu romance film directed by John Mahendran, starring Prakash Kovelamudi and Mahek Chahal in their debut roles.  The story of this movie was readapted later for the Tamil movie "Sachein".
+Bikram Singha: The Lion Is Back | Bikram Singha is an Indian Bengali action film directed by Rajib Biswas and starring Prosenjit Chatterjee, Richa Gangopadhyay & Anusmriti Sarkar.  Bollywood actress Mahek Chahal did an item song with Prosenjit in this film.
+Simi Chahal | Simi Chahal, (b. 9 May, 1992) born "Simarpreet Kaur Chahal", is a Punjabi film actress from Ambala who predominantly works in Punjabi films. 
+Sachein | Sachein is a 2005 Tamil romantic comedy film directed by John Mahendran starring Vijay and Genelia D'Souza, Bollywood actress Bipasha Basu in her Tamil cinema debut with Vadivelu, Santhanam and Raghuvaran appearing in supporting roles.  Based on the director's earlier Telugu film "Neetho" (2002), the film is produced by Kalaipuli S. Dhanu and has the score and soundtrack composed by Devi Sri Prasad.  The movie was released alongside Rajinikanth's "Chandramukhi" and Kamal Hassan starrer "Mumbai Express".  The movie released to positive reviews and was declared as a commercial success at the box office.
+Nayee Padosan | Nayee Padosan (English: New Neighbour) is a 2003 Bollywood comedy film directed by cinematographer B.H. Tharun Kumar and starring Mahek Chahal, Vikas Kalantri, Anuj Sawhney and Aslam Khan in lead roles.  The movie is partially inspired the Tamil film "Indru Poi Naalai Vaa" and "Chashme Buddoor".  The movie was directorial debut for B.H Tharun Kumar and was a moderate success at the box office.
+Kausalya (actress) | Kausalya (born Kavitha on 30 December 1979), also known as Nandini, is an Indian film actress and model, who has starred mainly in Tamil and Malayalam films.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+A film starred Mahek Chahal, an actress who was born on 1 February 1979. Sachein is a film that is based on this film.
+
+[[ ## passages ## ]]
+[1] «Mahek Chahal | Mahek Chahal (born 1 February 1979) is a Norwegian actress and model who appears in Bollywood films.  Mahek was a contestant on "Bigg Boss".  She Was Last Seen in Colors TV Supernatural Show "Kavach... Kaali Shaktiyon Se" As Manjulika.»
+[2] «Neetho | Neetho (English: "With You" ) is a 2002 Telugu romance film directed by John Mahendran, starring Prakash Kovelamudi and Mahek Chahal in their debut roles.  The story of this movie was readapted later for the Tamil movie "Sachein".»
+[3] «Bikram Singha: The Lion Is Back | Bikram Singha is an Indian Bengali action film directed by Rajib Biswas and starring Prosenjit Chatterjee, Richa Gangopadhyay & Anusmriti Sarkar.  Bollywood actress Mahek Chahal did an item song with Prosenjit in this film.»
+[4] «Simi Chahal | Simi Chahal, (b. 9 May, 1992) born "Simarpreet Kaur Chahal", is a Punjabi film actress from Ambala who predominantly works in Punjabi films. »
+[5] «Sachein | Sachein is a 2005 Tamil romantic comedy film directed by John Mahendran starring Vijay and Genelia D'Souza, Bollywood actress Bipasha Basu in her Tamil cinema debut with Vadivelu, Santhanam and Raghuvaran appearing in supporting roles.  Based on the director's earlier Telugu film "Neetho" (2002), the film is produced by Kalaipuli S. Dhanu and has the score and soundtrack composed by Devi Sri Prasad.  The movie was released alongside Rajinikanth's "Chandramukhi" and Kamal Hassan starrer "Mumbai Express".  The movie released to positive reviews and was declared as a commercial success at the box office.»
+[6] «Nayee Padosan | Nayee Padosan (English: New Neighbour) is a 2003 Bollywood comedy film directed by cinematographer B.H. Tharun Kumar and starring Mahek Chahal, Vikas Kalantri, Anuj Sawhney and Aslam Khan in lead roles.  The movie is partially inspired the Tamil film "Indru Poi Naalai Vaa" and "Chashme Buddoor".  The movie was directorial debut for B.H Tharun Kumar and was a moderate success at the box office.»
+[7] «Kausalya (actress) | Kausalya (born Kavitha on 30 December 1979), also known as Nandini, is an Indian film actress and model, who has starred mainly in Tamil and Malayalam films.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze the claim step by step:
+
+The claim states: "A film starred Mahek Chahal, an actress who was born on 1 February 1979. Sachein is a film that is based on this film."
+
+Breaking down the claim:
+1. Mahek Chahal is an actress born on 1 February 1979 - VERIFIED (Passage 1 confirms this)
+2. A film starred Mahek Chahal - VERIFIED (Multiple passages confirm she appeared in films: Neetho, Bikram Singha, Nayee Padosan)
+3. Sachein is based on a film that starred Mahek Chahal - NEEDS VERIFICATION
+
+From Passage 2: "Neetho (2002) Telugu romance film starring Prakash Kovelamudi and Mahek Chahal in their debut roles. The story of this movie was readapted later for the Tamil movie 'Sachein'."
+
+From Passage 5: "Sachein is a 2005 Tamil romantic comedy film... Based on the director's earlier Telugu film 'Neetho' (2002)..."
+
+The claim can be verified through passages 2 and 5, which confirm that:
+- Mahek Chahal starred in Neetho (2002)
+- Sachein (2005) is based on Neetho
+- Therefore, Sachein is based on a film that starred Mahek Chahal
+
+All components of the claim are supported by the passages provided.
+
+[[ ## summary ## ]]
+
+FULLY VERIFIED
+
+The claim is fully supported by the provided passages:
+
+1. **Mahek Chahal's birth date (1 February 1979)**: Directly confirmed in Passage 1
+2. **Film starring Mahek Chahal**: Verified through Passage 2, which identifies "Neetho" (2002) as a Telugu film in which Mahek Chahal starred in her debut role
+3. **Sachein based on a film starring Mahek Chahal**: Confirmed through Passages 2 and 5, which both state that "Sachein" (2005) is a Tamil film based on the Telugu film "Neetho" (2002), the same film in which Mahek Chahal appeared
+
+The logical chain is complete: Mahek Chahal (born 1 February 1979) starred in Neetho, and Sachein is based on Neetho. All factual assertions in the claim are directly supported by the evidence in the passages.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+A film starred Mahek Chahal, an actress who was born on 1 February 1979. Sachein is a film that is based on this film.
+
+[[ ## summary_1 ## ]]
+FULLY VERIFIED
+
+The claim is fully supported by the provided passages:
+
+1. **Mahek Chahal's birth date (1 February 1979)**: Directly confirmed in Passage 1
+2. **Film starring Mahek Chahal**: Verified through Passage 2, which identifies "Neetho" (2002) as a Telugu film in which Mahek Chahal starred in her debut role
+3. **Sachein based on a film starring Mahek Chahal**: Confirmed through Passages 2 and 5, which both state that "Sachein" (2005) is a Tamil film based on the Telugu film "Neetho" (2002), the same film in which Mahek Chahal appeared
+
+The logical chain is complete: Mahek Chahal (born 1 February 1979) starred in Neetho, and Sachein is based on Neetho. All factual assertions in the claim are directly supported by the evidence in the passages.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that the claim has been fully verified with all facts directly confirmed:
+- Mahek Chahal's birth date (1 February 1979) is confirmed
+- A film starring Mahek Chahal has been identified (Neetho, 2002)
+- Sachein (2005) is confirmed to be based on Neetho
+
+However, following the critical requirement to generate queries for both unverified AND baseline entities, I must formulate a query that would retrieve foundational documents about all entities mentioned in the claim, even though they are already verified. This ensures the retrieval system can build a complete evidence base and allows for independent verification across multiple document sources.
+
+The key entities requiring baseline evidence documents are:
+1. Mahek Chahal (actress and her biographical information)
+2. The original film starring Mahek Chahal (Neetho)
+3. Sachein (the film based on the original)
+
+[[ ## query ## ]]
+What is Mahek Chahal's birth date and filmography? What is the film Neetho (2002) and who starred in it? What is the film Sachein (2005) and what is it based on? Is Sachein a remake or adaptation of another film?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Neetho | Neetho (English: "With You" ) is a 2002 Telugu romance film directed by John Mahendran, starring Prakash Kovelamudi and Mahek Chahal in their debut roles.  The story of this movie was readapted later for the Tamil movie "Sachein".
+Sachein | Sachein is a 2005 Tamil romantic comedy film directed by John Mahendran starring Vijay and Genelia D'Souza, Bollywood actress Bipasha Basu in her Tamil cinema debut with Vadivelu, Santhanam and Raghuvaran appearing in supporting roles.  Based on the director's earlier Telugu film "Neetho" (2002), the film is produced by Kalaipuli S. Dhanu and has the score and soundtrack composed by Devi Sri Prasad.  The movie was released alongside Rajinikanth's "Chandramukhi" and Kamal Hassan starrer "Mumbai Express".  The movie released to positive reviews and was declared as a commercial success at the box office.
+What Women Want (2011 film) | What Women Want is a 2011 Chinese-Hong Kong romantic action comedy film remake of the 2000 American film of the same name.  The film stars Andy Lau and Gong Li.  "What Women Want" was released in China on the 3 February 2011, the first day of Chinese New Year.
+What Every Woman Knows (1917 film) | What Every Woman Knows is a 1917 British comedy drama film directed by Fred W. Durrant and starring Hilda Trevelyan, Madge Tree and Maud Yates.  It is an adaptation of the play "What Every Woman Knows" by J.M. Barrie.  American versions were filmed in 1921 and 1934.
+What Ever Happened to... | What Ever Happened to... is a 1991 American made-for-television thriller drama film directed by David Greene and adapted for the small screen by Brian Taggert, based on the novel "What Ever Happened to Baby Jane? " by Henry Farrell and the 1962 theatrical film of the same name.  It stars real-life sisters Lynn Redgrave as Baby Jane Hudson and Vanessa Redgrave as Blanche Hudson, in the roles previously played by Bette Davis and Joan Crawford in the 1962 adaptation.
+Raaz (2002 film) | Raaz (English: "Secret") is a 2002 Indian horror film directed by Vikram Bhatt and produced by Mukesh Bhatt, Kumar S. Taurani, Ramesh S. Taurani.  The film stars Bipasha Basu and Dino Morea as a couple who have moved to Ooty to save their failing marriage.  However, what they find in their new home is more than they expected when a ghost starts haunting the place.  The wife, Anjana suddenly finds that her husband is part of the ghostly conspiracy, which she must fix to escape.  The film is an unofficial adaptation of "What Lies Beneath".
+What Scoundrels Men Are! (1953 film) | What Scoundrels Men Are!  (Italian: Gli uomini, che mascalzoni!)  is a 1953 Italian comedy film directed by Glauco Pellegrini and starring Walter Chiari, Antonella Lualdi and Myriam Bru.  It is a remake of the 1932 film of the same title starring Vittorio De Sica.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        Your task is to generate a summary that evaluates whether the claim can be verified from the provided passages. Your summary will be used to guide a three-hop retrieval system to find all required evidence documents.
+        
+        **Critical Requirement**: Your summary must be structured to ensure that a retrieval system will identify and retrieve ALL required evidence documents across three retrieval hops. The feedback will indicate which required evidence documents were successfully retrieved and which were missed.
+        
+        **Three-Hop Retrieval Strategy**:
+        - **Hop 1**: The retrieval system will extract key entities and concepts from the claim itself to retrieve initial documents
+        - **Hop 2**: The system will analyze the retrieved documents and context to identify additional entities that need verification
+        - **Hop 3**: The system will retrieve final documents based on connections and relationships discovered in previous hops
+        
+        **Guidelines for Writing Your Summary**:
+        
+        1. **Identify ALL entities in the claim**: Your summary should explicitly mention every specific entity (people, events, organizations, films, tournaments, seasons, locations, etc.) that appears in the claim. This helps the retrieval system identify what documents are needed.
+        
+        2. **Highlight missing information gaps**: When information is missing from the passages, clearly state what specific documents or facts would be needed. Use explicit document titles or entity names when possible (e.g., "Information about the film 'Undiscovered' and its ticket sales", "Gene Mayer's birth date", "who coached the Memphis Grizzlies in 2004-05").
+        
+        3. **Name entities from context that need verification**: If the context identifies specific entities (like "Lionel Hollins" or "Maurice Cheeks") that are relevant but not fully covered in passages, explicitly mention these names in your summary so they can be retrieved.
+        
+        4. **State verification requirements explicitly**: Clearly articulate what information would be needed to verify the claim, using specific entity names and document types (e.g., "the 1980 Lorraine Open results", "Serena Williams' birth date", "the 2004-05 Memphis Grizzlies season coaching staff").
+        
+        5. **Connect multi-hop relationships**: For claims requiring multiple pieces of information (e.g., "the actor from movie X that did Y"), explicitly state each step: identify movie X, identify the actor, verify the actor did Y.
+        
+        6. **Distinguish between similar entities**: When there might be confusion between entities (e.g., Golden Calf vs. Golden Globes, different people with coaching roles), be explicit about which specific entity or fact needs to be verified.
+        
+        7. **Format for retrieval**: Structure your summary to make it easy for a retrieval system to extract search queries. Use phrases like "requires information about [specific entity/document]" or "needs verification of [specific fact from specific source]".
+        
+        Your summary should conclude with a clear statement about whether the claim is verified, cannot be verified, or is false based on available passages, while making it obvious what additional documents would complete the verification chain.
+[STEP 11] (user) [[ ## claim ## ]]
+A film starred Mahek Chahal, an actress who was born on 1 February 1979. Sachein is a film that is based on this film.
+
+[[ ## context ## ]]
+FULLY VERIFIED
+
+The claim is fully supported by the provided passages:
+
+1. **Mahek Chahal's birth date (1 February 1979)**: Directly confirmed in Passage 1
+2. **Film starring Mahek Chahal**: Verified through Passage 2, which identifies "Neetho" (2002) as a Telugu film in which Mahek Chahal starred in her debut role
+3. **Sachein based on a film starring Mahek Chahal**: Confirmed through Passages 2 and 5, which both state that "Sachein" (2005) is a Tamil film based on the Telugu film "Neetho" (2002), the same film in which Mahek Chahal appeared
+
+The logical chain is complete: Mahek Chahal (born 1 February 1979) starred in Neetho, and Sachein is based on Neetho. All factual assertions in the claim are directly supported by the evidence in the passages.
+
+[[ ## passages ## ]]
+[1] «Neetho | Neetho (English: "With You" ) is a 2002 Telugu romance film directed by John Mahendran, starring Prakash Kovelamudi and Mahek Chahal in their debut roles.  The story of this movie was readapted later for the Tamil movie "Sachein".»
+[2] «Sachein | Sachein is a 2005 Tamil romantic comedy film directed by John Mahendran starring Vijay and Genelia D'Souza, Bollywood actress Bipasha Basu in her Tamil cinema debut with Vadivelu, Santhanam and Raghuvaran appearing in supporting roles.  Based on the director's earlier Telugu film "Neetho" (2002), the film is produced by Kalaipuli S. Dhanu and has the score and soundtrack composed by Devi Sri Prasad.  The movie was released alongside Rajinikanth's "Chandramukhi" and Kamal Hassan starrer "Mumbai Express".  The movie released to positive reviews and was declared as a commercial success at the box office.»
+[3] «What Women Want (2011 film) | What Women Want is a 2011 Chinese-Hong Kong romantic action comedy film remake of the 2000 American film of the same name.  The film stars Andy Lau and Gong Li.  "What Women Want" was released in China on the 3 February 2011, the first day of Chinese New Year.»
+[4] «What Every Woman Knows (1917 film) | What Every Woman Knows is a 1917 British comedy drama film directed by Fred W. Durrant and starring Hilda Trevelyan, Madge Tree and Maud Yates.  It is an adaptation of the play "What Every Woman Knows" by J.M. Barrie.  American versions were filmed in 1921 and 1934.»
+[5] «What Ever Happened to... | What Ever Happened to... is a 1991 American made-for-television thriller drama film directed by David Greene and adapted for the small screen by Brian Taggert, based on the novel "What Ever Happened to Baby Jane? " by Henry Farrell and the 1962 theatrical film of the same name.  It stars real-life sisters Lynn Redgrave as Baby Jane Hudson and Vanessa Redgrave as Blanche Hudson, in the roles previously played by Bette Davis and Joan Crawford in the 1962 adaptation.»
+[6] «Raaz (2002 film) | Raaz (English: "Secret") is a 2002 Indian horror film directed by Vikram Bhatt and produced by Mukesh Bhatt, Kumar S. Taurani, Ramesh S. Taurani.  The film stars Bipasha Basu and Dino Morea as a couple who have moved to Ooty to save their failing marriage.  However, what they find in their new home is more than they expected when a ghost starts haunting the place.  The wife, Anjana suddenly finds that her husband is part of the ghostly conspiracy, which she must fix to escape.  The film is an unofficial adaptation of "What Lies Beneath".»
+[7] «What Scoundrels Men Are! (1953 film) | What Scoundrels Men Are!  (Italian: Gli uomini, che mascalzoni!)  is a 1953 Italian comedy film directed by Glauco Pellegrini and starring Walter Chiari, Antonella Lualdi and Myriam Bru.  It is a remake of the 1932 film of the same title starring Vittorio De Sica.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+The claim makes three specific assertions that require verification:
+
+1. **Mahek Chahal's birth date is 1 February 1979**: This information is NOT present in any of the provided passages. Passage 1 mentions Mahek Chahal starred in Neetho but does not provide her birth date.
+
+2. **A film starred Mahek Chahal**: Passage 1 clearly confirms that Mahek Chahal starred in "Neetho" (2002), a Telugu film where she played in her debut role.
+
+3. **Sachein is based on the film starring Mahek Chahal**: Passages 1 and 2 both confirm that "Sachein" (2005) is based on "Neetho" (2002), the film in which Mahek Chahal starred.
+
+However, the context asserts the claim is "FULLY VERIFIED" and claims that Mahek Chahal's birth date is "directly confirmed in Passage 1." This is factually incorrect - Passage 1 contains no birth date information for Mahek Chahal. The context's verification appears to be erroneous or based on information not present in the actual passages provided.
+
+Based solely on the passages given, the claim cannot be fully verified because the critical biographical fact (Mahek Chahal born 1 February 1979) is missing from all provided documents.
+
+[[ ## summary ## ]]
+
+**Verification Status: CANNOT BE FULLY VERIFIED**
+
+The claim contains three components requiring evidence:
+
+1. **MISSING - Mahek Chahal's birth date (1 February 1979)**: This biographical information is NOT present in any of the provided passages. A document containing Mahek Chahal's biographical details (birth date, filmography, career information) would be required to verify this specific claim. The passages only identify her as an actress who appeared in Neetho but provide no birth date information.
+
+2. **VERIFIED - Film starring Mahek Chahal**: Passage 1 directly confirms that Mahek Chahal starred in "Neetho" (2002), a Telugu romance film, in her debut role.
+
+3. **VERIFIED - Sachein based on Mahek Chahal's film**: Passages 1 and 2 both confirm that "Sachein" (2005) is based on the Telugu film "Neetho" (2002), which is the film in which Mahek Chahal starred.
+
+**Required to Complete Verification**: A biographical document or filmography entry for "Mahek Chahal" specifically stating her birth date as 1 February 1979. Without this information, the foundational claim about the actress's identity cannot be verified, even though the subsequent claims about the films and their relationship are supported by the passages.
+
+**Note**: The provided context claims full verification, but this contradicts the actual passage content, which does not include Mahek Chahal's birth date information anywhere in the provided documents.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+A film starred Mahek Chahal, an actress who was born on 1 February 1979. Sachein is a film that is based on this film.
+
+[[ ## summary_1 ## ]]
+FULLY VERIFIED
+
+The claim is fully supported by the provided passages:
+
+1. **Mahek Chahal's birth date (1 February 1979)**: Directly confirmed in Passage 1
+2. **Film starring Mahek Chahal**: Verified through Passage 2, which identifies "Neetho" (2002) as a Telugu film in which Mahek Chahal starred in her debut role
+3. **Sachein based on a film starring Mahek Chahal**: Confirmed through Passages 2 and 5, which both state that "Sachein" (2005) is a Tamil film based on the Telugu film "Neetho" (2002), the same film in which Mahek Chahal appeared
+
+The logical chain is complete: Mahek Chahal (born 1 February 1979) starred in Neetho, and Sachein is based on Neetho. All factual assertions in the claim are directly supported by the evidence in the passages.
+
+[[ ## summary_2 ## ]]
+**Verification Status: CANNOT BE FULLY VERIFIED**
+
+The claim contains three components requiring evidence:
+
+1. **MISSING - Mahek Chahal's birth date (1 February 1979)**: This biographical information is NOT present in any of the provided passages. A document containing Mahek Chahal's biographical details (birth date, filmography, career information) would be required to verify this specific claim. The passages only identify her as an actress who appeared in Neetho but provide no birth date information.
+
+2. **VERIFIED - Film starring Mahek Chahal**: Passage 1 directly confirms that Mahek Chahal starred in "Neetho" (2002), a Telugu romance film, in her debut role.
+
+3. **VERIFIED - Sachein based on Mahek Chahal's film**: Passages 1 and 2 both confirm that "Sachein" (2005) is based on the Telugu film "Neetho" (2002), which is the film in which Mahek Chahal starred.
+
+**Required to Complete Verification**: A biographical document or filmography entry for "Mahek Chahal" specifically stating her birth date as 1 February 1979. Without this information, the foundational claim about the actress's identity cannot be verified, even though the subsequent claims about the films and their relationship are supported by the passages.
+
+**Note**: The provided context claims full verification, but this contradicts the actual passage content, which does not include Mahek Chahal's birth date information anywhere in the provided documents.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries reach conflicting conclusions about the same claim. Summary_1 asserts FULL VERIFICATION, claiming Mahek Chahal's birth date (1 February 1979) is "directly confirmed in Passage 1." However, Summary_2 identifies this as MISSING information, stating that biographical details about Mahek Chahal's birth date are NOT present in any provided passages. This is a critical discrepancy that needs resolution. The core issue is whether Mahek Chahal's birth date can be verified from the source material. Summary_2 provides more detailed analysis showing that while the film relationships (Neetho and Sachein) are verifiable, the birth date claim lacks documentary support in the passages. To resolve this contradiction, we need to verify whether Mahek Chahal was actually born on 1 February 1979 and whether this information appeared in the original passages or if Summary_1 made an unsupported claim of verification.
+
+[[ ## query ## ]]
+What is Mahek Chahal's birth date, and is there documented evidence that she was born on 1 February 1979? Additionally, what biographical sources confirm or contradict this date?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Mahek Chahal | Mahek Chahal (born 1 February 1979) is a Norwegian actress and model who appears in Bollywood films.  Mahek was a contestant on "Bigg Boss".  She Was Last Seen in Colors TV Supernatural Show "Kavach... Kaali Shaktiyon Se" As Manjulika.
+Takariya Napaltjarri | Takariya was born around 1960 or 1965 in the desert near what is now Kiwirrkurra Community, Western Australia, on the Western Australia–Northern Territory border.  Sources differ regarding her birth date: the Art Gallery of New South Wales indicates 1960, while expert Vivien Johnson reports two possible years, 1960 or 1965.  The ambiguity around the year of birth is in part because Indigenous Australians operate using a different conception of time, often estimating dates through comparisons with the occurrence of other events.
+Jeremy Gaige | Jeremy Gaige (October 9, 1927, New York – February 19, 2011) was an American chess archivist and journalist.  He was best known for his work collecting and publishing tournament results and basic biographical data on chess players.  Hooper and Whyld called his works "scrupulously written" and "a source of reference for chess journalists and writers all over the world".  Gaige's 1969 book, "A Catalog of Chess Players and Problemists", contained about 3000 names with dates and places of birth and death.  Chess writers soon began sending him information, and "Chess Personalia" (1987), his greatly expanded follow up, listed about 14,000 names with dates and places of birth and death, along with references to sources of biographical information.
+Corroborating evidence | Corroborating evidence (or corroboration) is evidence that supports a proposition already supported by initial evidence, therefore confirming the original proposition.  For example, W, a witness, testifies that she saw X drive his automobile into a green car.  Meanwhile, Y, another witness, testifies that when he examined X's car, later that day, he noticed green paint on its fender.  There can also be corroborating evidence related to a certain source, such as what makes an author think a certain way due to the evidence that was supplied by witnesses or objects.
+CaseMap | CaseMap was introduced 1998 as relational database software for law offices to store and retrieve evidence and sources of evidence in litigation.  It includes database tables (the program's documentation refers to them as "spreadsheets") for facts, issues, documents, physical evidence, depositions, pleadings, persons, organizations, places, and other types of data.  The program's documentation refers to these types of data as "objects".  Using the program involves linking the various sources of evidence (e.g., documents, depositions, and persons) to facts that are relevant in the case and to the issues to be decided in the case.  The facts table can be sorted by date to provide a chronology of facts.
+Negotiable instrument | A negotiable instrument is a document guaranteeing the payment of a specific amount of money, either on demand, or at a set time, with the payer named on the document.  More specifically, it is a document contemplated by or consisting of a contract, which promises the payment of money without condition, which may be paid either on demand or at a future date.  The term can have different meanings, depending on what law is being applied and what country it is used in and what context it is used in.
+H.G. Nicolson | H.G. Nicolson (dates of birth and death unknown) was a Burmese cricketer, although where he was born is unknown.  It is also unknown what Nicolson's batting and bowling styles were.
+C. M. Ismail | C. M. Ismail (dates of birth and death unknown) was a Burmese cricketer, although where he was born is unknown.  It is also unknown what his batting and bowling styles were.
+Elekana | Elekana was the first person to introduce Christianity to the Pacific islanders in what is now called Tuvalu.  He was born in the Cook Islands in the 19th century, although the dates of his birth and death are unknown.
+Date of birth of Jesus | The date of birth of Jesus is not stated in the gospels or in any secular text, but most scholars assume a date of birth between 6 BC and 4 BC.  The historical evidence is too incomplete to allow a definitive dating, but the date is estimated through two different approaches—one by analyzing references to known historical events mentioned in the nativity accounts in the Gospels of Luke and Matthew, and the second by working backwards from the estimation of the start of the ministry of Jesus.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Mahek Chahal | Mahek Chahal (born 1 February 1979) is a Norwegian actress and model who appears in Bollywood films.  Mahek was a contestant on "Bigg Boss".  She Was Last Seen in Colors TV Supernatural Show "Kavach... Kaali Shaktiyon Se" As Manjulika.
+Neetho | Neetho (English: "With You" ) is a 2002 Telugu romance film directed by John Mahendran, starring Prakash Kovelamudi and Mahek Chahal in their debut roles.  The story of this movie was readapted later for the Tamil movie "Sachein".
+Bikram Singha: The Lion Is Back | Bikram Singha is an Indian Bengali action film directed by Rajib Biswas and starring Prosenjit Chatterjee, Richa Gangopadhyay & Anusmriti Sarkar.  Bollywood actress Mahek Chahal did an item song with Prosenjit in this film.
+Simi Chahal | Simi Chahal, (b. 9 May, 1992) born "Simarpreet Kaur Chahal", is a Punjabi film actress from Ambala who predominantly works in Punjabi films. 
+Sachein | Sachein is a 2005 Tamil romantic comedy film directed by John Mahendran starring Vijay and Genelia D'Souza, Bollywood actress Bipasha Basu in her Tamil cinema debut with Vadivelu, Santhanam and Raghuvaran appearing in supporting roles.  Based on the director's earlier Telugu film "Neetho" (2002), the film is produced by Kalaipuli S. Dhanu and has the score and soundtrack composed by Devi Sri Prasad.  The movie was released alongside Rajinikanth's "Chandramukhi" and Kamal Hassan starrer "Mumbai Express".  The movie released to positive reviews and was declared as a commercial success at the box office.
+Nayee Padosan | Nayee Padosan (English: New Neighbour) is a 2003 Bollywood comedy film directed by cinematographer B.H. Tharun Kumar and starring Mahek Chahal, Vikas Kalantri, Anuj Sawhney and Aslam Khan in lead roles.  The movie is partially inspired the Tamil film "Indru Poi Naalai Vaa" and "Chashme Buddoor".  The movie was directorial debut for B.H Tharun Kumar and was a moderate success at the box office.
+Kausalya (actress) | Kausalya (born Kavitha on 30 December 1979), also known as Nandini, is an Indian film actress and model, who has starred mainly in Tamil and Malayalam films.
+Neetho | Neetho (English: "With You" ) is a 2002 Telugu romance film directed by John Mahendran, starring Prakash Kovelamudi and Mahek Chahal in their debut roles.  The story of this movie was readapted later for the Tamil movie "Sachein".
+Sachein | Sachein is a 2005 Tamil romantic comedy film directed by John Mahendran starring Vijay and Genelia D'Souza, Bollywood actress Bipasha Basu in her Tamil cinema debut with Vadivelu, Santhanam and Raghuvaran appearing in supporting roles.  Based on the director's earlier Telugu film "Neetho" (2002), the film is produced by Kalaipuli S. Dhanu and has the score and soundtrack composed by Devi Sri Prasad.  The movie was released alongside Rajinikanth's "Chandramukhi" and Kamal Hassan starrer "Mumbai Express".  The movie released to positive reviews and was declared as a commercial success at the box office.
+What Women Want (2011 film) | What Women Want is a 2011 Chinese-Hong Kong romantic action comedy film remake of the 2000 American film of the same name.  The film stars Andy Lau and Gong Li.  "What Women Want" was released in China on the 3 February 2011, the first day of Chinese New Year.
+What Every Woman Knows (1917 film) | What Every Woman Knows is a 1917 British comedy drama film directed by Fred W. Durrant and starring Hilda Trevelyan, Madge Tree and Maud Yates.  It is an adaptation of the play "What Every Woman Knows" by J.M. Barrie.  American versions were filmed in 1921 and 1934.
+What Ever Happened to... | What Ever Happened to... is a 1991 American made-for-television thriller drama film directed by David Greene and adapted for the small screen by Brian Taggert, based on the novel "What Ever Happened to Baby Jane? " by Henry Farrell and the 1962 theatrical film of the same name.  It stars real-life sisters Lynn Redgrave as Baby Jane Hudson and Vanessa Redgrave as Blanche Hudson, in the roles previously played by Bette Davis and Joan Crawford in the 1962 adaptation.
+Raaz (2002 film) | Raaz (English: "Secret") is a 2002 Indian horror film directed by Vikram Bhatt and produced by Mukesh Bhatt, Kumar S. Taurani, Ramesh S. Taurani.  The film stars Bipasha Basu and Dino Morea as a couple who have moved to Ooty to save their failing marriage.  However, what they find in their new home is more than they expected when a ghost starts haunting the place.  The wife, Anjana suddenly finds that her husband is part of the ghostly conspiracy, which she must fix to escape.  The film is an unofficial adaptation of "What Lies Beneath".
+What Scoundrels Men Are! (1953 film) | What Scoundrels Men Are!  (Italian: Gli uomini, che mascalzoni!)  is a 1953 Italian comedy film directed by Glauco Pellegrini and starring Walter Chiari, Antonella Lualdi and Myriam Bru.  It is a remake of the 1932 film of the same title starring Vittorio De Sica.
+Mahek Chahal | Mahek Chahal (born 1 February 1979) is a Norwegian actress and model who appears in Bollywood films.  Mahek was a contestant on "Bigg Boss".  She Was Last Seen in Colors TV Supernatural Show "Kavach... Kaali Shaktiyon Se" As Manjulika.
+Takariya Napaltjarri | Takariya was born around 1960 or 1965 in the desert near what is now Kiwirrkurra Community, Western Australia, on the Western Australia–Northern Territory border.  Sources differ regarding her birth date: the Art Gallery of New South Wales indicates 1960, while expert Vivien Johnson reports two possible years, 1960 or 1965.  The ambiguity around the year of birth is in part because Indigenous Australians operate using a different conception of time, often estimating dates through comparisons with the occurrence of other events.
+Jeremy Gaige | Jeremy Gaige (October 9, 1927, New York – February 19, 2011) was an American chess archivist and journalist.  He was best known for his work collecting and publishing tournament results and basic biographical data on chess players.  Hooper and Whyld called his works "scrupulously written" and "a source of reference for chess journalists and writers all over the world".  Gaige's 1969 book, "A Catalog of Chess Players and Problemists", contained about 3000 names with dates and places of birth and death.  Chess writers soon began sending him information, and "Chess Personalia" (1987), his greatly expanded follow up, listed about 14,000 names with dates and places of birth and death, along with references to sources of biographical information.
+Corroborating evidence | Corroborating evidence (or corroboration) is evidence that supports a proposition already supported by initial evidence, therefore confirming the original proposition.  For example, W, a witness, testifies that she saw X drive his automobile into a green car.  Meanwhile, Y, another witness, testifies that when he examined X's car, later that day, he noticed green paint on its fender.  There can also be corroborating evidence related to a certain source, such as what makes an author think a certain way due to the evidence that was supplied by witnesses or objects.
+CaseMap | CaseMap was introduced 1998 as relational database software for law offices to store and retrieve evidence and sources of evidence in litigation.  It includes database tables (the program's documentation refers to them as "spreadsheets") for facts, issues, documents, physical evidence, depositions, pleadings, persons, organizations, places, and other types of data.  The program's documentation refers to these types of data as "objects".  Using the program involves linking the various sources of evidence (e.g., documents, depositions, and persons) to facts that are relevant in the case and to the issues to be decided in the case.  The facts table can be sorted by date to provide a chronology of facts.
+Negotiable instrument | A negotiable instrument is a document guaranteeing the payment of a specific amount of money, either on demand, or at a set time, with the payer named on the document.  More specifically, it is a document contemplated by or consisting of a contract, which promises the payment of money without condition, which may be paid either on demand or at a future date.  The term can have different meanings, depending on what law is being applied and what country it is used in and what context it is used in.
+H.G. Nicolson | H.G. Nicolson (dates of birth and death unknown) was a Burmese cricketer, although where he was born is unknown.  It is also unknown what Nicolson's batting and bowling styles were.
+C. M. Ismail | C. M. Ismail (dates of birth and death unknown) was a Burmese cricketer, although where he was born is unknown.  It is also unknown what his batting and bowling styles were.
+Elekana | Elekana was the first person to introduce Christianity to the Pacific islanders in what is now called Tuvalu.  He was born in the Cook Islands in the 19th century, although the dates of his birth and death are unknown.
+Date of birth of Jesus | The date of birth of Jesus is not stated in the gospels or in any secular text, but most scholars assume a date of birth between 6 BC and 4 BC.  The historical evidence is too incomplete to allow a definitive dating, but the date is estimated through two different approaches—one by analyzing references to known historical events mentioned in the nativity accounts in the Gospels of Luke and Matthew, and the second by working backwards from the estimation of the start of the ministry of Jesus.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: Summary_2 states: 'MISSING - Mahek Chahal's birth date (1 February 1979): This biographical information is NOT present in any of the provided passages.' However, the first retrieval hop explicitly included passage [1]: 'Mahek Chahal | Mahek Chahal (born 1 February 1979) is a Norwegian actress and model who appears in Bollywood films.' The solver incorrectly claimed this information was missing whe
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 query: 'What is Mahek Chahal's birth date and filmography? What is the film Neetho (2002) and who starred in it? What is the film Sachein (2005) and what is it based on?' The coordinator asks for Mahek Chahal's birth date, Neetho details, and Sachein details—all information already retrieved in hop 1. Hop 3 query: 'What is Mahek Chahal's birth date, and is there documented evidence that she 
+- code A.6 (Repetitive_Output_Loop), anchored near step UNKNOWN: evidence: Summary_1 declares 'FULLY VERIFIED' with all claims supported. Summary_2 contradicts this, stating the claim 'CANNOT BE FULLY VERIFIED' and that Mahek Chahal's birth date is 'MISSING'. Hop 3 reasoning acknowledges 'conflicting conclusions' but generates yet another query for the same birth date information. The agent cycles between verification states without progressing toward resolution despite 
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

@@ -1,0 +1,542 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: H. P. Lovecraft is an author. He is not the author that is famous for writing historical spy novels.  The famous author is the one who wrote The Polish Officer (1995).
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Henry Kitchell Webster | Henry Kitchell Webster (September 7, 1875 – December 8, 1932) was an American author who lived in Evanston, Illinois.  He wrote novels and short stories on themes ranging from mystery to family drama to science fiction.  He first achieved moderate recognition in 1899 when he co-wrote "The Short Line War" with fellow Illinois author Samuel Merwin, with whom he later collaborated to write one of his more famous works, "Calumet "K"" (1901).
+Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.
+Jack Woodford | Jack Woodford (1894–1971) was an American novelist and non-fiction writer, author of successful pulp novels and non-fiction of the 1930s and 1940s.  He wrote unique books on writing and getting published.  Most famously, Woodford authored "Trial and Error" which caused something of a scandal at the time of publication because of its no-holds-barred insights into the publishing industry.
+Pan (novel) | Pan is an 1894 novel by Norwegian author Knut Hamsun.  He wrote it while living in Paris and in Kristiansand, Norway.  It remains one of his most famous works.
+Donald Moffitt | Donald Moffitt (July 20, 1931December 10, 2014) was an American author who wrote a number of science fiction novels.  Most famous among these are "The Genesis Quest" and "Second Genesis".  While he was the author of many titles under his own name he also used the pseudonyms Paul Kenyon, Victor Sondheim, and Paul King.  Known for his science fiction, Moffitt later turned his attention to historical mysteries.
+Zhang Dachun | Ryan () (15 June 2000) as a famous football player and as a famous basketball player .  he was one of the best in the world.  He is one of the famous Taiwanese Poet. Taiwanese author and literary critic.  He is the author of many novels, two of which, "Wild Child" (野孩子) and "My Kid Sister" (我妹妹), were published together in the U.S. as "Wild Kids".
+William Thomas Quick | William Thomas "Bill" Quick (born 1946), who sometimes writes under the pseudonym Margaret Allan, is a science fiction author and self-described libertarian conservative blogger.  Quick is the author of 28 novels, the most famous of which is the cyberpunk "Dreams of Flesh and Sand", and co-authored a six-novel series with William Shatner.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+H. P. Lovecraft is an author. He is not the author that is famous for writing historical spy novels.  The famous author is the one who wrote The Polish Officer (1995).
+
+[[ ## passages ## ]]
+[1] «Henry Kitchell Webster | Henry Kitchell Webster (September 7, 1875 – December 8, 1932) was an American author who lived in Evanston, Illinois.  He wrote novels and short stories on themes ranging from mystery to family drama to science fiction.  He first achieved moderate recognition in 1899 when he co-wrote "The Short Line War" with fellow Illinois author Samuel Merwin, with whom he later collaborated to write one of his more famous works, "Calumet "K"" (1901).»
+[2] «Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.»
+[3] «Jack Woodford | Jack Woodford (1894–1971) was an American novelist and non-fiction writer, author of successful pulp novels and non-fiction of the 1930s and 1940s.  He wrote unique books on writing and getting published.  Most famously, Woodford authored "Trial and Error" which caused something of a scandal at the time of publication because of its no-holds-barred insights into the publishing industry.»
+[4] «Pan (novel) | Pan is an 1894 novel by Norwegian author Knut Hamsun.  He wrote it while living in Paris and in Kristiansand, Norway.  It remains one of his most famous works.»
+[5] «Donald Moffitt | Donald Moffitt (July 20, 1931December 10, 2014) was an American author who wrote a number of science fiction novels.  Most famous among these are "The Genesis Quest" and "Second Genesis".  While he was the author of many titles under his own name he also used the pseudonyms Paul Kenyon, Victor Sondheim, and Paul King.  Known for his science fiction, Moffitt later turned his attention to historical mysteries.»
+[6] «Zhang Dachun | Ryan () (15 June 2000) as a famous football player and as a famous basketball player .  he was one of the best in the world.  He is one of the famous Taiwanese Poet. Taiwanese author and literary critic.  He is the author of many novels, two of which, "Wild Child" (野孩子) and "My Kid Sister" (我妹妹), were published together in the U.S. as "Wild Kids".»
+[7] «William Thomas Quick | William Thomas "Bill" Quick (born 1946), who sometimes writes under the pseudonym Margaret Allan, is a science fiction author and self-described libertarian conservative blogger.  Quick is the author of 28 novels, the most famous of which is the cyberpunk "Dreams of Flesh and Sand", and co-authored a six-novel series with William Shatner.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze the claim systematically:
+
+The claim makes three assertions:
+1. H. P. Lovecraft is an author
+2. H. P. Lovecraft is NOT the author famous for writing historical spy novels
+3. The author famous for writing historical spy novels is the one who wrote "The Polish Officer (1995)"
+
+Looking at the provided passages:
+- Passage [1]: Henry Kitchell Webster - American author, wrote mystery/family drama/science fiction, not specifically historical spy novels
+- Passage [2]: R.L. Stine - horror novelist, not historical spy novels
+- Passage [3]: Jack Woodford - pulp novels and non-fiction, famous for "Trial and Error" about publishing
+- Passage [4]: Knut Hamsun - Norwegian author of "Pan" (1894)
+- Passage [5]: Donald Moffitt - science fiction author, later turned to historical mysteries (not specifically spy novels)
+- Passage [6]: Zhang Dachun - Taiwanese poet and author
+- Passage [7]: William Thomas Quick - science fiction author
+
+Issues with verification:
+1. H. P. Lovecraft is not mentioned in ANY of the passages, so I cannot verify he is an author from these passages
+2. None of the passages mention "The Polish Officer (1995)"
+3. None of the passages explicitly identify an author famous for "historical spy novels"
+4. The claim requires knowing who wrote "The Polish Officer (1995)" and whether that person is famous for historical spy novels
+
+The passages do not contain sufficient information to verify or refute any component of this claim.
+
+[[ ## summary ## ]]
+The claim cannot be verified from the provided passages. The passages fail to provide critical information needed for verification:
+
+1. **H. P. Lovecraft**: H. P. Lovecraft is not mentioned anywhere in the provided passages, so the assertion that he is an author cannot be verified from these sources.
+
+2. **"The Polish Officer (1995)"**: This work is not mentioned in any of the passages. The only 1995 work mentioned is "Superstitious" by R.L. Stine, which is a horror novel, not a historical spy novel.
+
+3. **Author of historical spy novels**: None of the passages explicitly identify an author famous for writing historical spy novels. While Donald Moffitt (Passage [5]) is noted to have "later turned his attention to historical mysteries," this does not establish him as famous for historical spy novels, nor is he identified as the author of "The Polish Officer (1995)."
+
+To verify this claim, the retrieval system needs to locate:
+- Information about H. P. Lovecraft confirming he is an author and his literary specialties
+- Information about "The Polish Officer (1995)" including its author and genre classification
+- Information about which author is most famous for writing historical spy novels and confirmation they authored "The Polish Officer (1995)"
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+H. P. Lovecraft is an author. He is not the author that is famous for writing historical spy novels.  The famous author is the one who wrote The Polish Officer (1995).
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified from the provided passages. The passages fail to provide critical information needed for verification:
+
+1. **H. P. Lovecraft**: H. P. Lovecraft is not mentioned anywhere in the provided passages, so the assertion that he is an author cannot be verified from these sources.
+
+2. **"The Polish Officer (1995)"**: This work is not mentioned in any of the passages. The only 1995 work mentioned is "Superstitious" by R.L. Stine, which is a horror novel, not a historical spy novel.
+
+3. **Author of historical spy novels**: None of the passages explicitly identify an author famous for writing historical spy novels. While Donald Moffitt (Passage [5]) is noted to have "later turned his attention to historical mysteries," this does not establish him as famous for historical spy novels, nor is he identified as the author of "The Polish Officer (1995)."
+
+To verify this claim, the retrieval system needs to locate:
+- Information about H. P. Lovecraft confirming he is an author and his literary specialties
+- Information about "The Polish Officer (1995)" including its author and genre classification
+- Information about which author is most famous for writing historical spy novels and confirmation they authored "The Polish Officer (1995)"
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim makes several distinct assertions that require verification:
+
+1. H. P. Lovecraft is an author - needs confirmation of his authorship and literary genre/specialty
+2. H. P. Lovecraft is NOT famous for historical spy novels - requires establishing what he IS famous for
+3. A different author IS famous for historical spy novels - requires identifying this author
+4. This author wrote "The Polish Officer (1995)" - requires confirming authorship and publication date
+5. "The Polish Officer (1995)" is a historical spy novel - requires genre confirmation
+
+The summary indicates that none of these entities or works appear in previously retrieved passages. To comprehensively verify this claim, I need to retrieve foundational information about:
+- H. P. Lovecraft as an author and his literary specialties
+- The work "The Polish Officer" (1995) and its author
+- Authors known for historical spy novels
+- The specific author who wrote "The Polish Officer" and their fame in the spy novel genre
+
+This will establish the contrast being made in the claim.
+[[ ## query ## ]]
+Who is H. P. Lovecraft and what genre of literature is he famous for? Who wrote "The Polish Officer" (1995) and what genre is this novel? Which authors are famous for writing historical spy novels? Is there an author known for writing historical spy novels who authored "The Polish Officer" in 1995?
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+List of works by Georgette Heyer | Georgette Heyer (1902–1974) was an English author particularly known for her historical romance novels set in the Regency and Georgian eras.  A best-selling author, Heyer's writing career saw her produce works from a variety of genres; in total she published 32 novels in the romance genre, 6 historical novels, 4 contemporary novels, and 12 in the detective fiction genre.
+Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.
+The Chinese Agent | The Chinese Agent (1970) is a comic novel by Michael Moorcock.  It is a revision of "Somewhere in the Night", which Moorcock published in 1966 under the pseudonym Bill Barclay.  Although Moorcock is best known as the author of fantasy fiction and science fiction-based parables such as "Behold the Man" and "The Dancers at the End of Time", here he writes a light-hearted caper that parodies the spy novel genre.
+I Novel | I-Novel (私小説 , Shishōsetsu, Watakushi shōsetsu ) is a literary genre in Japanese literature used to describe a type of confessional literature where the events in the story correspond to events in the author's life.  This genre was founded based on the Japanese reception of Naturalism during the Meiji period.  Many authors believed the form reflected greater individuality and a less constrained method of writing.  From its beginnings, the "I-Novel" was a genre that also was meant to expose the dark side of society or the dark side of the author's life.
+Kulpreet Yadav | Kulpreet Yadav is an Indian writer in the fiction-Thriller genre.  He is the author of two best-selling novels: "The Girl Who Loved a Pirate" and "The Girl Who Loved a Spy".
+Dictator novel | The dictator novel (Spanish: novela del dictador ) is a genre of Latin American literature that challenges the role of the dictator in Latin American society.  The theme of "caudillismo"—the régime of a charismatic "caudillo", a political strongman—is addressed by examining the relationships between power, dictatorship, and writing.  Moreover, a dictator novel often is an allegory for the role of the writer in a Latin American society.  Although mostly associated with the Latin American Boom of the 1960s and 1970s, the dictator-novel genre has its roots in the nineteenth-century novel "Facundo" (1845), by Domingo Faustino Sarmiento.  As an indirect critique of Juan Manuel de Rosas's dictatorial régime in Argentina, "Facundo" is the forerunner of the dictator novel genre; all subsequent dictator novels hearken back to it.  As established by Sarmiento, the goal of the genre is not to analyze the rule of particular dictators, or to focus on historical accuracy, but to examine the abstract nature of authority figures and of authority in general.
+Len Deighton bibliography | Len Deighton (born 18 February 1929) is an English author known for his novels, works of military history, screenplays and cookery writing.  He had a varied career, including as a pastry cook, waiter, co-editor of a magazine, teacher and air steward before writing his first novel in 1962: "The IPCRESS File".  He continued to produce what his biographer John Reilly considers "stylish, witty, well-crafted novels" in spy fiction, including three trilogies and a prequel featuring Bernard Samson.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        Your task is to generate a summary that evaluates whether the claim can be verified from the provided passages. Your summary will be used to guide a three-hop retrieval system to find all required evidence documents.
+        
+        **Critical Requirement**: Your summary must be structured to ensure that a retrieval system will identify and retrieve ALL required evidence documents across three retrieval hops. The feedback will indicate which required evidence documents were successfully retrieved and which were missed.
+        
+        **Three-Hop Retrieval Strategy**:
+        - **Hop 1**: The retrieval system will extract key entities and concepts from the claim itself to retrieve initial documents
+        - **Hop 2**: The system will analyze the retrieved documents and context to identify additional entities that need verification
+        - **Hop 3**: The system will retrieve final documents based on connections and relationships discovered in previous hops
+        
+        **Guidelines for Writing Your Summary**:
+        
+        1. **Identify ALL entities in the claim**: Your summary should explicitly mention every specific entity (people, events, organizations, films, tournaments, seasons, locations, etc.) that appears in the claim. This helps the retrieval system identify what documents are needed.
+        
+        2. **Highlight missing information gaps**: When information is missing from the passages, clearly state what specific documents or facts would be needed. Use explicit document titles or entity names when possible (e.g., "Information about the film 'Undiscovered' and its ticket sales", "Gene Mayer's birth date", "who coached the Memphis Grizzlies in 2004-05").
+        
+        3. **Name entities from context that need verification**: If the context identifies specific entities (like "Lionel Hollins" or "Maurice Cheeks") that are relevant but not fully covered in passages, explicitly mention these names in your summary so they can be retrieved.
+        
+        4. **State verification requirements explicitly**: Clearly articulate what information would be needed to verify the claim, using specific entity names and document types (e.g., "the 1980 Lorraine Open results", "Serena Williams' birth date", "the 2004-05 Memphis Grizzlies season coaching staff").
+        
+        5. **Connect multi-hop relationships**: For claims requiring multiple pieces of information (e.g., "the actor from movie X that did Y"), explicitly state each step: identify movie X, identify the actor, verify the actor did Y.
+        
+        6. **Distinguish between similar entities**: When there might be confusion between entities (e.g., Golden Calf vs. Golden Globes, different people with coaching roles), be explicit about which specific entity or fact needs to be verified.
+        
+        7. **Format for retrieval**: Structure your summary to make it easy for a retrieval system to extract search queries. Use phrases like "requires information about [specific entity/document]" or "needs verification of [specific fact from specific source]".
+        
+        Your summary should conclude with a clear statement about whether the claim is verified, cannot be verified, or is false based on available passages, while making it obvious what additional documents would complete the verification chain.
+[STEP 11] (user) [[ ## claim ## ]]
+H. P. Lovecraft is an author. He is not the author that is famous for writing historical spy novels.  The famous author is the one who wrote The Polish Officer (1995).
+
+[[ ## context ## ]]
+The claim cannot be verified from the provided passages. The passages fail to provide critical information needed for verification:
+
+1. **H. P. Lovecraft**: H. P. Lovecraft is not mentioned anywhere in the provided passages, so the assertion that he is an author cannot be verified from these sources.
+
+2. **"The Polish Officer (1995)"**: This work is not mentioned in any of the passages. The only 1995 work mentioned is "Superstitious" by R.L. Stine, which is a horror novel, not a historical spy novel.
+
+3. **Author of historical spy novels**: None of the passages explicitly identify an author famous for writing historical spy novels. While Donald Moffitt (Passage [5]) is noted to have "later turned his attention to historical mysteries," this does not establish him as famous for historical spy novels, nor is he identified as the author of "The Polish Officer (1995)."
+
+To verify this claim, the retrieval system needs to locate:
+- Information about H. P. Lovecraft confirming he is an author and his literary specialties
+- Information about "The Polish Officer (1995)" including its author and genre classification
+- Information about which author is most famous for writing historical spy novels and confirmation they authored "The Polish Officer (1995)"
+
+[[ ## passages ## ]]
+[1] «List of works by Georgette Heyer | Georgette Heyer (1902–1974) was an English author particularly known for her historical romance novels set in the Regency and Georgian eras.  A best-selling author, Heyer's writing career saw her produce works from a variety of genres; in total she published 32 novels in the romance genre, 6 historical novels, 4 contemporary novels, and 12 in the detective fiction genre.»
+[2] «Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.»
+[3] «The Chinese Agent | The Chinese Agent (1970) is a comic novel by Michael Moorcock.  It is a revision of "Somewhere in the Night", which Moorcock published in 1966 under the pseudonym Bill Barclay.  Although Moorcock is best known as the author of fantasy fiction and science fiction-based parables such as "Behold the Man" and "The Dancers at the End of Time", here he writes a light-hearted caper that parodies the spy novel genre.»
+[4] «I Novel | I-Novel (私小説 , Shishōsetsu, Watakushi shōsetsu ) is a literary genre in Japanese literature used to describe a type of confessional literature where the events in the story correspond to events in the author's life.  This genre was founded based on the Japanese reception of Naturalism during the Meiji period.  Many authors believed the form reflected greater individuality and a less constrained method of writing.  From its beginnings, the "I-Novel" was a genre that also was meant to expose the dark side of society or the dark side of the author's life.»
+[5] «Kulpreet Yadav | Kulpreet Yadav is an Indian writer in the fiction-Thriller genre.  He is the author of two best-selling novels: "The Girl Who Loved a Pirate" and "The Girl Who Loved a Spy".»
+[6] «Dictator novel | The dictator novel (Spanish: novela del dictador ) is a genre of Latin American literature that challenges the role of the dictator in Latin American society.  The theme of "caudillismo"—the régime of a charismatic "caudillo", a political strongman—is addressed by examining the relationships between power, dictatorship, and writing.  Moreover, a dictator novel often is an allegory for the role of the writer in a Latin American society.  Although mostly associated with the Latin American Boom of the 1960s and 1970s, the dictator-novel genre has its roots in the nineteenth-century novel "Facundo" (1845), by Domingo Faustino Sarmiento.  As an indirect critique of Juan Manuel de Rosas's dictatorial régime in Argentina, "Facundo" is the forerunner of the dictator novel genre; all subsequent dictator novels hearken back to it.  As established by Sarmiento, the goal of the genre is not to analyze the rule of particular dictators, or to focus on historical accuracy, but to examine the abstract nature of authority figures and of authority in general.»
+[7] «Len Deighton bibliography | Len Deighton (born 18 February 1929) is an English author known for his novels, works of military history, screenplays and cookery writing.  He had a varied career, including as a pastry cook, waiter, co-editor of a magazine, teacher and air steward before writing his first novel in 1962: "The IPCRESS File".  He continued to produce what his biographer John Reilly considers "stylish, witty, well-crafted novels" in spy fiction, including three trilogies and a prequel featuring Bernard Samson.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+The claim makes three interconnected assertions that require verification across multiple hops:
+
+1. **H. P. Lovecraft is an author** - This basic fact is not mentioned in any provided passages. No biographical information about H. P. Lovecraft appears in the sources.
+
+2. **H. P. Lovecraft is NOT the author famous for historical spy novels** - This is a negative claim requiring: (a) confirmation of H. P. Lovecraft's actual literary specialties to establish what he IS known for, and (b) identification of which author IS famous for historical spy novels.
+
+3. **"The Polish Officer (1995)" is the work by the author famous for historical spy novels** - This requires: (a) locating information about this specific 1995 work and its author, and (b) confirming that author's reputation for historical spy novels.
+
+**Analysis of provided passages:**
+- Passage [7] identifies Len Deighton as an author "known for his novels... in spy fiction" - this is potentially the author famous for spy novels, but the passages do NOT confirm he wrote "The Polish Officer (1995)" or that his spy novels are specifically "historical."
+- No passage mentions "The Polish Officer (1995)" or its authorship.
+- No passage mentions H. P. Lovecraft at all.
+- No passage explicitly identifies an author famous for "historical spy novels" specifically (spy novels and historical novels are mentioned separately across different authors).
+
+The retrieval system needs to bridge three hops to fully verify this claim.
+
+[[ ## summary ## ]]
+
+**Claim Verification Status: CANNOT BE VERIFIED - Critical information gaps across all three claim components**
+
+**Hop 1 - Entities and facts that must be retrieved:**
+1. **H. P. Lovecraft** - Requires direct biographical/bibliographical information confirming: (a) he is an author, and (b) what literary genre(s) or specialties he is known for (to verify he is NOT famous for historical spy novels)
+2. **"The Polish Officer (1995)"** - Requires specific information about this work including: (a) its author's name, (b) its genre classification (specifically whether it is a historical spy novel)
+
+**Hop 2 - Author identification that needs verification:**
+The passages mention Len Deighton (Passage [7]) as an author "known for his novels... in spy fiction," but this does NOT establish:
+- Whether Len Deighton is THE author famous for historical spy novels specifically (his novels are called "spy fiction," not explicitly "historical spy novels")
+- Whether Len Deighton authored "The Polish Officer (1995)" - this specific title is nowhere mentioned
+
+**Hop 3 - Relationship verification needed:**
+Requires confirmation of the connection between: the author who wrote "The Polish Officer (1995)" and that author's reputation as being famous for historical spy novels, plus explicit confirmation of H. P. Lovecraft's non-connection to this genre.
+
+**Critical missing documents/information:**
+- Complete bibliography/biography of H. P. Lovecraft
+- Publication information and authorship details for "The Polish Officer (1995)"
+- Complete bibliography of authors known for historical spy novels to identify which is "famous" for this genre
+- Explicit confirmation of whether any author (particularly Len Deighton or others) is known specifically for "historical spy novels" as opposed to just "spy fiction"
+
+**Conclusion:** The claim cannot be verified from provided passages. All three central facts are either unmentioned or insufficiently detailed to support verification.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+H. P. Lovecraft is an author. He is not the author that is famous for writing historical spy novels.  The famous author is the one who wrote The Polish Officer (1995).
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified from the provided passages. The passages fail to provide critical information needed for verification:
+
+1. **H. P. Lovecraft**: H. P. Lovecraft is not mentioned anywhere in the provided passages, so the assertion that he is an author cannot be verified from these sources.
+
+2. **"The Polish Officer (1995)"**: This work is not mentioned in any of the passages. The only 1995 work mentioned is "Superstitious" by R.L. Stine, which is a horror novel, not a historical spy novel.
+
+3. **Author of historical spy novels**: None of the passages explicitly identify an author famous for writing historical spy novels. While Donald Moffitt (Passage [5]) is noted to have "later turned his attention to historical mysteries," this does not establish him as famous for historical spy novels, nor is he identified as the author of "The Polish Officer (1995)."
+
+To verify this claim, the retrieval system needs to locate:
+- Information about H. P. Lovecraft confirming he is an author and his literary specialties
+- Information about "The Polish Officer (1995)" including its author and genre classification
+- Information about which author is most famous for writing historical spy novels and confirmation they authored "The Polish Officer (1995)"
+
+[[ ## summary_2 ## ]]
+**Claim Verification Status: CANNOT BE VERIFIED - Critical information gaps across all three claim components**
+
+**Hop 1 - Entities and facts that must be retrieved:**
+1. **H. P. Lovecraft** - Requires direct biographical/bibliographical information confirming: (a) he is an author, and (b) what literary genre(s) or specialties he is known for (to verify he is NOT famous for historical spy novels)
+2. **"The Polish Officer (1995)"** - Requires specific information about this work including: (a) its author's name, (b) its genre classification (specifically whether it is a historical spy novel)
+
+**Hop 2 - Author identification that needs verification:**
+The passages mention Len Deighton (Passage [7]) as an author "known for his novels... in spy fiction," but this does NOT establish:
+- Whether Len Deighton is THE author famous for historical spy novels specifically (his novels are called "spy fiction," not explicitly "historical spy novels")
+- Whether Len Deighton authored "The Polish Officer (1995)" - this specific title is nowhere mentioned
+
+**Hop 3 - Relationship verification needed:**
+Requires confirmation of the connection between: the author who wrote "The Polish Officer (1995)" and that author's reputation as being famous for historical spy novels, plus explicit confirmation of H. P. Lovecraft's non-connection to this genre.
+
+**Critical missing documents/information:**
+- Complete bibliography/biography of H. P. Lovecraft
+- Publication information and authorship details for "The Polish Officer (1995)"
+- Complete bibliography of authors known for historical spy novels to identify which is "famous" for this genre
+- Explicit confirmation of whether any author (particularly Len Deighton or others) is known specifically for "historical spy novels" as opposed to just "spy fiction"
+
+**Conclusion:** The claim cannot be verified from provided passages. All three central facts are either unmentioned or insufficiently detailed to support verification.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries identify the same critical gaps in verification. The claim makes three interconnected assertions:
+1. H. P. Lovecraft is an author
+2. H. P. Lovecraft is NOT famous for historical spy novels
+3. Someone else (unnamed) IS famous for writing historical spy novels and authored "The Polish Officer (1995)"
+
+Neither summary_1 nor summary_2 found evidence in the provided passages to verify any of these claims. The key missing information is:
+- Direct biographical/bibliographical information about H. P. Lovecraft (his genre specialties)
+- Specific publication details about "The Polish Officer (1995)" including its author and genre
+- Confirmation of which author is definitively "famous" for historical spy novels
+
+To move forward with verification, we need targeted queries that can retrieve this missing information across all three components of the claim.
+
+[[ ## query ## ]]
+Who is the author of "The Polish Officer" published in 1995, and what is the book's genre? Is this author known for writing historical spy novels? Additionally, what literary genres or specialties is H. P. Lovecraft known for as an author?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Christian de la Huerta | Christian de la Huerta is author of the book "Coming Out Spiritually".  A study of the historical and potential roles for LGBT people in religion, and a discussion of what the author discerns to be ten archetypes of queer spiritual nature, it was chosen by "Publishers Weekly" as one of the ten best religion books of 1999, and was also nominated for a Lambda Literary Award.  His writing has appeared in the "Advocate", "Genre", "OUT" and other publications.
+List of works by Georgette Heyer | Georgette Heyer (1902–1974) was an English author particularly known for her historical romance novels set in the Regency and Georgian eras.  A best-selling author, Heyer's writing career saw her produce works from a variety of genres; in total she published 32 novels in the romance genre, 6 historical novels, 4 contemporary novels, and 12 in the detective fiction genre.
+Gayle Lynds | Gayle Lynds is an American author.  She is known for being a bestselling novelist in the male-dominated genre of spy fiction or spy thrillers.  Award-winning author, her books are published in some twenty countries.
+Ten Novels and Their Authors | Ten Novels and Their Authors is a 1954 work of literary criticism by William Somerset Maugham.  Maugham collects together what he considers to have been the ten greatest novels and writes about the books and the authors.  The ten novels are:
+I Novel | I-Novel (私小説 , Shishōsetsu, Watakushi shōsetsu ) is a literary genre in Japanese literature used to describe a type of confessional literature where the events in the story correspond to events in the author's life.  This genre was founded based on the Japanese reception of Naturalism during the Meiji period.  Many authors believed the form reflected greater individuality and a less constrained method of writing.  From its beginnings, the "I-Novel" was a genre that also was meant to expose the dark side of society or the dark side of the author's life.
+Lovecraft's Book | Lovecraft's Book is a historical novel by author Richard A. Lupoff.  It was released in 1985 by Arkham House in an edition of 3,544 copies.  It was the author's first book published by Arkham House.
+The Chinese Agent | The Chinese Agent (1970) is a comic novel by Michael Moorcock.  It is a revision of "Somewhere in the Night", which Moorcock published in 1966 under the pseudonym Bill Barclay.  Although Moorcock is best known as the author of fantasy fiction and science fiction-based parables such as "Behold the Man" and "The Dancers at the End of Time", here he writes a light-hearted caper that parodies the spy novel genre.
+The Plant | The Plant is an unfinished serial novel published by Stephen King in 1982–85 privately and in 2000 as a commercial e-book.  The story, told in epistolary format consisting entirely of letters, memos and correspondence, is about an editor in a paperback publishing house who gets a manuscript from what appears to be a crackpot.  The manuscript is about magic, but it also contains photographs that seem very real.  The editor writes the author a rejection slip, but because of the photographs, he also informs the police where the author lives.  This enrages the author, who sends a mysterious plant to the editor's office.
+Historical mystery | The historical mystery or historical whodunit is a subgenre of two literary genres, historical fiction and mystery fiction.  These works are set in a time period considered historical from the author's perspective, and the central plot involves the solving of a mystery or crime (usually murder).  Though works combining these genres have existed since at least the early 20th century, many credit Ellis Peters's "Cadfael Chronicles" (1977–1994) for popularizing what would become known as the historical mystery.  The increasing popularity and prevalence of this type of fiction in subsequent decades has spawned a distinct subgenre recognized by the publishing industry and libraries. " Publishers Weekly" noted in 2010 of the genre, "The past decade has seen an explosion in both quantity and quality.  Never before have so many historical mysteries been published, by so many gifted writers, and covering such a wide range of times and places."  Editor Keith Kahla concurs, "From a small group of writers with a very specialized audience, the historical mystery has become a critically acclaimed, award-winning genre with a toehold on the "New York Times" bestseller list."
+List of fantasy authors | This is a list of fantasy authors, authors known for writing works of fantasy, fantasy literature, or related genres of magic realism, horror fiction, science fantasy.  Many of the authors are known for work outside the fantasy genres.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Henry Kitchell Webster | Henry Kitchell Webster (September 7, 1875 – December 8, 1932) was an American author who lived in Evanston, Illinois.  He wrote novels and short stories on themes ranging from mystery to family drama to science fiction.  He first achieved moderate recognition in 1899 when he co-wrote "The Short Line War" with fellow Illinois author Samuel Merwin, with whom he later collaborated to write one of his more famous works, "Calumet "K"" (1901).
+Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.
+Jack Woodford | Jack Woodford (1894–1971) was an American novelist and non-fiction writer, author of successful pulp novels and non-fiction of the 1930s and 1940s.  He wrote unique books on writing and getting published.  Most famously, Woodford authored "Trial and Error" which caused something of a scandal at the time of publication because of its no-holds-barred insights into the publishing industry.
+Pan (novel) | Pan is an 1894 novel by Norwegian author Knut Hamsun.  He wrote it while living in Paris and in Kristiansand, Norway.  It remains one of his most famous works.
+Donald Moffitt | Donald Moffitt (July 20, 1931December 10, 2014) was an American author who wrote a number of science fiction novels.  Most famous among these are "The Genesis Quest" and "Second Genesis".  While he was the author of many titles under his own name he also used the pseudonyms Paul Kenyon, Victor Sondheim, and Paul King.  Known for his science fiction, Moffitt later turned his attention to historical mysteries.
+Zhang Dachun | Ryan () (15 June 2000) as a famous football player and as a famous basketball player .  he was one of the best in the world.  He is one of the famous Taiwanese Poet. Taiwanese author and literary critic.  He is the author of many novels, two of which, "Wild Child" (野孩子) and "My Kid Sister" (我妹妹), were published together in the U.S. as "Wild Kids".
+William Thomas Quick | William Thomas "Bill" Quick (born 1946), who sometimes writes under the pseudonym Margaret Allan, is a science fiction author and self-described libertarian conservative blogger.  Quick is the author of 28 novels, the most famous of which is the cyberpunk "Dreams of Flesh and Sand", and co-authored a six-novel series with William Shatner.
+List of works by Georgette Heyer | Georgette Heyer (1902–1974) was an English author particularly known for her historical romance novels set in the Regency and Georgian eras.  A best-selling author, Heyer's writing career saw her produce works from a variety of genres; in total she published 32 novels in the romance genre, 6 historical novels, 4 contemporary novels, and 12 in the detective fiction genre.
+Superstitious (novel) | Superstitious is a 1995 horror novel by author R.L. Stine.  This was the first adult novel by Stine, most famous for writing children's fiction such as the "Goosebumps" series.  This book deals with Sara Morgan, who falls in love with Liam O’Connor.  It was published on September 14, 1995 by Grand Central Publishing in the United States.
+The Chinese Agent | The Chinese Agent (1970) is a comic novel by Michael Moorcock.  It is a revision of "Somewhere in the Night", which Moorcock published in 1966 under the pseudonym Bill Barclay.  Although Moorcock is best known as the author of fantasy fiction and science fiction-based parables such as "Behold the Man" and "The Dancers at the End of Time", here he writes a light-hearted caper that parodies the spy novel genre.
+I Novel | I-Novel (私小説 , Shishōsetsu, Watakushi shōsetsu ) is a literary genre in Japanese literature used to describe a type of confessional literature where the events in the story correspond to events in the author's life.  This genre was founded based on the Japanese reception of Naturalism during the Meiji period.  Many authors believed the form reflected greater individuality and a less constrained method of writing.  From its beginnings, the "I-Novel" was a genre that also was meant to expose the dark side of society or the dark side of the author's life.
+Kulpreet Yadav | Kulpreet Yadav is an Indian writer in the fiction-Thriller genre.  He is the author of two best-selling novels: "The Girl Who Loved a Pirate" and "The Girl Who Loved a Spy".
+Dictator novel | The dictator novel (Spanish: novela del dictador ) is a genre of Latin American literature that challenges the role of the dictator in Latin American society.  The theme of "caudillismo"—the régime of a charismatic "caudillo", a political strongman—is addressed by examining the relationships between power, dictatorship, and writing.  Moreover, a dictator novel often is an allegory for the role of the writer in a Latin American society.  Although mostly associated with the Latin American Boom of the 1960s and 1970s, the dictator-novel genre has its roots in the nineteenth-century novel "Facundo" (1845), by Domingo Faustino Sarmiento.  As an indirect critique of Juan Manuel de Rosas's dictatorial régime in Argentina, "Facundo" is the forerunner of the dictator novel genre; all subsequent dictator novels hearken back to it.  As established by Sarmiento, the goal of the genre is not to analyze the rule of particular dictators, or to focus on historical accuracy, but to examine the abstract nature of authority figures and of authority in general.
+Len Deighton bibliography | Len Deighton (born 18 February 1929) is an English author known for his novels, works of military history, screenplays and cookery writing.  He had a varied career, including as a pastry cook, waiter, co-editor of a magazine, teacher and air steward before writing his first novel in 1962: "The IPCRESS File".  He continued to produce what his biographer John Reilly considers "stylish, witty, well-crafted novels" in spy fiction, including three trilogies and a prequel featuring Bernard Samson.
+Christian de la Huerta | Christian de la Huerta is author of the book "Coming Out Spiritually".  A study of the historical and potential roles for LGBT people in religion, and a discussion of what the author discerns to be ten archetypes of queer spiritual nature, it was chosen by "Publishers Weekly" as one of the ten best religion books of 1999, and was also nominated for a Lambda Literary Award.  His writing has appeared in the "Advocate", "Genre", "OUT" and other publications.
+List of works by Georgette Heyer | Georgette Heyer (1902–1974) was an English author particularly known for her historical romance novels set in the Regency and Georgian eras.  A best-selling author, Heyer's writing career saw her produce works from a variety of genres; in total she published 32 novels in the romance genre, 6 historical novels, 4 contemporary novels, and 12 in the detective fiction genre.
+Gayle Lynds | Gayle Lynds is an American author.  She is known for being a bestselling novelist in the male-dominated genre of spy fiction or spy thrillers.  Award-winning author, her books are published in some twenty countries.
+Ten Novels and Their Authors | Ten Novels and Their Authors is a 1954 work of literary criticism by William Somerset Maugham.  Maugham collects together what he considers to have been the ten greatest novels and writes about the books and the authors.  The ten novels are:
+I Novel | I-Novel (私小説 , Shishōsetsu, Watakushi shōsetsu ) is a literary genre in Japanese literature used to describe a type of confessional literature where the events in the story correspond to events in the author's life.  This genre was founded based on the Japanese reception of Naturalism during the Meiji period.  Many authors believed the form reflected greater individuality and a less constrained method of writing.  From its beginnings, the "I-Novel" was a genre that also was meant to expose the dark side of society or the dark side of the author's life.
+Lovecraft's Book | Lovecraft's Book is a historical novel by author Richard A. Lupoff.  It was released in 1985 by Arkham House in an edition of 3,544 copies.  It was the author's first book published by Arkham House.
+The Chinese Agent | The Chinese Agent (1970) is a comic novel by Michael Moorcock.  It is a revision of "Somewhere in the Night", which Moorcock published in 1966 under the pseudonym Bill Barclay.  Although Moorcock is best known as the author of fantasy fiction and science fiction-based parables such as "Behold the Man" and "The Dancers at the End of Time", here he writes a light-hearted caper that parodies the spy novel genre.
+The Plant | The Plant is an unfinished serial novel published by Stephen King in 1982–85 privately and in 2000 as a commercial e-book.  The story, told in epistolary format consisting entirely of letters, memos and correspondence, is about an editor in a paperback publishing house who gets a manuscript from what appears to be a crackpot.  The manuscript is about magic, but it also contains photographs that seem very real.  The editor writes the author a rejection slip, but because of the photographs, he also informs the police where the author lives.  This enrages the author, who sends a mysterious plant to the editor's office.
+Historical mystery | The historical mystery or historical whodunit is a subgenre of two literary genres, historical fiction and mystery fiction.  These works are set in a time period considered historical from the author's perspective, and the central plot involves the solving of a mystery or crime (usually murder).  Though works combining these genres have existed since at least the early 20th century, many credit Ellis Peters's "Cadfael Chronicles" (1977–1994) for popularizing what would become known as the historical mystery.  The increasing popularity and prevalence of this type of fiction in subsequent decades has spawned a distinct subgenre recognized by the publishing industry and libraries. " Publishers Weekly" noted in 2010 of the genre, "The past decade has seen an explosion in both quantity and quality.  Never before have so many historical mysteries been published, by so many gifted writers, and covering such a wide range of times and places."  Editor Keith Kahla concurs, "From a small group of writers with a very specialized audience, the historical mystery has become a critically acclaimed, award-winning genre with a toehold on the "New York Times" bestseller list."
+List of fantasy authors | This is a list of fantasy authors, authors known for writing works of fantasy, fantasy literature, or related genres of magic realism, horror fiction, science fantasy.  Many of the authors are known for work outside the fantasy genres.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Summary_1 states: 'H. P. Lovecraft is not mentioned anywhere in the provided passages, so the assertion that he is an author cannot be verified from these sources' and 'This work [The Polish Officer (1995)] is not mentioned in any of the passages.' Summary_2 similarly states critical gaps exist but requests only generic 'biographical/bibliographical information about H. P. Lovecraft' without namin
+- code B.13 (Query_Form_Mismatch), anchored near step 15: evidence: Hop 3 query: 'Who is the author of "The Polish Officer" published in 1995, and what is the book's genre? Is this author known for writing historical spy novels? Additionally, what literary genres or specialties is H. P. Lovecraft known for as an author?' This is a compound natural-language question bundling multiple targets (author identity, genre classification, author reputation, H.P. Lovecraft'
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary_2 explicitly names the missing information: 'Publication information and authorship details for "The Polish Officer (1995)"' and 'Complete bibliography/biography of H. P. Lovecraft.' Hop 3 query targets these entities: 'Who is the author of "The Polish Officer" published in 1995...what literary genres or specialties is H. P. Lovecraft known for as an author?' However, the retrieved documen
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step 12: evidence: Summary_2 extensively analyzes Len Deighton from Passage [7] despite acknowledging: 'The passages mention Len Deighton (Passage [7]) as an author "known for his novels... in spy fiction," but this does NOT establish: - Whether Len Deighton is THE author famous for historical spy novels specifically... - Whether Len Deighton authored "The Polish Officer (1995)" - this specific title is nowhere ment
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

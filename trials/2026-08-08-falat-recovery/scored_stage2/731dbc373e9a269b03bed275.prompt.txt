@@ -1,0 +1,495 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.
+Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.
+National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.
+Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.
+Carlos Mejía Godoy | Carlos Mejía Godoy (born June 27, 1943) is a Nicaraguan musician, composer and singer.  He was born in Somoto, Madriz.  Son of Carlos Mejía Fajardo and María Elsa Godoy, his brother Luis Enrique Mejía Godoy, three years younger than he is, is also an acclaimed and much-loved musician.  Carlos and Luis Enrique were pivotal in the New Song Movement in Central America beginning in the 1970s.  They were both recently honored with Nicaragua's highest cultural distinction, the Order of Rubén Darío.
+Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.
+Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+[STEP 4] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## passages ## ]]
+[1] «Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.»
+[2] «Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.»
+[3] «National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.»
+[4] «Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.»
+[5] «Carlos Mejía Godoy | Carlos Mejía Godoy (born June 27, 1943) is a Nicaraguan musician, composer and singer.  He was born in Somoto, Madriz.  Son of Carlos Mejía Fajardo and María Elsa Godoy, his brother Luis Enrique Mejía Godoy, three years younger than he is, is also an acclaimed and much-loved musician.  Carlos and Luis Enrique were pivotal in the New Song Movement in Central America beginning in the 1970s.  They were both recently honored with Nicaragua's highest cultural distinction, the Order of Rubén Darío.»
+[6] «Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.»
+[7] «Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+To verify this claim, I need to:
+1. Identify who the "award winning author of Love and Mr Lewisham" is
+2. Determine their nationality
+3. Verify Rubén Darío's nationality
+4. Check if the claim (that they were not both English) is accurate
+
+From the passages provided:
+- Passages [1], [2], [3] clearly establish that Rubén Darío was Nicaraguan (a poet from Nicaragua)
+- Passages [4], [5], [6], [7] reference other people/places named after Rubén Darío but don't add biographical information about him
+
+However, the passages contain NO information about "Love and Mr Lewisham" or its author. I cannot identify who wrote this work from the provided passages, nor can I determine their nationality or whether they were award-winning.
+
+The claim requires knowledge of:
+1. The author of "Love and Mr Lewisham" - NOT PROVIDED
+2. The author's nationality - NOT PROVIDED
+3. Whether the author was award-winning - NOT PROVIDED
+
+Without this information, I cannot verify whether the claim is true or false.
+[[ ## summary ## ]]
+The passages are insufficient to verify this claim. While the passages confirm that Rubén Darío was Nicaraguan (not English), they contain no information about the work "Love and Mr Lewisham" or its author. To complete verification of this claim, evidence documents would be needed that identify: (1) the author of "Love and Mr Lewisham", (2) the author's nationality, and (3) confirmation that the author was award-winning. Without these critical pieces of information, it is impossible to determine whether the claim—that the author and Rubén Darío were not both English—is accurate.
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## summary_1 ## ]]
+The passages are insufficient to verify this claim. While the passages confirm that Rubén Darío was Nicaraguan (not English), they contain no information about the work "Love and Mr Lewisham" or its author. To complete verification of this claim, evidence documents would be needed that identify: (1) the author of "Love and Mr Lewisham", (2) the author's nationality, and (3) confirmation that the author was award-winning. Without these critical pieces of information, it is impossible to determine whether the claim—that the author and Rubén Darío were not both English—is accurate.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary correctly identifies that verification of this claim requires information about the author of "Love and Mr Lewisham" that is not present in the available passages. The claim makes a comparative statement about two entities: (1) the award-winning author of "Love and Mr Lewisham" and (2) Rubén Darío. While Rubén Darío's nationality (Nicaraguan, therefore not English) is established, the author of "Love and Mr Lewisham" remains unidentified in the provided sources. To verify whether these two individuals were "not both English," we need to identify who wrote "Love and Mr Lewisham" and confirm their nationality and award status.
+
+[[ ## query ## ]]
+Who is the author of "Love and Mr Lewisham" and what is their nationality?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+No More Mr. Nice Guy (book) | No More Mr. Nice Guy: A Proven Plan for Getting What You Want in Love, Sex, and Life is a 2003 self-help book by Dr. Robert A. Glover.  He describes what he calls the "Nice guy Syndrome", a condition in men who appear to be always nice and avoid conflict at all costs.
+Lewisham London Borough Council | Lewisham London Borough Council is the local authority for the London Borough of Lewisham in Greater London, England.  It is a London borough council, one of 32 in the United Kingdom capital of London.  The council is unusual in that its executive function is controlled by a directly elected mayor of Lewisham, currently Steve Bullock.  Lewisham is divided into 18 wards, each electing three councillors.  Following the May 2014 election, Lewisham London Borough Council comprises 53 Labour Party councillors and one Green Party councillor.  The council was created by the London Government Act 1963 and replaced two local authorities: Deptford Metropolitan Borough Council and Lewisham Metropolitan Borough Council.
+Mr. Rabbit and the Lovely Present | Mr. Rabbit and the Lovely Present, written by Charlotte Zolotow and illustrated by Maurice Sendak, is a 1962 picture book published by HarperCollins.  It was a Caldecott Medal Honor Book for 1963 and was one of Sendak's Caldecott Honor Medal of a total of seven during his career.  Sendak won the Caldecott Medal in 1964 for "Where the Wild Things Are", which he both authored and illustrated.  "Mr. Rabbit and the Lovely Present" was re-issued by HarperCollins in 1999 in hardcover format as part of a project to re-issue 22 Sendak works, including several authored by Zolotow.
+London Borough of Lewisham | The London Borough of Lewisham ( ) is a London borough in south London, England and forms part of Inner London.  The principal settlement of the borough is Lewisham.  The local authority is Lewisham London Borough Council and it is based in Catford.
+Mr. What | Mr. What was a British-bred, Irish-trained Thoroughbred racehorse noted for winning the 1958 Grand National.
+Box and Cox Publications | Box and Cox Publications, known as Box & Cox, was a music publisher who had offices at number 7, Denmark Street.  Their greatest hit was "I've Got a Lovely Bunch of Coconuts".  The principals were Elton Box and Desmond Cox.  Bill Martin, who worked in "Tin Pan Alley" at the time, recalled their manner, 'And they had a piano.  You would be invited to play them your song, and then afterwards, one of them would say, "What do you think Mr Box?"  and the reply would be "I'm not sure Mr Cox".  They then asked you if you had a song like "A Lovely Bunch of Coconuts".  They would do things for a laugh and give you money...'
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## context ## ]]
+The passages are insufficient to verify this claim. While the passages confirm that Rubén Darío was Nicaraguan (not English), they contain no information about the work "Love and Mr Lewisham" or its author. To complete verification of this claim, evidence documents would be needed that identify: (1) the author of "Love and Mr Lewisham", (2) the author's nationality, and (3) confirmation that the author was award-winning. Without these critical pieces of information, it is impossible to determine whether the claim—that the author and Rubén Darío were not both English—is accurate.
+
+[[ ## passages ## ]]
+[1] «Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".»
+[2] «No More Mr. Nice Guy (book) | No More Mr. Nice Guy: A Proven Plan for Getting What You Want in Love, Sex, and Life is a 2003 self-help book by Dr. Robert A. Glover.  He describes what he calls the "Nice guy Syndrome", a condition in men who appear to be always nice and avoid conflict at all costs.»
+[3] «Lewisham London Borough Council | Lewisham London Borough Council is the local authority for the London Borough of Lewisham in Greater London, England.  It is a London borough council, one of 32 in the United Kingdom capital of London.  The council is unusual in that its executive function is controlled by a directly elected mayor of Lewisham, currently Steve Bullock.  Lewisham is divided into 18 wards, each electing three councillors.  Following the May 2014 election, Lewisham London Borough Council comprises 53 Labour Party councillors and one Green Party councillor.  The council was created by the London Government Act 1963 and replaced two local authorities: Deptford Metropolitan Borough Council and Lewisham Metropolitan Borough Council.»
+[4] «Mr. Rabbit and the Lovely Present | Mr. Rabbit and the Lovely Present, written by Charlotte Zolotow and illustrated by Maurice Sendak, is a 1962 picture book published by HarperCollins.  It was a Caldecott Medal Honor Book for 1963 and was one of Sendak's Caldecott Honor Medal of a total of seven during his career.  Sendak won the Caldecott Medal in 1964 for "Where the Wild Things Are", which he both authored and illustrated.  "Mr. Rabbit and the Lovely Present" was re-issued by HarperCollins in 1999 in hardcover format as part of a project to re-issue 22 Sendak works, including several authored by Zolotow.»
+[5] «London Borough of Lewisham | The London Borough of Lewisham ( ) is a London borough in south London, England and forms part of Inner London.  The principal settlement of the borough is Lewisham.  The local authority is Lewisham London Borough Council and it is based in Catford.»
+[6] «Mr. What | Mr. What was a British-bred, Irish-trained Thoroughbred racehorse noted for winning the 1958 Grand National.»
+[7] «Box and Cox Publications | Box and Cox Publications, known as Box & Cox, was a music publisher who had offices at number 7, Denmark Street.  Their greatest hit was "I've Got a Lovely Bunch of Coconuts".  The principals were Elton Box and Desmond Cox.  Bill Martin, who worked in "Tin Pan Alley" at the time, recalled their manner, 'And they had a piano.  You would be invited to play them your song, and then afterwards, one of them would say, "What do you think Mr Box?"  and the reply would be "I'm not sure Mr Cox".  They then asked you if you had a song like "A Lovely Bunch of Coconuts".  They would do things for a laugh and give you money...'»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze what is needed to verify this claim:
+
+The claim states: "The award winning author of Love and Mr Lewisham and Rubén Darío were not both English."
+
+This is a logical statement that requires:
+1. Identification of the author of "Love and Mr Lewisham"
+2. Confirmation that this author is award-winning
+3. Confirmation of the author's nationality
+4. Confirmation of Rubén Darío's nationality
+5. Verification that they were NOT both English
+
+From the passages provided:
+- Passage [1] identifies "Love and Mr Lewisham" as "a 1900 novel set in the 1880s by H. G. Wells." This directly answers who the author is.
+- However, passage [1] does NOT confirm whether H. G. Wells was award-winning. It only describes the novel itself and mentions Wells' feelings about the manuscript.
+- There is no information in any passage about Rubén Darío's nationality.
+- There is no information confirming H. G. Wells' nationality or award status.
+
+The context provided states that "the passages confirm that Rubén Darío was Nicaraguan (not English)" but this information does not appear in the passages provided to me. This is a discrepancy—the context makes a claim about what passages contain, but that information is not present in passages [1] through [7].
+
+What IS in the passages:
+- The author of "Love and Mr Lewisham" is H. G. Wells (passage [1])
+
+What IS NOT in the passages:
+- Whether H. G. Wells was award-winning
+- H. G. Wells' nationality
+- Any information about Rubén Darío or his nationality
+
+[[ ## summary ## ]]
+
+**Verification Status:** Cannot be verified with the provided passages.
+
+**Information Present:**
+The passages identify H. G. Wells as the author of "Love and Mr Lewisham" (passage [1]).
+
+**Information Missing:**
+To verify this claim, the following evidence documents would be needed:
+
+1. **A passage about H. G. Wells** that explicitly states: (a) his nationality, and (b) whether he received major literary awards during his career
+2. **A passage about Rubén Darío** that explicitly states his nationality (the provided passages contain no information about Rubén Darío whatsoever)
+
+While passage [1] confirms Wells wrote "Love and Mr Lewisham," it provides no information about his nationality or award status. Without passages containing these critical details about both H. G. Wells and Rubén Darío, the claim cannot be verified. The logical verification of the claim requires establishing the nationality of both individuals to confirm they were "not both English."
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the field `query`.
+        
+        # Task Description
+        You will receive a claim and two summaries that assess whether the claim can be verified from provided passages (not shown to you). The summaries often disagree on whether verification is possible. Your task is to generate a query that will retrieve the missing or disputed evidence documents needed to verify the claim.
+        
+        # Key Principles
+        
+        1. **Focus on Multi-Hop Claims**: Most claims require connecting multiple pieces of information across different topics. Your query should help retrieve ALL required evidence documents, not just one.
+        
+        2. **Retrieve Broad Topic Documents**: The retrieval system works best when queries target the main entities/topics mentioned in the claim rather than asking narrow questions. Each hop in the reasoning chain typically corresponds to retrieving a document about a specific entity or topic.
+        
+        3. **Cover All Components**: Analyze the claim to identify all entities, relationships, and facts that need verification. Your query should be broad enough to trigger retrieval of documents for each major component.
+        
+        # Strategy
+        
+        1. **Identify all entities and topics** in the claim that would require separate evidence documents (typically 2-4 key topics).
+        
+        2. **Determine what's disputed or missing** according to the summaries - this indicates which documents may not have been retrieved yet.
+        
+        3. **Formulate a query that mentions ALL key entities/topics** from the claim, especially:
+           - Named entities (people, places, organizations, films, TV shows, products, events)
+           - Relationships between entities (who created what, who replaced what, who starred in what)
+           - Specific attributes (degrees, locations, dates, roles)
+        
+        4. **Use broad, inclusive language** rather than yes/no questions. Frame queries as "What is the relationship between X, Y, and Z?" rather than "Does X relate to Y?"
+        
+        5. **Include specific names and titles** mentioned in the claim rather than generic descriptions. For example, use "Yes Minister" rather than "the television series."
+        
+        # Examples of Good Query Patterns
+        
+        - For replacement/succession claims: Include both the original entity and its replacement plus the context (e.g., "Ferrari 360 Ferrari F430 Australian Nations Cup Championship")
+        - For biographical claims about creative works: Include the person's name, the work's title, and the specific role/attribute (e.g., "Vanessa Kirby Joanna film Irish actor Dublin Institute of Technology")
+        - For multi-person creative collaborations: Include all relevant work titles and the specific roles/relationships (e.g., "Che strano chiamarsi Federico co-writer Yes Minister director")
+        
+        # Important Notes
+        
+        - The retrieval system appears to match queries against document titles/topics, so including the right entity names is critical
+        - Missing even one key entity name from your query may cause its evidence document to not be retrieved
+        - Broader queries that mention all relevant entities perform better than narrow, specific questions
+[STEP 14] (user) [[ ## claim ## ]]
+The award winning author of Love and Mr Lewisham and Rubén Darío were not both English.
+
+[[ ## summary_1 ## ]]
+The passages are insufficient to verify this claim. While the passages confirm that Rubén Darío was Nicaraguan (not English), they contain no information about the work "Love and Mr Lewisham" or its author. To complete verification of this claim, evidence documents would be needed that identify: (1) the author of "Love and Mr Lewisham", (2) the author's nationality, and (3) confirmation that the author was award-winning. Without these critical pieces of information, it is impossible to determine whether the claim—that the author and Rubén Darío were not both English—is accurate.
+
+[[ ## summary_2 ## ]]
+**Verification Status:** Cannot be verified with the provided passages.
+
+**Information Present:**
+The passages identify H. G. Wells as the author of "Love and Mr Lewisham" (passage [1]).
+
+**Information Missing:**
+To verify this claim, the following evidence documents would be needed:
+
+1. **A passage about H. G. Wells** that explicitly states: (a) his nationality, and (b) whether he received major literary awards during his career
+2. **A passage about Rubén Darío** that explicitly states his nationality (the provided passages contain no information about Rubén Darío whatsoever)
+
+While passage [1] confirms Wells wrote "Love and Mr Lewisham," it provides no information about his nationality or award status. Without passages containing these critical details about both H. G. Wells and Rubén Darío, the claim cannot be verified. The logical verification of the claim requires establishing the nationality of both individuals to confirm they were "not both English."
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries agree that the claim cannot be verified with currently available passages, though they differ slightly in what information they have. Summary_1 indicates no information about "Love and Mr Lewisham" or its author, while Summary_2 identifies H. G. Wells as the author but notes missing information about his nationality and awards.
+
+The critical gaps are:
+1. Identity and details about the author of "Love and Mr Lewisham" (confirmed as H. G. Wells in summary_2, but not in summary_1's available passages)
+2. H. G. Wells' nationality and whether he was award-winning
+3. Rubén Darío's nationality (summary_2 indicates this is completely missing from passages)
+
+To verify the claim that "the award winning author of Love and Mr Lewisham and Rubén Darío were not both English," I need to retrieve documents that establish: (1) who wrote the novel, (2) that author's nationality and awards, and (3) Rubén Darío's nationality. A query mentioning all key entities and topics should trigger retrieval of the necessary biographical and literary documents.
+[[ ## query ## ]]
+H. G. Wells Love and Mr Lewisham author nationality awards Rubén Darío
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.
+National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.
+Rubén Tufiño | Rubén Darío Tufiño Schwenk (born January 9, 1970 in Santa Cruz de la Sierra) is a former Bolivian football midfielder who played in the Liga de Fútbol Profesional Boliviano for important clubs, as well as, the Bolivia national team.
+Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.
+Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.
+Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.
+Nicaraguan one hundred-cordoba note | This series 2002 note is Blue.  On the obverse is Rubén Darío and on the reverse is the Rubén Darío Theatre located in Managua.
+Rubén Darío | Félix Rubén García Sarmiento (January 18, 1867 – February 6, 1916), known as Rubén Darío, was a Nicaraguan poet who initiated the Spanish-American literary movement known as "modernismo" (modernism) that flourished at the end of the 19th century.  Darío has had a great and lasting influence on 20th-century Spanish literature and journalism.  He has been praised as the "Prince of Castilian Letters" and undisputed father of the "modernismo" literary movement.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.
+Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.
+National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.
+Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.
+Carlos Mejía Godoy | Carlos Mejía Godoy (born June 27, 1943) is a Nicaraguan musician, composer and singer.  He was born in Somoto, Madriz.  Son of Carlos Mejía Fajardo and María Elsa Godoy, his brother Luis Enrique Mejía Godoy, three years younger than he is, is also an acclaimed and much-loved musician.  Carlos and Luis Enrique were pivotal in the New Song Movement in Central America beginning in the 1970s.  They were both recently honored with Nicaragua's highest cultural distinction, the Order of Rubén Darío.
+Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.
+Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+No More Mr. Nice Guy (book) | No More Mr. Nice Guy: A Proven Plan for Getting What You Want in Love, Sex, and Life is a 2003 self-help book by Dr. Robert A. Glover.  He describes what he calls the "Nice guy Syndrome", a condition in men who appear to be always nice and avoid conflict at all costs.
+Lewisham London Borough Council | Lewisham London Borough Council is the local authority for the London Borough of Lewisham in Greater London, England.  It is a London borough council, one of 32 in the United Kingdom capital of London.  The council is unusual in that its executive function is controlled by a directly elected mayor of Lewisham, currently Steve Bullock.  Lewisham is divided into 18 wards, each electing three councillors.  Following the May 2014 election, Lewisham London Borough Council comprises 53 Labour Party councillors and one Green Party councillor.  The council was created by the London Government Act 1963 and replaced two local authorities: Deptford Metropolitan Borough Council and Lewisham Metropolitan Borough Council.
+Mr. Rabbit and the Lovely Present | Mr. Rabbit and the Lovely Present, written by Charlotte Zolotow and illustrated by Maurice Sendak, is a 1962 picture book published by HarperCollins.  It was a Caldecott Medal Honor Book for 1963 and was one of Sendak's Caldecott Honor Medal of a total of seven during his career.  Sendak won the Caldecott Medal in 1964 for "Where the Wild Things Are", which he both authored and illustrated.  "Mr. Rabbit and the Lovely Present" was re-issued by HarperCollins in 1999 in hardcover format as part of a project to re-issue 22 Sendak works, including several authored by Zolotow.
+London Borough of Lewisham | The London Borough of Lewisham ( ) is a London borough in south London, England and forms part of Inner London.  The principal settlement of the borough is Lewisham.  The local authority is Lewisham London Borough Council and it is based in Catford.
+Mr. What | Mr. What was a British-bred, Irish-trained Thoroughbred racehorse noted for winning the 1958 Grand National.
+Box and Cox Publications | Box and Cox Publications, known as Box & Cox, was a music publisher who had offices at number 7, Denmark Street.  Their greatest hit was "I've Got a Lovely Bunch of Coconuts".  The principals were Elton Box and Desmond Cox.  Bill Martin, who worked in "Tin Pan Alley" at the time, recalled their manner, 'And they had a piano.  You would be invited to play them your song, and then afterwards, one of them would say, "What do you think Mr Box?"  and the reply would be "I'm not sure Mr Cox".  They then asked you if you had a song like "A Lovely Bunch of Coconuts".  They would do things for a laugh and give you money...'
+Rubén Darío National Theatre | The Rubén Darío National Theatre (Spanish: Teatro Nacional Rubén Darío ) is the national theatre of Nicaragua.  It is located in the capital, Managua, and was named in honor of Nicaragua's (and one of Latin America's) most renowned poets, Rubén Darío.
+National Library of Nicaragua Rubén Darío | The National Library of Nicaragua Rubén Darío is the national library of Nicaragua, located in the city of Managua.  It was founded in 1880, and damaged in the 1931 earthquake.  Another earthquake in 1972 caused further damage, furthermore, it was looted.  One of its librarians was the poet Rubén Darío, in whose honour it was renamed.
+Love and Mr Lewisham | Love and Mr Lewisham (subtitled "The Story of a Very Young Couple") is a 1900 novel set in the 1880s by H. G. Wells.  It was among his first fictional writings outside the science fiction genre.  Wells took considerable pains over the manuscript and said that "the writing was an altogether more serious undertaking than I have ever done before."  He later included it in a 1933 anthology, "Stories of Men and Women in Love".
+Rubén Darío (disambiguation) | Rubén Darío primarily refers to the Nicaraguan poet Rubén Darío.
+Rubén Tufiño | Rubén Darío Tufiño Schwenk (born January 9, 1970 in Santa Cruz de la Sierra) is a former Bolivian football midfielder who played in the Liga de Fútbol Profesional Boliviano for important clubs, as well as, the Bolivia national team.
+Rubén Darío (Madrid Metro) | Rubén Darío is a station on Line 5 of the Madrid Metro.  It is located in Zone A.
+Rubén Darío Velázquez | Rubén Darío Velázquez Bermúdez (born December 18, 1975) is a retired Colombian footballer.
+Rubén Darío Rossi | Rubén Darío Rossi, (born October 28, 1973) is an Argentine footballer, who played as a Forward.
+Nicaraguan one hundred-cordoba note | This series 2002 note is Blue.  On the obverse is Rubén Darío and on the reverse is the Rubén Darío Theatre located in Managua.
+Rubén Darío | Félix Rubén García Sarmiento (January 18, 1867 – February 6, 1916), known as Rubén Darío, was a Nicaraguan poet who initiated the Spanish-American literary movement known as "modernismo" (modernism) that flourished at the end of the 19th century.  Darío has had a great and lasting influence on 20th-century Spanish literature and journalism.  He has been praised as the "Prince of Castilian Letters" and undisputed father of the "modernismo" literary movement.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Summary 1: 'the passages confirm that Rubén Darío was Nicaraguan (not English)' - but at that point no passage about Rubén Darío's nationality had been retrieved. Summary 2: 'A passage about H. G. Wells that explicitly states: (a) his nationality, and (b) whether he received major literary awards' - the solver correctly identifies missing evidence but never names 'H. G. Wells' as the specific enti
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary 2 explicitly names the missing entity: 'A passage about H. G. Wells that explicitly states: (a) his nationality, and (b) whether he received major literary awards'. The hop 3 coordinator query targets it: 'H. G. Wells Love and Mr Lewisham author nationality awards Rubén Darío'. However, hop 3 retrieval returns no document about H. G. Wells himself—only the 'Love and Mr Lewisham' novel pass
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

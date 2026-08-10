@@ -1,0 +1,463 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Arthur Hiller Penn was born before the director and producer of "We, the Normal".
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.
+David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.
+The Careless Years | The Careless Years is a 1957 film from United Artists directed by Arthur Hiller and produced by Edward Lewis.  The film was the directorial debut for Hiller.  The film stars Dean Stockwell and Natalie Trundy in an early film appearance.
+Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.
+Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        5. **CRITICAL: For every distinct entity mentioned in the claim (whether explicitly named or referenced indirectly), ensure that passages about that specific entity are available. If passages are missing for any entity in the claim, identify those missing evidence documents.**
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        **Critical requirement for identifying missing evidence documents**:
+        - **If a claim mentions multiple distinct entities (e.g., "Entity A is X. Entity B is not X."), you must have passages about EACH entity mentioned**
+        - **Even if the claim can be partially verified, if any entity in the claim lacks corresponding passages, you must identify that entity's evidence document as missing**
+        - **For comparison claims (e.g., "A is perennial. B is not perennial"), you need passages about both A and B, even if one can be verified**
+        - **When a claim mentions an entity only to negate something about it (e.g., "Duranta is not a perennial"), that entity still requires evidence documents**
+        - **The fact that you can verify part of a claim does not mean you should ignore entities that lack passages - explicitly identify all entities that need but lack evidence documents**
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - **List ALL entities from the claim that lack corresponding passages, even if other parts of the claim are verifiable**
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+        - **When identifying missing evidence documents, use the entity name or subject matter that would be the title/topic of the needed passage (e.g., if the claim mentions "Duranta" but no passages discuss it, identify "duranta" as a missing evidence document)**
+[STEP 4] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director and producer of "We, the Normal".
+
+[[ ## passages ## ]]
+[1] «Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).»
+[2] «We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love»
+[3] «Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.»
+[4] «David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.»
+[5] «The Careless Years | The Careless Years is a 1957 film from United Artists directed by Arthur Hiller and produced by Edward Lewis.  The film was the directorial debut for Hiller.  The film stars Dean Stockwell and Natalie Trundy in an early film appearance.»
+[6] «Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.»
+[7] «Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze this claim step by step.
+
+The claim states: "Arthur Hiller Penn was born before the director and producer of 'We, the Normal'."
+
+First, I need to identify the entities:
+1. Arthur Hiller Penn - The subject being compared
+2. The director and producer of "We, the Normal" - The comparison entity
+
+From the passages:
+- Passage [1] tells me Arthur Penn (full name: Arthur Hiller Penn) was born September 27, 1922
+- Passage [6] tells me Arthur Hiller was born November 22, 1923
+
+However, the claim asks about "the director and producer of 'We, the Normal'". 
+
+Looking at the passages:
+- Passage [2] mentions "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love" - this is NOT "We, the Normal"
+- I have no passages that identify who directed and produced a work specifically titled "We, the Normal"
+
+The passages do not contain information about a work called "We, the Normal" or its director and producer. This is critical because:
+1. I cannot identify who the director and producer of "We, the Normal" is
+2. Without that identification, I cannot determine their birth date
+3. Without the birth date, I cannot verify whether Arthur Hiller Penn was born before them
+
+The passages appear to confuse Arthur Penn with Arthur Hiller (two different people), but neither comparison can be made without knowing who created "We, the Normal".
+[[ ## summary ## ]]
+The claim cannot be verified with the provided passages. While the passages confirm that Arthur Hiller Penn (Arthur Penn) was born on September 27, 1922, they do not contain any information about a work titled "We, the Normal" or its director and producer. Passage [2] mentions a similar-titled work "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love," but this does not appear to be the same work referenced in the claim.
+
+**Missing evidence document needed:**
+- Information about "We, the Normal" and its director/producer - specifically passages identifying who directed and produced this work and their birth date(s)
+
+Without this information, the birth date comparison cannot be completed.
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director and producer of "We, the Normal".
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified with the provided passages. While the passages confirm that Arthur Hiller Penn (Arthur Penn) was born on September 27, 1922, they do not contain any information about a work titled "We, the Normal" or its director and producer. Passage [2] mentions a similar-titled work "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love," but this does not appear to be the same work referenced in the claim.
+
+**Missing evidence document needed:**
+- Information about "We, the Normal" and its director/producer - specifically passages identifying who directed and produced this work and their birth date(s)
+
+Without this information, the birth date comparison cannot be completed.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim requires a factual comparison between two birth dates: Arthur Penn's birth date (September 27, 1922, which is confirmed) and the birth date of the director and producer of "We, the Normal." The summary correctly identifies that while Arthur Penn's birth date is established, there is no information available about a work called "We, the Normal" or its creative team. To verify this claim, we need to find documentary evidence that identifies who directed and produced "We, the Normal" and when they were born. This will allow for a direct chronological comparison to determine if Arthur Penn was indeed born before this person or people.
+
+[[ ## query ## ]]
+Who directed and produced "We, the Normal"? What are their birth dates?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+What We Started | What We Started is a US documentary film that was premiered on June 15, 2017 at the Los Angeles Film Festival.  The film is directed by Bert Marcus and Cyrus Saidi and produced by Bert Marcus, Cassandra Hamar, Cyrus Saidi and Bert Marcus Productions.
+What You Mean We? | What You Mean We?  is the title of a 1986 American made-for-television musical short film starring the performance artist Laurie Anderson, who also wrote and directed the piece.
+We Are What We Are (2010 film) | We Are What We Are (Spanish: Somos lo que hay ) is a 2010 Mexican cannibal horror film directed by Jorge Michel Grau.  The movie is about a family of cannibals who, after the death of the father, try to continue a ritualistic tradition of kidnapping and eating other humans.  The film stars Paulina Gaitán and Daniel Giménez Cacho.
+After the Triumph of Your Birth | After the Triumph of Your Birth is a 2012 American drama film written and directed by Jim Akin.  The film stars Tom Dunne, Tessa Ferrer, Bronagh Gallagher, Maria Mckee, Maria Doyle Kennedy and Rob Zabrecky.  The film tells the story of Eli Willit, a haunted man who sets out on foot at the beginning of the film on a seven-day journey that will take him from the desert to the ocean.  In need of spiritual cleansing, Eli's walkabout leads him not just to the water, but also through his life's memories, as we are presented with four separate-story lines dealing with spiritual fragility and the questioning of what constitutes existence and reality.
+What We Are Today | What We Are Today is an album by melodic/alternative rock band Failsafe; based in Preston.  "What We Are Today" is Failsafe's debut album and was released under deckcheese records.  The album was produced by Pete Miles.
+William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "
+What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director and producer of "We, the Normal".
+
+[[ ## context ## ]]
+The claim cannot be verified with the provided passages. While the passages confirm that Arthur Hiller Penn (Arthur Penn) was born on September 27, 1922, they do not contain any information about a work titled "We, the Normal" or its director and producer. Passage [2] mentions a similar-titled work "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love," but this does not appear to be the same work referenced in the claim.
+
+**Missing evidence document needed:**
+- Information about "We, the Normal" and its director/producer - specifically passages identifying who directed and produced this work and their birth date(s)
+
+Without this information, the birth date comparison cannot be completed.
+
+[[ ## passages ## ]]
+[1] «What We Started | What We Started is a US documentary film that was premiered on June 15, 2017 at the Los Angeles Film Festival.  The film is directed by Bert Marcus and Cyrus Saidi and produced by Bert Marcus, Cassandra Hamar, Cyrus Saidi and Bert Marcus Productions.»
+[2] «What You Mean We? | What You Mean We?  is the title of a 1986 American made-for-television musical short film starring the performance artist Laurie Anderson, who also wrote and directed the piece.»
+[3] «We Are What We Are (2010 film) | We Are What We Are (Spanish: Somos lo que hay ) is a 2010 Mexican cannibal horror film directed by Jorge Michel Grau.  The movie is about a family of cannibals who, after the death of the father, try to continue a ritualistic tradition of kidnapping and eating other humans.  The film stars Paulina Gaitán and Daniel Giménez Cacho.»
+[4] «After the Triumph of Your Birth | After the Triumph of Your Birth is a 2012 American drama film written and directed by Jim Akin.  The film stars Tom Dunne, Tessa Ferrer, Bronagh Gallagher, Maria Mckee, Maria Doyle Kennedy and Rob Zabrecky.  The film tells the story of Eli Willit, a haunted man who sets out on foot at the beginning of the film on a seven-day journey that will take him from the desert to the ocean.  In need of spiritual cleansing, Eli's walkabout leads him not just to the water, but also through his life's memories, as we are presented with four separate-story lines dealing with spiritual fragility and the questioning of what constitutes existence and reality.»
+[5] «What We Are Today | What We Are Today is an album by melodic/alternative rock band Failsafe; based in Preston.  "What We Are Today" is Failsafe's debut album and was released under deckcheese records.  The album was produced by Pete Miles.»
+[6] «William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "»
+[7] «What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim requires a comparison of two birth dates:
+1. Arthur Hiller Penn (Arthur Penn) - The context states he was born September 27, 1922
+2. The director and producer of "We, the Normal" - Unknown from provided passages
+
+Examining the passages:
+- Passage [1]: "What We Started" - not "We, the Normal"
+- Passage [2]: "What You Mean We?" - not "We, the Normal"
+- Passage [3]: "We Are What We Are" (2010) - not "We, the Normal"
+- Passage [4]: "After the Triumph of Your Birth" - not "We, the Normal"
+- Passage [5]: "What We Are Today" (album) - not "We, the Normal"
+- Passage [6]: About William Arntz and "What the Bleep Do We Know?" - not "We, the Normal"
+- Passage [7]: "What We Almost Made" (mixtape by Example) - not "We, the Normal"
+
+None of the provided passages contain information about a work titled "We, the Normal" or its director and producer. The passages do reference various works with similar titles beginning with "We" or "What," but none match "We, the Normal" exactly.
+
+To verify the claim, we would need:
+- Identification of what "We, the Normal" is (film, TV show, album, etc.)
+- The name(s) of its director(s) and producer(s)
+- The birth date(s) of the director(s) and producer(s) to compare with Arthur Penn's birth date of September 27, 1922
+
+[[ ## summary ## ]]
+The claim cannot be verified with the provided passages. While the context confirms Arthur Penn was born on September 27, 1922, the passages do not contain any information about "We, the Normal" or its director and producer. The passages include several works with similar titles (e.g., "What We Started," "What You Mean We?," "We Are What We Are," "What We Almost Made"), but none appear to be "We, the Normal." 
+
+To verify this claim, a passage specifically about "We, the Normal" identifying its director(s) and producer(s) by name and their birth date(s) would be required to make the necessary birth date comparison.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director and producer of "We, the Normal".
+
+[[ ## summary_1 ## ]]
+The claim cannot be verified with the provided passages. While the passages confirm that Arthur Hiller Penn (Arthur Penn) was born on September 27, 1922, they do not contain any information about a work titled "We, the Normal" or its director and producer. Passage [2] mentions a similar-titled work "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love," but this does not appear to be the same work referenced in the claim.
+
+**Missing evidence document needed:**
+- Information about "We, the Normal" and its director/producer - specifically passages identifying who directed and produced this work and their birth date(s)
+
+Without this information, the birth date comparison cannot be completed.
+
+[[ ## summary_2 ## ]]
+The claim cannot be verified with the provided passages. While the context confirms Arthur Penn was born on September 27, 1922, the passages do not contain any information about "We, the Normal" or its director and producer. The passages include several works with similar titles (e.g., "What We Started," "What You Mean We?," "We Are What We Are," "What We Almost Made"), but none appear to be "We, the Normal." 
+
+To verify this claim, a passage specifically about "We, the Normal" identifying its director(s) and producer(s) by name and their birth date(s) would be required to make the necessary birth date comparison.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries independently reach the same conclusion: the claim cannot be verified because while Arthur Penn's birth date (September 27, 1922) is confirmed in the provided passages, there is no information available about a work titled "We, the Normal" or its director and producer. Both summaries correctly identify that similar-titled works exist but are not the same as the work referenced in the claim. To verify the claim, we would need biographical information about the director and producer of "We, the Normal," specifically their birth date(s), to make the comparison with Arthur Penn's birth date.
+
+[[ ## query ## ]]
+Who directed and produced "We, the Normal" and what are their birth dates?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+What We Started | What We Started is a US documentary film that was premiered on June 15, 2017 at the Los Angeles Film Festival.  The film is directed by Bert Marcus and Cyrus Saidi and produced by Bert Marcus, Cassandra Hamar, Cyrus Saidi and Bert Marcus Productions.
+What You Mean We? | What You Mean We?  is the title of a 1986 American made-for-television musical short film starring the performance artist Laurie Anderson, who also wrote and directed the piece.
+We Are What We Are (2010 film) | We Are What We Are (Spanish: Somos lo que hay ) is a 2010 Mexican cannibal horror film directed by Jorge Michel Grau.  The movie is about a family of cannibals who, after the death of the father, try to continue a ritualistic tradition of kidnapping and eating other humans.  The film stars Paulina Gaitán and Daniel Giménez Cacho.
+After the Triumph of Your Birth | After the Triumph of Your Birth is a 2012 American drama film written and directed by Jim Akin.  The film stars Tom Dunne, Tessa Ferrer, Bronagh Gallagher, Maria Mckee, Maria Doyle Kennedy and Rob Zabrecky.  The film tells the story of Eli Willit, a haunted man who sets out on foot at the beginning of the film on a seven-day journey that will take him from the desert to the ocean.  In need of spiritual cleansing, Eli's walkabout leads him not just to the water, but also through his life's memories, as we are presented with four separate-story lines dealing with spiritual fragility and the questioning of what constitutes existence and reality.
+What We Are Today | What We Are Today is an album by melodic/alternative rock band Failsafe; based in Preston.  "What We Are Today" is Failsafe's debut album and was released under deckcheese records.  The album was produced by Pete Miles.
+William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "
+What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).
+What Fun We Were Having | What Fun We Were Having is a 2011 American thriller film directed by Adam Wingard.  It stars Hannah Hughes, AJ Bowen, Lane Hughes and Brandon Carroll.  Set in a small American town, the film contains four stories about sexual assault.  The film was written by Wingard, Simon Barrett and E. L. Katz.  It was produced by Snowford Pictures and runs 80 minutes.  It screened at the Fantasia Festival in 2011.
+What Shall We Do with Our Old? | What Shall We Do with Our Old?  is a 1911 American drama film directed by D.W. Griffith.
+What We Become | What We Become (Danish: "Sorgenfri" ) is a 2016 Danish horror and zombie movie directed by Bo Mikkelson.  It premiered on March 31, 2016.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.
+David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.
+The Careless Years | The Careless Years is a 1957 film from United Artists directed by Arthur Hiller and produced by Edward Lewis.  The film was the directorial debut for Hiller.  The film stars Dean Stockwell and Natalie Trundy in an early film appearance.
+Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.
+Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.
+What We Started | What We Started is a US documentary film that was premiered on June 15, 2017 at the Los Angeles Film Festival.  The film is directed by Bert Marcus and Cyrus Saidi and produced by Bert Marcus, Cassandra Hamar, Cyrus Saidi and Bert Marcus Productions.
+What You Mean We? | What You Mean We?  is the title of a 1986 American made-for-television musical short film starring the performance artist Laurie Anderson, who also wrote and directed the piece.
+We Are What We Are (2010 film) | We Are What We Are (Spanish: Somos lo que hay ) is a 2010 Mexican cannibal horror film directed by Jorge Michel Grau.  The movie is about a family of cannibals who, after the death of the father, try to continue a ritualistic tradition of kidnapping and eating other humans.  The film stars Paulina Gaitán and Daniel Giménez Cacho.
+After the Triumph of Your Birth | After the Triumph of Your Birth is a 2012 American drama film written and directed by Jim Akin.  The film stars Tom Dunne, Tessa Ferrer, Bronagh Gallagher, Maria Mckee, Maria Doyle Kennedy and Rob Zabrecky.  The film tells the story of Eli Willit, a haunted man who sets out on foot at the beginning of the film on a seven-day journey that will take him from the desert to the ocean.  In need of spiritual cleansing, Eli's walkabout leads him not just to the water, but also through his life's memories, as we are presented with four separate-story lines dealing with spiritual fragility and the questioning of what constitutes existence and reality.
+What We Are Today | What We Are Today is an album by melodic/alternative rock band Failsafe; based in Preston.  "What We Are Today" is Failsafe's debut album and was released under deckcheese records.  The album was produced by Pete Miles.
+William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "
+What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).
+What We Started | What We Started is a US documentary film that was premiered on June 15, 2017 at the Los Angeles Film Festival.  The film is directed by Bert Marcus and Cyrus Saidi and produced by Bert Marcus, Cassandra Hamar, Cyrus Saidi and Bert Marcus Productions.
+What You Mean We? | What You Mean We?  is the title of a 1986 American made-for-television musical short film starring the performance artist Laurie Anderson, who also wrote and directed the piece.
+We Are What We Are (2010 film) | We Are What We Are (Spanish: Somos lo que hay ) is a 2010 Mexican cannibal horror film directed by Jorge Michel Grau.  The movie is about a family of cannibals who, after the death of the father, try to continue a ritualistic tradition of kidnapping and eating other humans.  The film stars Paulina Gaitán and Daniel Giménez Cacho.
+After the Triumph of Your Birth | After the Triumph of Your Birth is a 2012 American drama film written and directed by Jim Akin.  The film stars Tom Dunne, Tessa Ferrer, Bronagh Gallagher, Maria Mckee, Maria Doyle Kennedy and Rob Zabrecky.  The film tells the story of Eli Willit, a haunted man who sets out on foot at the beginning of the film on a seven-day journey that will take him from the desert to the ocean.  In need of spiritual cleansing, Eli's walkabout leads him not just to the water, but also through his life's memories, as we are presented with four separate-story lines dealing with spiritual fragility and the questioning of what constitutes existence and reality.
+What We Are Today | What We Are Today is an album by melodic/alternative rock band Failsafe; based in Preston.  "What We Are Today" is Failsafe's debut album and was released under deckcheese records.  The album was produced by Pete Miles.
+William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "
+What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).
+What Fun We Were Having | What Fun We Were Having is a 2011 American thriller film directed by Adam Wingard.  It stars Hannah Hughes, AJ Bowen, Lane Hughes and Brandon Carroll.  Set in a small American town, the film contains four stories about sexual assault.  The film was written by Wingard, Simon Barrett and E. L. Katz.  It was produced by Snowford Pictures and runs 80 minutes.  It screened at the Fantasia Festival in 2011.
+What Shall We Do with Our Old? | What Shall We Do with Our Old?  is a 1911 American drama film directed by D.W. Griffith.
+What We Become | What We Become (Danish: "Sorgenfri" ) is a 2016 Danish horror and zombie movie directed by Bo Mikkelson.  It premiered on March 31, 2016.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Summary 1: 'Information about "We, the Normal" and its director/producer - specifically passages identifying who directed and produced this work and their birth date(s)' Summary 2: 'a passage specifically about "We, the Normal" identifying its director(s) and producer(s) by name and their birth date(s)' — Both summaries identify the need for information about 'We, the Normal' but neither names the
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Query hop 2: 'Who directed and produced "We, the Normal"? What are their birth dates?' Query hop 3: 'Who directed and produced "We, the Normal" and what are their birth dates?' — Both queries are natural-language yes/no questions bundling multiple targets (director identity + producer identity + birth dates) rather than keyword-based retrieval queries targeting a single entity.
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query hop 2: 'Who directed and produced "We, the Normal"? What are their birth dates?' Query hop 3: 'Who directed and produced "We, the Normal" and what are their birth dates?' — The queries are nearly identical in wording and intent across hops 2 and 3, failing to advance or reformulate despite receiving no relevant results in hop 2.
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: (i) Summary 1 names the missing entity: 'Information about "We, the Normal" and its director/producer'; Summary 2: 'a passage specifically about "We, the Normal" identifying its director(s) and producer(s)'. (ii) Query hop 2: 'Who directed and produced "We, the Normal"?' Query hop 3: 'Who directed and produced "We, the Normal"' — Both conditions met: summaries explicitly name the work 'We, the Nor
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

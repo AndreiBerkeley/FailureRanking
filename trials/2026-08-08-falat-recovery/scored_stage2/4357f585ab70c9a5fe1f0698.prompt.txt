@@ -1,0 +1,411 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+[STEP 4] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## passages ## ]]
+[1] «Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.»
+[2] «John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.»
+[3] «List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.»
+[4] «Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.»
+[5] «John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.»
+[6] «Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.»
+[7] «Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze the claim systematically:
+
+The claim has three main components to verify:
+1. Westminster Abbey was "formerly titled the Collegiate Church of St Peter at Westminster"
+2. Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place
+3. John Fecknam was the last abbot of this place
+
+Checking each component against the passages:
+
+Component 1: Former title of Westminster Abbey
+- Passage [6] states: "Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster..." This confirms the formal title.
+- Passage [3] also refers to "The Collegiate Church of St Peter at Westminster, popularly known as 'Westminster Abbey'"
+- This component is VERIFIED.
+
+Component 2: Geoffrey Chaucer as first poet buried in Poets' Corner
+- Passage [1] explicitly states: "He was the first poet to be buried in Poets' Corner of Westminster Abbey."
+- Passage [7] confirms Poets' Corner exists in the South Transept of Westminster Abbey
+- This component is VERIFIED.
+
+Component 3: John Fecknam as last abbot
+- Passage [2] states: "John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster."
+- The spelling variation "Fecknam" is noted in passage [2] as "John Fecknam"
+- This component is VERIFIED.
+
+All three components of the claim are directly supported by the provided passages.
+
+[[ ## summary ## ]]
+The claim is VERIFIED by the passages provided. All three assertions are supported by evidence:
+
+1. Westminster Abbey's former formal title as "the Collegiate Church of St Peter at Westminster" is confirmed in passages [3] and [6].
+
+2. Geoffrey Chaucer being the first poet buried in Poets' Corner of Westminster Abbey is explicitly confirmed in passage [1].
+
+3. John Fecknam (also spelled Feckenham) being the last abbot of Westminster is explicitly confirmed in passage [2], which identifies him as "the last abbot of Westminster" and notes the spelling variant "Fecknam."
+
+The passages contain sufficient information to fully verify this claim without any gaps or missing evidence.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## summary_1 ## ]]
+The claim is VERIFIED by the passages provided. All three assertions are supported by evidence:
+
+1. Westminster Abbey's former formal title as "the Collegiate Church of St Peter at Westminster" is confirmed in passages [3] and [6].
+
+2. Geoffrey Chaucer being the first poet buried in Poets' Corner of Westminster Abbey is explicitly confirmed in passage [1].
+
+3. John Fecknam (also spelled Feckenham) being the last abbot of Westminster is explicitly confirmed in passage [2], which identifies him as "the last abbot of Westminster" and notes the spelling variant "Fecknam."
+
+The passages contain sufficient information to fully verify this claim without any gaps or missing evidence.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary_1 indicates that the claim has been fully verified by the provided passages. All three components of the claim are supported by evidence: (1) Westminster Abbey's former title as "the Collegiate Church of St Peter at Westminster," (2) Geoffrey Chaucer being the first poet buried in Poets' Corner, and (3) John Fecknam being the last abbot. Since the verification is complete and comprehensive, the reasoning confirms that no additional information is needed to validate the claim.
+
+[[ ## query ## ]]
+No query is needed. The claim has been fully verified by the passages provided, with all assertions substantiated by explicit evidence.
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Longevity claims | Longevity claims are unsubstantiated cases of asserted human longevity.  Those asserting lifespans of 110 years or more are referred to as supercentenarians.  Many have either no official verification or are backed only by partial evidence.  Cases where longevity has been fully verified, according to modern standards of longevity research, are reflected in an established list of supercentenarians based on the work of organizations such as the Gerontology Research Group (GRG) or the "Guinness World Records".  This article lists living claims greater than that of the oldest person whose age has been independently verified, Nabi Tajima at and deceased claims greater than that of the oldest person ever whose age has been verified, namely Jeanne Calment who died at the age of 122 years, 164 days.  The upper limit for both lists is 130 years.
+Himalayan salt | Himalayan salt is rock salt or halite from the Punjab region of Pakistan.  No scientific evidence has been provided to prove that Himalayan salt has substantial benefits compared to common salt, and such claims should be treated as pseudoscience.
+Irving v Penguin Books Ltd | David Irving v Penguin Books and Deborah Lipstadt is a case in English law against American author Deborah Lipstadt and her publisher Penguin Books, filed in an English court by the British author David Irving in 1996, asserting that Lipstadt had libeled him in her book "Denying the Holocaust".  The court ruled that Irving's claim of libel relating to English defamation law and Holocaust denial was not valid because Lipstadt's claim that he had deliberately distorted evidence had been shown to be substantially true.  English libel law puts the burden of proof on the defense, meaning that it was up to Lipstadt and her publisher to prove that her claims of Irving's deliberate misrepresentation of evidence to conform to his ideological viewpoints were substantially true.
+JSON Web Token | JSON Web Token (JWT, pronounced ) is a JSON-based open standard (RFC 7519) for creating access tokens that assert some number of claims.  For example, a server could generate a token that has the claim "logged in as admin" and provide that to a client.  The client could then use that token to prove that it is logged in as admin.  The tokens are signed by the server's key, so the client and server are both able to verify that the token is legitimate.  The tokens are designed to be compact , URL-safe and usable especially in web browser single sign-on (SSO) context.  JWT claims can be typically used to pass identity of authenticated users between an identity provider and a service provider, or any other type of claims as required by business processes.  The tokens can also be authenticated and encrypted.
+List of British supercentenarians | This is a list of British supercentenarians (people from the United Kingdom who have attained the age of at least 110 years).  The Gerontology Research Group (GRG), an organization that tracks supercentenarians and validates their age claims, has asserted that there have been approximately 140 verified supercentenarians from the United Kingdom.  As of none }} , there are 3 verified living supercentenarians in the United Kingdom, the oldest of whom is Bessie Camm from Rotherham, England, born 20 June 1904, aged .
+Evidence | Evidence, broadly construed, is anything presented in support of an assertion.  This support may be strong or weak.  The strongest type of evidence is that which provides direct proof of the truth of an assertion.  At the other extreme is evidence that is merely consistent with an assertion but does not rule out other, contradictory assertions, as in circumstantial evidence.
+Management assertions | Management assertions or financial statement assertions are the implicit or explicit assertions that the preparer of financial statements (management) is making to its users.  Financial statements include assertions related to the recognition, measurement, presentation, and disclosure of the financial information contained within such statements.  The role of the auditor in a financial statement audit is to obtain evidence as to whether management's assertions can be supported.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## context ## ]]
+The claim is VERIFIED by the passages provided. All three assertions are supported by evidence:
+
+1. Westminster Abbey's former formal title as "the Collegiate Church of St Peter at Westminster" is confirmed in passages [3] and [6].
+
+2. Geoffrey Chaucer being the first poet buried in Poets' Corner of Westminster Abbey is explicitly confirmed in passage [1].
+
+3. John Fecknam (also spelled Feckenham) being the last abbot of Westminster is explicitly confirmed in passage [2], which identifies him as "the last abbot of Westminster" and notes the spelling variant "Fecknam."
+
+The passages contain sufficient information to fully verify this claim without any gaps or missing evidence.
+
+[[ ## passages ## ]]
+[1] «Longevity claims | Longevity claims are unsubstantiated cases of asserted human longevity.  Those asserting lifespans of 110 years or more are referred to as supercentenarians.  Many have either no official verification or are backed only by partial evidence.  Cases where longevity has been fully verified, according to modern standards of longevity research, are reflected in an established list of supercentenarians based on the work of organizations such as the Gerontology Research Group (GRG) or the "Guinness World Records".  This article lists living claims greater than that of the oldest person whose age has been independently verified, Nabi Tajima at and deceased claims greater than that of the oldest person ever whose age has been verified, namely Jeanne Calment who died at the age of 122 years, 164 days.  The upper limit for both lists is 130 years.»
+[2] «Himalayan salt | Himalayan salt is rock salt or halite from the Punjab region of Pakistan.  No scientific evidence has been provided to prove that Himalayan salt has substantial benefits compared to common salt, and such claims should be treated as pseudoscience.»
+[3] «Irving v Penguin Books Ltd | David Irving v Penguin Books and Deborah Lipstadt is a case in English law against American author Deborah Lipstadt and her publisher Penguin Books, filed in an English court by the British author David Irving in 1996, asserting that Lipstadt had libeled him in her book "Denying the Holocaust".  The court ruled that Irving's claim of libel relating to English defamation law and Holocaust denial was not valid because Lipstadt's claim that he had deliberately distorted evidence had been shown to be substantially true.  English libel law puts the burden of proof on the defense, meaning that it was up to Lipstadt and her publisher to prove that her claims of Irving's deliberate misrepresentation of evidence to conform to his ideological viewpoints were substantially true.»
+[4] «JSON Web Token | JSON Web Token (JWT, pronounced ) is a JSON-based open standard (RFC 7519) for creating access tokens that assert some number of claims.  For example, a server could generate a token that has the claim "logged in as admin" and provide that to a client.  The client could then use that token to prove that it is logged in as admin.  The tokens are signed by the server's key, so the client and server are both able to verify that the token is legitimate.  The tokens are designed to be compact , URL-safe and usable especially in web browser single sign-on (SSO) context.  JWT claims can be typically used to pass identity of authenticated users between an identity provider and a service provider, or any other type of claims as required by business processes.  The tokens can also be authenticated and encrypted.»
+[5] «List of British supercentenarians | This is a list of British supercentenarians (people from the United Kingdom who have attained the age of at least 110 years).  The Gerontology Research Group (GRG), an organization that tracks supercentenarians and validates their age claims, has asserted that there have been approximately 140 verified supercentenarians from the United Kingdom.  As of none }} , there are 3 verified living supercentenarians in the United Kingdom, the oldest of whom is Bessie Camm from Rotherham, England, born 20 June 1904, aged .»
+[6] «Evidence | Evidence, broadly construed, is anything presented in support of an assertion.  This support may be strong or weak.  The strongest type of evidence is that which provides direct proof of the truth of an assertion.  At the other extreme is evidence that is merely consistent with an assertion but does not rule out other, contradictory assertions, as in circumstantial evidence.»
+[7] «Management assertions | Management assertions or financial statement assertions are the implicit or explicit assertions that the preparer of financial statements (management) is making to its users.  Financial statements include assertions related to the recognition, measurement, presentation, and disclosure of the financial information contained within such statements.  The role of the auditor in a financial statement audit is to obtain evidence as to whether management's assertions can be supported.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+Upon careful examination of the passages provided, I must note a critical discrepancy between the context provided and the actual content of the passages. The context claims that the passages verify all three assertions about:
+1. Westminster Abbey's former title as "the Collegiate Church of St Peter at Westminster"
+2. Geoffrey Chaucer being the first poet buried in Poets' Corner
+3. John Fecknam being the last abbot of Westminster
+
+However, the actual passages [1] through [7] contain no information whatsoever about Westminster Abbey, Geoffrey Chaucer, Poets' Corner, John Fecknam, or any related topics. The passages discuss:
+- Longevity claims and supercentenarians
+- Himalayan salt and pseudoscience
+- The Irving v Penguin Books legal case
+- JSON Web Tokens
+- British supercentenarians
+- The definition of evidence
+- Management assertions in financial statements
+
+None of these passages contain any relevant information to verify the claim about Westminster Abbey or the individuals mentioned.
+
+[[ ## summary ## ]]
+The claim cannot be verified using the provided passages. The passages do not contain any information about Westminster Abbey, its former title as the Collegiate Church of St Peter at Westminster, Geoffrey Chaucer's burial in Poets' Corner, or John Fecknam as the last abbot of Westminster. The context's assertion that the claim is verified is incorrect based on the actual content of the passages provided.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Formerly titled the Collegiate Church of St Peter at Westminster was where Geoffrey Chaucer was the first poet to be buried in Poets' Corner of this place. Also John Fecknam was the last abbot of this place.
+
+[[ ## summary_1 ## ]]
+The claim is VERIFIED by the passages provided. All three assertions are supported by evidence:
+
+1. Westminster Abbey's former formal title as "the Collegiate Church of St Peter at Westminster" is confirmed in passages [3] and [6].
+
+2. Geoffrey Chaucer being the first poet buried in Poets' Corner of Westminster Abbey is explicitly confirmed in passage [1].
+
+3. John Fecknam (also spelled Feckenham) being the last abbot of Westminster is explicitly confirmed in passage [2], which identifies him as "the last abbot of Westminster" and notes the spelling variant "Fecknam."
+
+The passages contain sufficient information to fully verify this claim without any gaps or missing evidence.
+
+[[ ## summary_2 ## ]]
+The claim cannot be verified using the provided passages. The passages do not contain any information about Westminster Abbey, its former title as the Collegiate Church of St Peter at Westminster, Geoffrey Chaucer's burial in Poets' Corner, or John Fecknam as the last abbot of Westminster. The context's assertion that the claim is verified is incorrect based on the actual content of the passages provided.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+There is a direct contradiction between summary_1 and summary_2 regarding the verifiability of the claim. Summary_1 asserts that all three assertions in the claim are verified by passages, citing specific passage numbers ([1], [2], [3], [6]). Summary_2 states that the passages contain no information about any of these topics and that summary_1's verification is incorrect. This contradiction indicates that the actual passages were not provided in the input, or there is uncertainty about what the passages contain. To resolve this contradiction and determine the truth value of the claim, we need to identify and examine the actual source passages that are being referenced.
+
+[[ ## query ## ]]
+What are the exact passages referenced in summary_1 (passages [1], [2], [3], and [6]) that allegedly verify: (1) Westminster Abbey's former title as "the Collegiate Church of St Peter at Westminster," (2) Geoffrey Chaucer being the first poet buried in Poets' Corner, and (3) John Fecknam being the last abbot of Westminster?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+Dean of Westminster | The Dean of Westminster is the head of the chapter at Westminster Abbey.  Due to the Abbey's status as a Royal Peculiar, the dean answers directly to the Queen (not to the Bishop of London as ordinary, nor to the Archbishop of Canterbury as metropolitan).  Initially, the office was a successor to that of abbot of Westminster, and was for the first 10 years cathedral dean for the Diocese of Westminster.  The current dean is John Hall.
+Westminster St Margaret and St John | St Margaret was an ancient parish in the City and Liberty of Westminster and the county of Middlesex.  It included the core of modern Westminster, including the Palace of Westminster and the area around, but not including Westminster Abbey.  In 1727 it was divided into St Margaret's and St John's, to coincide with the building of the Church of St John the Evangelist, constructed by the Commission for Building Fifty New Churches in Smith Square to meet the demands of the growing population, but there continued to be a single vestry for the parishes of St Margaret and St John.  This was reformed in 1855 by the Metropolis Management Act, and the two parishes formed the Westminster District until 1887.  In 1889 St Margaret and St John became part of the County of London.  The vestry was abolished in 1900, to be replaced by Westminster City Council, but St Margaret and St John continued to have a nominal existence until 1922.
+John Denham (poet) | Sir John Denham FRS (1614 or 1615 – 19 March 1669) was an Anglo-Irish poet and courtier.  He served as Surveyor of the King's Works and is buried in Westminster Abbey.
+Abbot of Westminster | The Abbot of Westminster was the head (abbot) of Westminster Abbey.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+John Skelton | John Skelton, also known as John Shelton (c. 1463 – 21 June 1529), possibly born in Diss, Norfolk, was an English poet and tutor to King Henry VIII of England.  Skelton died in Westminster and was buried in St. Margaret's Church, although no trace of the tomb remains.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+Longevity claims | Longevity claims are unsubstantiated cases of asserted human longevity.  Those asserting lifespans of 110 years or more are referred to as supercentenarians.  Many have either no official verification or are backed only by partial evidence.  Cases where longevity has been fully verified, according to modern standards of longevity research, are reflected in an established list of supercentenarians based on the work of organizations such as the Gerontology Research Group (GRG) or the "Guinness World Records".  This article lists living claims greater than that of the oldest person whose age has been independently verified, Nabi Tajima at and deceased claims greater than that of the oldest person ever whose age has been verified, namely Jeanne Calment who died at the age of 122 years, 164 days.  The upper limit for both lists is 130 years.
+Himalayan salt | Himalayan salt is rock salt or halite from the Punjab region of Pakistan.  No scientific evidence has been provided to prove that Himalayan salt has substantial benefits compared to common salt, and such claims should be treated as pseudoscience.
+Irving v Penguin Books Ltd | David Irving v Penguin Books and Deborah Lipstadt is a case in English law against American author Deborah Lipstadt and her publisher Penguin Books, filed in an English court by the British author David Irving in 1996, asserting that Lipstadt had libeled him in her book "Denying the Holocaust".  The court ruled that Irving's claim of libel relating to English defamation law and Holocaust denial was not valid because Lipstadt's claim that he had deliberately distorted evidence had been shown to be substantially true.  English libel law puts the burden of proof on the defense, meaning that it was up to Lipstadt and her publisher to prove that her claims of Irving's deliberate misrepresentation of evidence to conform to his ideological viewpoints were substantially true.
+JSON Web Token | JSON Web Token (JWT, pronounced ) is a JSON-based open standard (RFC 7519) for creating access tokens that assert some number of claims.  For example, a server could generate a token that has the claim "logged in as admin" and provide that to a client.  The client could then use that token to prove that it is logged in as admin.  The tokens are signed by the server's key, so the client and server are both able to verify that the token is legitimate.  The tokens are designed to be compact , URL-safe and usable especially in web browser single sign-on (SSO) context.  JWT claims can be typically used to pass identity of authenticated users between an identity provider and a service provider, or any other type of claims as required by business processes.  The tokens can also be authenticated and encrypted.
+List of British supercentenarians | This is a list of British supercentenarians (people from the United Kingdom who have attained the age of at least 110 years).  The Gerontology Research Group (GRG), an organization that tracks supercentenarians and validates their age claims, has asserted that there have been approximately 140 verified supercentenarians from the United Kingdom.  As of none }} , there are 3 verified living supercentenarians in the United Kingdom, the oldest of whom is Bessie Camm from Rotherham, England, born 20 June 1904, aged .
+Evidence | Evidence, broadly construed, is anything presented in support of an assertion.  This support may be strong or weak.  The strongest type of evidence is that which provides direct proof of the truth of an assertion.  At the other extreme is evidence that is merely consistent with an assertion but does not rule out other, contradictory assertions, as in circumstantial evidence.
+Management assertions | Management assertions or financial statement assertions are the implicit or explicit assertions that the preparer of financial statements (management) is making to its users.  Financial statements include assertions related to the recognition, measurement, presentation, and disclosure of the financial information contained within such statements.  The role of the auditor in a financial statement audit is to obtain evidence as to whether management's assertions can be supported.
+Geoffrey Chaucer | Geoffrey Chaucer ( ; c. 1343 – 25 October 1400), known as the Father of English literature, is widely considered the greatest English poet of the Middle Ages.  He was the first poet to be buried in Poets' Corner of Westminster Abbey.
+List of Westminster Abbey organists | This is a list of Westminster Abbey organists.  The Collegiate Church of St Peter at Westminster, popularly known as "Westminster Abbey", is a large, mainly Gothic abbey church, in the City of Westminster, London, United Kingdom, located just to the west of the Palace of Westminster.  It is the traditional site for the Coronation of the British monarch and many former kings and queens are buried there.
+Westminster Abbey | Westminster Abbey, formally titled the Collegiate Church of St Peter at Westminster, is a large, mainly Gothic abbey church in the City of Westminster, London, just to the west of the Palace of Westminster.  It is one of the United Kingdom's most notable religious buildings and the traditional place of coronation and burial site for English and, later, British monarchs.  Between 1540 and 1556, the abbey had the status of a cathedral.  Since 1560, the building is no longer an abbey nor a cathedral, having instead the status of a Church of England "Royal Peculiar"—a church responsible directly to the sovereign.  The building itself is the original abbey church.
+Close of the Collegiate Church of St Peter | The Close of the Collegiate Church of St Peter was an extra-parochial area, and later civil parish, in the metropolitan area of London, England.  It corresponded to the area of Westminster Abbey and was an enclave between the parishes of St Margaret and St John, within the City and Liberty of Westminster.
+Poets' Corner | Poets' Corner is the name traditionally given to a section of the South Transept of Westminster Abbey because of the high number of poets, playwrights, and writers buried and commemorated there.
+John Feckenham | John Feckenham (c. 1515 – October, 1584), also known as John Howman of Feckingham and later John de Feckenham or John Fecknam, was an English churchman, the last abbot of Westminster.
+Dean of Westminster | The Dean of Westminster is the head of the chapter at Westminster Abbey.  Due to the Abbey's status as a Royal Peculiar, the dean answers directly to the Queen (not to the Bishop of London as ordinary, nor to the Archbishop of Canterbury as metropolitan).  Initially, the office was a successor to that of abbot of Westminster, and was for the first 10 years cathedral dean for the Diocese of Westminster.  The current dean is John Hall.
+Westminster St Margaret and St John | St Margaret was an ancient parish in the City and Liberty of Westminster and the county of Middlesex.  It included the core of modern Westminster, including the Palace of Westminster and the area around, but not including Westminster Abbey.  In 1727 it was divided into St Margaret's and St John's, to coincide with the building of the Church of St John the Evangelist, constructed by the Commission for Building Fifty New Churches in Smith Square to meet the demands of the growing population, but there continued to be a single vestry for the parishes of St Margaret and St John.  This was reformed in 1855 by the Metropolis Management Act, and the two parishes formed the Westminster District until 1887.  In 1889 St Margaret and St John became part of the County of London.  The vestry was abolished in 1900, to be replaced by Westminster City Council, but St Margaret and St John continued to have a nominal existence until 1922.
+John Denham (poet) | Sir John Denham FRS (1614 or 1615 – 19 March 1669) was an Anglo-Irish poet and courtier.  He served as Surveyor of the King's Works and is buried in Westminster Abbey.
+Abbot of Westminster | The Abbot of Westminster was the head (abbot) of Westminster Abbey.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step UNKNOWN: evidence: In hop 2, the solver received 7 passages about longevity claims, Himalayan salt, Irving v Penguin Books, JSON Web Tokens, British supercentenarians, evidence definitions, and management assertions—none related to Westminster Abbey. The solver correctly identified these as irrelevant but had to process and explicitly reject all of them: 'The passages discuss: - Longevity claims and supercentenarian
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: After hop 1 verified the claim, the coordinator generated for hop 2: 'No query is needed. The claim has been fully verified by the passages provided, with all assertions substantiated by explicit evidence.' This is not a retrieval query but a natural-language statement declaring verification complete—an unusable form for a retrieval system that expects entity-focused queries.
+- code B.13 (Query_Form_Mismatch), anchored near step 15: evidence: For hop 3, the coordinator generated: 'What are the exact passages referenced in summary_1 (passages [1], [2], [3], and [6]) that allegedly verify: (1) Westminster Abbey's former title as "the Collegiate Church of St Peter at Westminster," (2) Geoffrey Chaucer being the first poet buried in Poets' Corner, and (3) John Fecknam being the last abbot of Westminster?' This is a natural-language yes/no 
+- code A.10 (Multi_Hop_Context_Degradation), anchored near step UNKNOWN: evidence: The solver's summary_2 contradicts summary_1 despite both analyzing the same claim. Summary_2 states: 'The claim cannot be verified using the provided passages. The passages do not contain any information about Westminster Abbey... The context's assertion that the claim is verified is incorrect based on the actual content of the passages provided.' This indicates the solver lost track of what pass
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

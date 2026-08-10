@@ -1,0 +1,423 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The campaign, during which the first Battle of Harlem was fought as part of the American Revolutionary War, was a series of engagements for control of New York City and the state of New Jersey, fought on October 28, 1776 near White Plains, New York.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Battle of White Plains | The Battle of White Plains was a battle in the New York and New Jersey campaign of the American Revolutionary War fought on October 28, 1776, near White Plains, New York.  Following the retreat of George Washington's Continental Army northward from New York City, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  Alerted to this move, Washington retreated farther, establishing a position in the village of White Plains but failed to establish firm control over local high ground.  Howe's troops drove Washington's troops from a hill near the village; following this loss, Washington ordered the Americans to retreat farther north.
+Battle of Harlem Heights | The Battle of Harlem Heights was fought during the New York and New Jersey campaign of the American Revolutionary War.  The action took place in what is now the Morningside Heights and east into the future Harlem neighborhoods of northwestern Manhattan Island in what is now New York City on September 16, 1776.
+Battle of Pell's Point | The Battle of Pell's Point (October 18, 1776), also known as the Battle of Pelham, was a skirmish fought between British and American troops during the New York and New Jersey campaign of the American Revolutionary War.  The conflict took place in what is now part of Pelham Bay Park in the Bronx, New York City.
+New York and New Jersey campaign | The New York and New Jersey campaign was a series of battles for control of New York City and the state of New Jersey in the American Revolutionary War between British forces under General Sir William Howe and the Continental Army under General George Washington in 1776 and the winter months of 1777.  Howe was successful in driving Washington out of New York City, but overextended his reach into New Jersey, and ended the active campaign season in January 1777 with only a few outposts near the city.  The British held New York harbor for the rest of the war, using it as a base for expeditions against other targets.
+Battle of Mamaroneck | The Battle of Mamaroneck was a skirmish in the New York and New Jersey campaign of the American Revolutionary War fought on October 22, 1776, at Mamaroneck, Westchester County, New York.  Following the retreat of George Washington's army to White Plains, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  To cover the eastern flank of his army, Howe ordered Major Robert Rogers and his Rangers to seize the village of Mamaroneck which had been recently abandoned by the Continental army.  On the night of October 22, 750 men under Colonel John Haslet attacked the British encampment.  Haslet's men achieved complete surprise, but Rogers' Rangers rallied and drove off the attackers.
+Battle of Long Island | The Battle of Long Island is also known as the Battle of Brooklyn and the Battle of Brooklyn Heights.  It was fought on August 27, 1776 and was the first major battle of the American Revolutionary War to take place after the United States declared its independence on July 4, 1776.  It was a victory for the British Army and the beginning of a successful campaign that gave them control of the strategically important city of New York.  In terms of troop deployment and fighting, it was the largest battle of the entire war.
+10th Continental Regiment | The 10th Continental Regiment was a unit of the Connecticut Line in the 1776 establishment of the Continental Army.  It began as Parson's Connecticut Regiment (also known as the 6th Connecticut Provincial Regiment), which was part of the 1775 establishment, and was commanded by Colonel Samuel Holden Parsons until his promotion to brigadier general.  It was first active during the Siege of Boston, and then in preparing the defenses of New York City.  After Parsons was promoted in August 1776, command came to John Tyler, who was promoted to colonel at that time.  The regiment fought in the Battle of Long Island, and was part of the panicked retreat after the British landing on Manhattan.  Although the regiment was present with the army at White Plains, New York in October 1776, it did not participated in the battle fought there.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+The campaign, during which the first Battle of Harlem was fought as part of the American Revolutionary War, was a series of engagements for control of New York City and the state of New Jersey, fought on October 28, 1776 near White Plains, New York.
+
+[[ ## passages ## ]]
+[1] «Battle of White Plains | The Battle of White Plains was a battle in the New York and New Jersey campaign of the American Revolutionary War fought on October 28, 1776, near White Plains, New York.  Following the retreat of George Washington's Continental Army northward from New York City, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  Alerted to this move, Washington retreated farther, establishing a position in the village of White Plains but failed to establish firm control over local high ground.  Howe's troops drove Washington's troops from a hill near the village; following this loss, Washington ordered the Americans to retreat farther north.»
+[2] «Battle of Harlem Heights | The Battle of Harlem Heights was fought during the New York and New Jersey campaign of the American Revolutionary War.  The action took place in what is now the Morningside Heights and east into the future Harlem neighborhoods of northwestern Manhattan Island in what is now New York City on September 16, 1776.»
+[3] «Battle of Pell's Point | The Battle of Pell's Point (October 18, 1776), also known as the Battle of Pelham, was a skirmish fought between British and American troops during the New York and New Jersey campaign of the American Revolutionary War.  The conflict took place in what is now part of Pelham Bay Park in the Bronx, New York City.»
+[4] «New York and New Jersey campaign | The New York and New Jersey campaign was a series of battles for control of New York City and the state of New Jersey in the American Revolutionary War between British forces under General Sir William Howe and the Continental Army under General George Washington in 1776 and the winter months of 1777.  Howe was successful in driving Washington out of New York City, but overextended his reach into New Jersey, and ended the active campaign season in January 1777 with only a few outposts near the city.  The British held New York harbor for the rest of the war, using it as a base for expeditions against other targets.»
+[5] «Battle of Mamaroneck | The Battle of Mamaroneck was a skirmish in the New York and New Jersey campaign of the American Revolutionary War fought on October 22, 1776, at Mamaroneck, Westchester County, New York.  Following the retreat of George Washington's army to White Plains, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  To cover the eastern flank of his army, Howe ordered Major Robert Rogers and his Rangers to seize the village of Mamaroneck which had been recently abandoned by the Continental army.  On the night of October 22, 750 men under Colonel John Haslet attacked the British encampment.  Haslet's men achieved complete surprise, but Rogers' Rangers rallied and drove off the attackers.»
+[6] «Battle of Long Island | The Battle of Long Island is also known as the Battle of Brooklyn and the Battle of Brooklyn Heights.  It was fought on August 27, 1776 and was the first major battle of the American Revolutionary War to take place after the United States declared its independence on July 4, 1776.  It was a victory for the British Army and the beginning of a successful campaign that gave them control of the strategically important city of New York.  In terms of troop deployment and fighting, it was the largest battle of the entire war.»
+[7] «10th Continental Regiment | The 10th Continental Regiment was a unit of the Connecticut Line in the 1776 establishment of the Continental Army.  It began as Parson's Connecticut Regiment (also known as the 6th Connecticut Provincial Regiment), which was part of the 1775 establishment, and was commanded by Colonel Samuel Holden Parsons until his promotion to brigadier general.  It was first active during the Siege of Boston, and then in preparing the defenses of New York City.  After Parsons was promoted in August 1776, command came to John Tyler, who was promoted to colonel at that time.  The regiment fought in the Battle of Long Island, and was part of the panicked retreat after the British landing on Manhattan.  Although the regiment was present with the army at White Plains, New York in October 1776, it did not participated in the battle fought there.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze the claim systematically:
+
+The claim states: "The campaign, during which the first Battle of Harlem was fought as part of the American Revolutionary War, was a series of engagements for control of New York City and the state of New Jersey, fought on October 28, 1776 near White Plains, New York."
+
+This claim appears to conflate multiple distinct battles and contains a temporal inconsistency:
+
+1. **The campaign identification**: The passages confirm (from passage [4]) that the "New York and New Jersey campaign" was indeed "a series of battles for control of New York City and the state of New Jersey in the American Revolutionary War" - this part is verifiable.
+
+2. **The Battle of Harlem's role**: Passage [2] states that the Battle of Harlem Heights was fought on September 16, 1776, NOT October 28, 1776. The passage explicitly states it occurred "during the New York and New Jersey campaign."
+
+3. **The Battle of White Plains date**: Passage [1] confirms the Battle of White Plains was fought on October 28, 1776, near White Plains, New York.
+
+4. **The logical problem**: The claim seems to assert that the Battle of Harlem was fought as part of a campaign that was "fought on October 28, 1776," but the Battle of Harlem Heights actually occurred on September 16, 1776 - over a month earlier.
+
+The claim conflates the Battle of Harlem Heights (September 16) with the Battle of White Plains (October 28), or incorrectly dates the entire campaign to October 28, 1776.
+
+[[ ## summary ## ]]
+
+**Verification Status**: The claim CANNOT be fully verified and contains a significant factual error.
+
+**Analysis of Components**:
+
+1. **Campaign identification**: VERIFIED - The "New York and New Jersey campaign" is confirmed in passage [4] as "a series of battles for control of New York City and the state of New Jersey in the American Revolutionary War."
+
+2. **The first Battle of Harlem reference**: CONTRADICTED - Passage [2] clearly states the "Battle of Harlem Heights" was fought on September 16, 1776, NOT October 28, 1776. This battle did occur "during the New York and New Jersey campaign," but the temporal attribution in the claim is incorrect.
+
+3. **Battle of White Plains details**: VERIFIED - Passage [1] confirms the Battle of White Plains was fought on October 28, 1776, near White Plains, New York, and was part of the New York and New Jersey campaign.
+
+4. **Critical inconsistency**: The claim incorrectly associates the Battle of Harlem Heights with an October 28, 1776 date that actually corresponds to the Battle of White Plains. These are two separate battles fought at different locations (Harlem Heights in Manhattan on September 16 vs. White Plains in Westchester County on October 28).
+
+**Entities requiring clarification**:
+- The "first Battle of Harlem" (Battle of Harlem Heights) - needs verification of its actual date (September 16, 1776) versus the October 28, 1776 date attributed to it in the claim
+- The distinction between the Battle of Harlem Heights and the Battle of White Plains as separate engagements
+
+**Conclusion**: The claim conflates two distinct battles and incorrectly dates the Battle of Harlem Heights to October 28, 1776, when it actually occurred on September 16, 1776.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+The campaign, during which the first Battle of Harlem was fought as part of the American Revolutionary War, was a series of engagements for control of New York City and the state of New Jersey, fought on October 28, 1776 near White Plains, New York.
+
+[[ ## summary_1 ## ]]
+**Verification Status**: The claim CANNOT be fully verified and contains a significant factual error.
+
+**Analysis of Components**:
+
+1. **Campaign identification**: VERIFIED - The "New York and New Jersey campaign" is confirmed in passage [4] as "a series of battles for control of New York City and the state of New Jersey in the American Revolutionary War."
+
+2. **The first Battle of Harlem reference**: CONTRADICTED - Passage [2] clearly states the "Battle of Harlem Heights" was fought on September 16, 1776, NOT October 28, 1776. This battle did occur "during the New York and New Jersey campaign," but the temporal attribution in the claim is incorrect.
+
+3. **Battle of White Plains details**: VERIFIED - Passage [1] confirms the Battle of White Plains was fought on October 28, 1776, near White Plains, New York, and was part of the New York and New Jersey campaign.
+
+4. **Critical inconsistency**: The claim incorrectly associates the Battle of Harlem Heights with an October 28, 1776 date that actually corresponds to the Battle of White Plains. These are two separate battles fought at different locations (Harlem Heights in Manhattan on September 16 vs. White Plains in Westchester County on October 28).
+
+**Entities requiring clarification**:
+- The "first Battle of Harlem" (Battle of Harlem Heights) - needs verification of its actual date (September 16, 1776) versus the October 28, 1776 date attributed to it in the claim
+- The distinction between the Battle of Harlem Heights and the Battle of White Plains as separate engagements
+
+**Conclusion**: The claim conflates two distinct battles and incorrectly dates the Battle of Harlem Heights to October 28, 1776, when it actually occurred on September 16, 1776.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary_1 has identified a critical factual error in the claim. The claim conflates two separate battles from the New York and New Jersey campaign: the Battle of Harlem Heights (September 16, 1776) and the Battle of White Plains (October 28, 1776). The claim incorrectly attributes the October 28, 1776 date to the Battle of Harlem Heights when that date actually corresponds to the Battle of White Plains. To properly verify and clarify this distinction, a focused query should address the temporal and geographical separation of these two distinct engagements.
+
+[[ ## query ## ]]
+What is the difference between the Battle of Harlem Heights and the Battle of White Plains in terms of their dates, locations, and significance during the New York and New Jersey campaign of 1776?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Battle of Harlem Heights | The Battle of Harlem Heights was fought during the New York and New Jersey campaign of the American Revolutionary War.  The action took place in what is now the Morningside Heights and east into the future Harlem neighborhoods of northwestern Manhattan Island in what is now New York City on September 16, 1776.
+Battle of Pell's Point | The Battle of Pell's Point (October 18, 1776), also known as the Battle of Pelham, was a skirmish fought between British and American troops during the New York and New Jersey campaign of the American Revolutionary War.  The conflict took place in what is now part of Pelham Bay Park in the Bronx, New York City.
+Battle of White Plains | The Battle of White Plains was a battle in the New York and New Jersey campaign of the American Revolutionary War fought on October 28, 1776, near White Plains, New York.  Following the retreat of George Washington's Continental Army northward from New York City, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  Alerted to this move, Washington retreated farther, establishing a position in the village of White Plains but failed to establish firm control over local high ground.  Howe's troops drove Washington's troops from a hill near the village; following this loss, Washington ordered the Americans to retreat farther north.
+19th Continental Regiment | The 19th Continental Regiment was a unit of the Connecticut Line in the 1776 establishment of the Continental Army.  It is a successor to Webb's Connecticut Regiment (also known as the 7th Connecticut Provincial Regiment), which was part of the 1775 establishment, and it continued to be commanded by Col. Charles Webb.  Active during the New York and New Jersey campaign, it was on the lines but did not fight at the Battle of Long Island.  It saw action at the Battle of White Plains and retreated with George Washington's army to Pennsylvania in late 1776.  It then participated in the Battle of Trenton.  Some of its men chose to overstay their enlistment and also saw action in the Battle of the Assunpink Creek and the Battle of Princeton in early 1777.
+3rd New Jersey Regiment | The 3rd New Jersey Regiment was raised on January 1, 1776, at Elizabethtown, New Jersey for service with the Continental Army.  The regiment saw action at the Battle of Valcour Island, New York Campaign, Battle of Brandywine, Battle of Germantown, Battle of Monmouth, Sullivan Expedition and the Battle of Springfield.  The regiment was disbanded on January 1, 1781, at Pompton, New Jersey.
+Battle of Long Island | The Battle of Long Island is also known as the Battle of Brooklyn and the Battle of Brooklyn Heights.  It was fought on August 27, 1776 and was the first major battle of the American Revolutionary War to take place after the United States declared its independence on July 4, 1776.  It was a victory for the British Army and the beginning of a successful campaign that gave them control of the strategically important city of New York.  In terms of troop deployment and fighting, it was the largest battle of the entire war.
+Order of battle of the Battle of Trenton | The Battle of Trenton was fought on December 26, 1776, during the American Revolutionary War campaign for New Jersey.  In a surprise attack, the Continental Army led by George Washington attacked the winter quarters of a brigade composed primarily of German troops from Hesse-Kassel in Trenton, New Jersey.  The Hessian brigade was under the command of Colonel Johann Rall; he died of wounds sustained in the battle, and about two thirds of his men were taken prisoner.  It was the first major victory after a long string of defeats that had resulted in the loss of New York City, and was a significant boost to American morale.  It was followed by two more American victories, first in a second battle at Trenton on January 2, 1777, and then on January 3 at Princeton.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+The campaign, during which the first Battle of Harlem was fought as part of the American Revolutionary War, was a series of engagements for control of New York City and the state of New Jersey, fought on October 28, 1776 near White Plains, New York.
+
+[[ ## context ## ]]
+**Verification Status**: The claim CANNOT be fully verified and contains a significant factual error.
+
+**Analysis of Components**:
+
+1. **Campaign identification**: VERIFIED - The "New York and New Jersey campaign" is confirmed in passage [4] as "a series of battles for control of New York City and the state of New Jersey in the American Revolutionary War."
+
+2. **The first Battle of Harlem reference**: CONTRADICTED - Passage [2] clearly states the "Battle of Harlem Heights" was fought on September 16, 1776, NOT October 28, 1776. This battle did occur "during the New York and New Jersey campaign," but the temporal attribution in the claim is incorrect.
+
+3. **Battle of White Plains details**: VERIFIED - Passage [1] confirms the Battle of White Plains was fought on October 28, 1776, near White Plains, New York, and was part of the New York and New Jersey campaign.
+
+4. **Critical inconsistency**: The claim incorrectly associates the Battle of Harlem Heights with an October 28, 1776 date that actually corresponds to the Battle of White Plains. These are two separate battles fought at different locations (Harlem Heights in Manhattan on September 16 vs. White Plains in Westchester County on October 28).
+
+**Entities requiring clarification**:
+- The "first Battle of Harlem" (Battle of Harlem Heights) - needs verification of its actual date (September 16, 1776) versus the October 28, 1776 date attributed to it in the claim
+- The distinction between the Battle of Harlem Heights and the Battle of White Plains as separate engagements
+
+**Conclusion**: The claim conflates two distinct battles and incorrectly dates the Battle of Harlem Heights to October 28, 1776, when it actually occurred on September 16, 1776.
+
+[[ ## passages ## ]]
+[1] «Battle of Harlem Heights | The Battle of Harlem Heights was fought during the New York and New Jersey campaign of the American Revolutionary War.  The action took place in what is now the Morningside Heights and east into the future Harlem neighborhoods of northwestern Manhattan Island in what is now New York City on September 16, 1776.»
+[2] «Battle of Pell's Point | The Battle of Pell's Point (October 18, 1776), also known as the Battle of Pelham, was a skirmish fought between British and American troops during the New York and New Jersey campaign of the American Revolutionary War.  The conflict took place in what is now part of Pelham Bay Park in the Bronx, New York City.»
+[3] «Battle of White Plains | The Battle of White Plains was a battle in the New York and New Jersey campaign of the American Revolutionary War fought on October 28, 1776, near White Plains, New York.  Following the retreat of George Washington's Continental Army northward from New York City, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  Alerted to this move, Washington retreated farther, establishing a position in the village of White Plains but failed to establish firm control over local high ground.  Howe's troops drove Washington's troops from a hill near the village; following this loss, Washington ordered the Americans to retreat farther north.»
+[4] «19th Continental Regiment | The 19th Continental Regiment was a unit of the Connecticut Line in the 1776 establishment of the Continental Army.  It is a successor to Webb's Connecticut Regiment (also known as the 7th Connecticut Provincial Regiment), which was part of the 1775 establishment, and it continued to be commanded by Col. Charles Webb.  Active during the New York and New Jersey campaign, it was on the lines but did not fight at the Battle of Long Island.  It saw action at the Battle of White Plains and retreated with George Washington's army to Pennsylvania in late 1776.  It then participated in the Battle of Trenton.  Some of its men chose to overstay their enlistment and also saw action in the Battle of the Assunpink Creek and the Battle of Princeton in early 1777.»
+[5] «3rd New Jersey Regiment | The 3rd New Jersey Regiment was raised on January 1, 1776, at Elizabethtown, New Jersey for service with the Continental Army.  The regiment saw action at the Battle of Valcour Island, New York Campaign, Battle of Brandywine, Battle of Germantown, Battle of Monmouth, Sullivan Expedition and the Battle of Springfield.  The regiment was disbanded on January 1, 1781, at Pompton, New Jersey.»
+[6] «Battle of Long Island | The Battle of Long Island is also known as the Battle of Brooklyn and the Battle of Brooklyn Heights.  It was fought on August 27, 1776 and was the first major battle of the American Revolutionary War to take place after the United States declared its independence on July 4, 1776.  It was a victory for the British Army and the beginning of a successful campaign that gave them control of the strategically important city of New York.  In terms of troop deployment and fighting, it was the largest battle of the entire war.»
+[7] «Order of battle of the Battle of Trenton | The Battle of Trenton was fought on December 26, 1776, during the American Revolutionary War campaign for New Jersey.  In a surprise attack, the Continental Army led by George Washington attacked the winter quarters of a brigade composed primarily of German troops from Hesse-Kassel in Trenton, New Jersey.  The Hessian brigade was under the command of Colonel Johann Rall; he died of wounds sustained in the battle, and about two thirds of his men were taken prisoner.  It was the first major victory after a long string of defeats that had resulted in the loss of New York City, and was a significant boost to American morale.  It was followed by two more American victories, first in a second battle at Trenton on January 2, 1777, and then on January 3 at Princeton.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim contains a fundamental factual error that conflates two distinct battles from the New York and New Jersey campaign. According to the passages provided:
+
+1. The Battle of Harlem Heights occurred on September 16, 1776 (passage [1]), not October 28, 1776.
+2. The Battle of White Plains occurred on October 28, 1776 near White Plains, New York (passage [3]), not the Battle of Harlem Heights.
+
+The claim incorrectly attributes the October 28, 1776 date and White Plains location to "the first Battle of Harlem," when these details actually describe the Battle of White Plains—a completely separate engagement fought at a different location and time. While both battles were indeed part of the New York and New Jersey campaign (confirmed in passages [1], [3], and [4]), and both were part of a series of engagements for control of New York City and New Jersey (as stated in the context analysis), the specific temporal and geographical associations in the claim are inaccurate. The claim essentially merges two distinct battles into one, creating a false hybrid that does not correspond to historical facts.
+
+[[ ## summary ## ]]
+The claim is factually incorrect. While it is true that a campaign consisting of a series of engagements for control of New York City and New Jersey occurred during the American Revolutionary War, the claim incorrectly conflates two separate battles. The Battle of Harlem Heights was fought on September 16, 1776, in Manhattan, whereas the Battle of White Plains was fought on October 28, 1776, near White Plains, New York. The claim erroneously attributes the October 28, 1776 date and White Plains location to the Battle of Harlem, when these details correspond exclusively to the Battle of White Plains.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The campaign, during which the first Battle of Harlem was fought as part of the American Revolutionary War, was a series of engagements for control of New York City and the state of New Jersey, fought on October 28, 1776 near White Plains, New York.
+
+[[ ## summary_1 ## ]]
+**Verification Status**: The claim CANNOT be fully verified and contains a significant factual error.
+
+**Analysis of Components**:
+
+1. **Campaign identification**: VERIFIED - The "New York and New Jersey campaign" is confirmed in passage [4] as "a series of battles for control of New York City and the state of New Jersey in the American Revolutionary War."
+
+2. **The first Battle of Harlem reference**: CONTRADICTED - Passage [2] clearly states the "Battle of Harlem Heights" was fought on September 16, 1776, NOT October 28, 1776. This battle did occur "during the New York and New Jersey campaign," but the temporal attribution in the claim is incorrect.
+
+3. **Battle of White Plains details**: VERIFIED - Passage [1] confirms the Battle of White Plains was fought on October 28, 1776, near White Plains, New York, and was part of the New York and New Jersey campaign.
+
+4. **Critical inconsistency**: The claim incorrectly associates the Battle of Harlem Heights with an October 28, 1776 date that actually corresponds to the Battle of White Plains. These are two separate battles fought at different locations (Harlem Heights in Manhattan on September 16 vs. White Plains in Westchester County on October 28).
+
+**Entities requiring clarification**:
+- The "first Battle of Harlem" (Battle of Harlem Heights) - needs verification of its actual date (September 16, 1776) versus the October 28, 1776 date attributed to it in the claim
+- The distinction between the Battle of Harlem Heights and the Battle of White Plains as separate engagements
+
+**Conclusion**: The claim conflates two distinct battles and incorrectly dates the Battle of Harlem Heights to October 28, 1776, when it actually occurred on September 16, 1776.
+
+[[ ## summary_2 ## ]]
+The claim is factually incorrect. While it is true that a campaign consisting of a series of engagements for control of New York City and New Jersey occurred during the American Revolutionary War, the claim incorrectly conflates two separate battles. The Battle of Harlem Heights was fought on September 16, 1776, in Manhattan, whereas the Battle of White Plains was fought on October 28, 1776, near White Plains, New York. The claim erroneously attributes the October 28, 1776 date and White Plains location to the Battle of Harlem, when these details correspond exclusively to the Battle of White Plains.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries identify a critical factual error in the claim: it conflates two distinct battles from the New York and New Jersey campaign. The claim incorrectly associates the Battle of Harlem Heights with October 28, 1776, and White Plains location, when these details actually correspond to the Battle of White Plains. The Battle of Harlem Heights occurred on September 16, 1776, in Manhattan. While the campaign itself is correctly identified as a series of engagements for control of New York City and New Jersey during the American Revolutionary War, the specific temporal and geographical attribution to the Battle of Harlem is erroneous. A clarifying query should help distinguish between these two separate battles and verify the correct dates and locations for each.
+
+[[ ## query ## ]]
+What were the dates and locations of the Battle of Harlem Heights and the Battle of White Plains, and how do these two battles differ as part of the New York and New Jersey campaign?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Battle of Harlem Heights | The Battle of Harlem Heights was fought during the New York and New Jersey campaign of the American Revolutionary War.  The action took place in what is now the Morningside Heights and east into the future Harlem neighborhoods of northwestern Manhattan Island in what is now New York City on September 16, 1776.
+Battle of White Plains | The Battle of White Plains was a battle in the New York and New Jersey campaign of the American Revolutionary War fought on October 28, 1776, near White Plains, New York.  Following the retreat of George Washington's Continental Army northward from New York City, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  Alerted to this move, Washington retreated farther, establishing a position in the village of White Plains but failed to establish firm control over local high ground.  Howe's troops drove Washington's troops from a hill near the village; following this loss, Washington ordered the Americans to retreat farther north.
+Battle of Pell's Point | The Battle of Pell's Point (October 18, 1776), also known as the Battle of Pelham, was a skirmish fought between British and American troops during the New York and New Jersey campaign of the American Revolutionary War.  The conflict took place in what is now part of Pelham Bay Park in the Bronx, New York City.
+19th Continental Regiment | The 19th Continental Regiment was a unit of the Connecticut Line in the 1776 establishment of the Continental Army.  It is a successor to Webb's Connecticut Regiment (also known as the 7th Connecticut Provincial Regiment), which was part of the 1775 establishment, and it continued to be commanded by Col. Charles Webb.  Active during the New York and New Jersey campaign, it was on the lines but did not fight at the Battle of Long Island.  It saw action at the Battle of White Plains and retreated with George Washington's army to Pennsylvania in late 1776.  It then participated in the Battle of Trenton.  Some of its men chose to overstay their enlistment and also saw action in the Battle of the Assunpink Creek and the Battle of Princeton in early 1777.
+3rd New Jersey Regiment | The 3rd New Jersey Regiment was raised on January 1, 1776, at Elizabethtown, New Jersey for service with the Continental Army.  The regiment saw action at the Battle of Valcour Island, New York Campaign, Battle of Brandywine, Battle of Germantown, Battle of Monmouth, Sullivan Expedition and the Battle of Springfield.  The regiment was disbanded on January 1, 1781, at Pompton, New Jersey.
+Order of battle of the Battle of Trenton | The Battle of Trenton was fought on December 26, 1776, during the American Revolutionary War campaign for New Jersey.  In a surprise attack, the Continental Army led by George Washington attacked the winter quarters of a brigade composed primarily of German troops from Hesse-Kassel in Trenton, New Jersey.  The Hessian brigade was under the command of Colonel Johann Rall; he died of wounds sustained in the battle, and about two thirds of his men were taken prisoner.  It was the first major victory after a long string of defeats that had resulted in the loss of New York City, and was a significant boost to American morale.  It was followed by two more American victories, first in a second battle at Trenton on January 2, 1777, and then on January 3 at Princeton.
+David Syrett | David Syrett (8 January 1939 in White Plains, New York – 18 October 2004 in Leonia, New Jersey) was Distinguished Professor of History at Queens College, City University of New York in Flushing, New York and a widely respected researcher and documentary editor on eighteenth-century British naval history and the Battle of the Atlantic during World War Two.
+8th Massachusetts Regiment | The 8th Massachusetts Regiment also known as 16th Continental Regiment and Sargent's Regiment, was raised on April 23, 1775, under Colonel Paul Dudley Sargent at Cambridge, Massachusetts.  The regiment would see action at the Battle of Bunker Hill, New York and New Jersey Campaign, Battle of Trenton, Battle of Princeton and the Battle of Saratoga.  The regiment was furloughed June 12, 1783, at West Point, New York and disbanded on November 3, 1783.
+2nd New Jersey Regiment | The 2nd New Jersey Regiment was raised, on 9 October 1775, at Trenton, New Jersey, for service with the Continental Army under the command of Colonel William Maxwell.  The regiment would see action at the Battle of Trois-Rivières, Battle of Valcour Island, Battle of Brandywine, Battle of Germantown, Battle of Crooked Billet, Battle of Monmouth, Sullivan Expedition, Battle of Springfield and the Battle of Yorktown.  The regiment was furloughed, on 6 June 1783, at Newburgh, New York, and disbanded 3 November 1783.
+Battle of Mamaroneck | The Battle of Mamaroneck was a skirmish in the New York and New Jersey campaign of the American Revolutionary War fought on October 22, 1776, at Mamaroneck, Westchester County, New York.  Following the retreat of George Washington's army to White Plains, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  To cover the eastern flank of his army, Howe ordered Major Robert Rogers and his Rangers to seize the village of Mamaroneck which had been recently abandoned by the Continental army.  On the night of October 22, 750 men under Colonel John Haslet attacked the British encampment.  Haslet's men achieved complete surprise, but Rogers' Rangers rallied and drove off the attackers.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Battle of White Plains | The Battle of White Plains was a battle in the New York and New Jersey campaign of the American Revolutionary War fought on October 28, 1776, near White Plains, New York.  Following the retreat of George Washington's Continental Army northward from New York City, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  Alerted to this move, Washington retreated farther, establishing a position in the village of White Plains but failed to establish firm control over local high ground.  Howe's troops drove Washington's troops from a hill near the village; following this loss, Washington ordered the Americans to retreat farther north.
+Battle of Harlem Heights | The Battle of Harlem Heights was fought during the New York and New Jersey campaign of the American Revolutionary War.  The action took place in what is now the Morningside Heights and east into the future Harlem neighborhoods of northwestern Manhattan Island in what is now New York City on September 16, 1776.
+Battle of Pell's Point | The Battle of Pell's Point (October 18, 1776), also known as the Battle of Pelham, was a skirmish fought between British and American troops during the New York and New Jersey campaign of the American Revolutionary War.  The conflict took place in what is now part of Pelham Bay Park in the Bronx, New York City.
+New York and New Jersey campaign | The New York and New Jersey campaign was a series of battles for control of New York City and the state of New Jersey in the American Revolutionary War between British forces under General Sir William Howe and the Continental Army under General George Washington in 1776 and the winter months of 1777.  Howe was successful in driving Washington out of New York City, but overextended his reach into New Jersey, and ended the active campaign season in January 1777 with only a few outposts near the city.  The British held New York harbor for the rest of the war, using it as a base for expeditions against other targets.
+Battle of Mamaroneck | The Battle of Mamaroneck was a skirmish in the New York and New Jersey campaign of the American Revolutionary War fought on October 22, 1776, at Mamaroneck, Westchester County, New York.  Following the retreat of George Washington's army to White Plains, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  To cover the eastern flank of his army, Howe ordered Major Robert Rogers and his Rangers to seize the village of Mamaroneck which had been recently abandoned by the Continental army.  On the night of October 22, 750 men under Colonel John Haslet attacked the British encampment.  Haslet's men achieved complete surprise, but Rogers' Rangers rallied and drove off the attackers.
+Battle of Long Island | The Battle of Long Island is also known as the Battle of Brooklyn and the Battle of Brooklyn Heights.  It was fought on August 27, 1776 and was the first major battle of the American Revolutionary War to take place after the United States declared its independence on July 4, 1776.  It was a victory for the British Army and the beginning of a successful campaign that gave them control of the strategically important city of New York.  In terms of troop deployment and fighting, it was the largest battle of the entire war.
+10th Continental Regiment | The 10th Continental Regiment was a unit of the Connecticut Line in the 1776 establishment of the Continental Army.  It began as Parson's Connecticut Regiment (also known as the 6th Connecticut Provincial Regiment), which was part of the 1775 establishment, and was commanded by Colonel Samuel Holden Parsons until his promotion to brigadier general.  It was first active during the Siege of Boston, and then in preparing the defenses of New York City.  After Parsons was promoted in August 1776, command came to John Tyler, who was promoted to colonel at that time.  The regiment fought in the Battle of Long Island, and was part of the panicked retreat after the British landing on Manhattan.  Although the regiment was present with the army at White Plains, New York in October 1776, it did not participated in the battle fought there.
+Battle of Harlem Heights | The Battle of Harlem Heights was fought during the New York and New Jersey campaign of the American Revolutionary War.  The action took place in what is now the Morningside Heights and east into the future Harlem neighborhoods of northwestern Manhattan Island in what is now New York City on September 16, 1776.
+Battle of Pell's Point | The Battle of Pell's Point (October 18, 1776), also known as the Battle of Pelham, was a skirmish fought between British and American troops during the New York and New Jersey campaign of the American Revolutionary War.  The conflict took place in what is now part of Pelham Bay Park in the Bronx, New York City.
+Battle of White Plains | The Battle of White Plains was a battle in the New York and New Jersey campaign of the American Revolutionary War fought on October 28, 1776, near White Plains, New York.  Following the retreat of George Washington's Continental Army northward from New York City, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  Alerted to this move, Washington retreated farther, establishing a position in the village of White Plains but failed to establish firm control over local high ground.  Howe's troops drove Washington's troops from a hill near the village; following this loss, Washington ordered the Americans to retreat farther north.
+19th Continental Regiment | The 19th Continental Regiment was a unit of the Connecticut Line in the 1776 establishment of the Continental Army.  It is a successor to Webb's Connecticut Regiment (also known as the 7th Connecticut Provincial Regiment), which was part of the 1775 establishment, and it continued to be commanded by Col. Charles Webb.  Active during the New York and New Jersey campaign, it was on the lines but did not fight at the Battle of Long Island.  It saw action at the Battle of White Plains and retreated with George Washington's army to Pennsylvania in late 1776.  It then participated in the Battle of Trenton.  Some of its men chose to overstay their enlistment and also saw action in the Battle of the Assunpink Creek and the Battle of Princeton in early 1777.
+3rd New Jersey Regiment | The 3rd New Jersey Regiment was raised on January 1, 1776, at Elizabethtown, New Jersey for service with the Continental Army.  The regiment saw action at the Battle of Valcour Island, New York Campaign, Battle of Brandywine, Battle of Germantown, Battle of Monmouth, Sullivan Expedition and the Battle of Springfield.  The regiment was disbanded on January 1, 1781, at Pompton, New Jersey.
+Battle of Long Island | The Battle of Long Island is also known as the Battle of Brooklyn and the Battle of Brooklyn Heights.  It was fought on August 27, 1776 and was the first major battle of the American Revolutionary War to take place after the United States declared its independence on July 4, 1776.  It was a victory for the British Army and the beginning of a successful campaign that gave them control of the strategically important city of New York.  In terms of troop deployment and fighting, it was the largest battle of the entire war.
+Order of battle of the Battle of Trenton | The Battle of Trenton was fought on December 26, 1776, during the American Revolutionary War campaign for New Jersey.  In a surprise attack, the Continental Army led by George Washington attacked the winter quarters of a brigade composed primarily of German troops from Hesse-Kassel in Trenton, New Jersey.  The Hessian brigade was under the command of Colonel Johann Rall; he died of wounds sustained in the battle, and about two thirds of his men were taken prisoner.  It was the first major victory after a long string of defeats that had resulted in the loss of New York City, and was a significant boost to American morale.  It was followed by two more American victories, first in a second battle at Trenton on January 2, 1777, and then on January 3 at Princeton.
+Battle of Harlem Heights | The Battle of Harlem Heights was fought during the New York and New Jersey campaign of the American Revolutionary War.  The action took place in what is now the Morningside Heights and east into the future Harlem neighborhoods of northwestern Manhattan Island in what is now New York City on September 16, 1776.
+Battle of White Plains | The Battle of White Plains was a battle in the New York and New Jersey campaign of the American Revolutionary War fought on October 28, 1776, near White Plains, New York.  Following the retreat of George Washington's Continental Army northward from New York City, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  Alerted to this move, Washington retreated farther, establishing a position in the village of White Plains but failed to establish firm control over local high ground.  Howe's troops drove Washington's troops from a hill near the village; following this loss, Washington ordered the Americans to retreat farther north.
+Battle of Pell's Point | The Battle of Pell's Point (October 18, 1776), also known as the Battle of Pelham, was a skirmish fought between British and American troops during the New York and New Jersey campaign of the American Revolutionary War.  The conflict took place in what is now part of Pelham Bay Park in the Bronx, New York City.
+19th Continental Regiment | The 19th Continental Regiment was a unit of the Connecticut Line in the 1776 establishment of the Continental Army.  It is a successor to Webb's Connecticut Regiment (also known as the 7th Connecticut Provincial Regiment), which was part of the 1775 establishment, and it continued to be commanded by Col. Charles Webb.  Active during the New York and New Jersey campaign, it was on the lines but did not fight at the Battle of Long Island.  It saw action at the Battle of White Plains and retreated with George Washington's army to Pennsylvania in late 1776.  It then participated in the Battle of Trenton.  Some of its men chose to overstay their enlistment and also saw action in the Battle of the Assunpink Creek and the Battle of Princeton in early 1777.
+3rd New Jersey Regiment | The 3rd New Jersey Regiment was raised on January 1, 1776, at Elizabethtown, New Jersey for service with the Continental Army.  The regiment saw action at the Battle of Valcour Island, New York Campaign, Battle of Brandywine, Battle of Germantown, Battle of Monmouth, Sullivan Expedition and the Battle of Springfield.  The regiment was disbanded on January 1, 1781, at Pompton, New Jersey.
+Order of battle of the Battle of Trenton | The Battle of Trenton was fought on December 26, 1776, during the American Revolutionary War campaign for New Jersey.  In a surprise attack, the Continental Army led by George Washington attacked the winter quarters of a brigade composed primarily of German troops from Hesse-Kassel in Trenton, New Jersey.  The Hessian brigade was under the command of Colonel Johann Rall; he died of wounds sustained in the battle, and about two thirds of his men were taken prisoner.  It was the first major victory after a long string of defeats that had resulted in the loss of New York City, and was a significant boost to American morale.  It was followed by two more American victories, first in a second battle at Trenton on January 2, 1777, and then on January 3 at Princeton.
+David Syrett | David Syrett (8 January 1939 in White Plains, New York – 18 October 2004 in Leonia, New Jersey) was Distinguished Professor of History at Queens College, City University of New York in Flushing, New York and a widely respected researcher and documentary editor on eighteenth-century British naval history and the Battle of the Atlantic during World War Two.
+8th Massachusetts Regiment | The 8th Massachusetts Regiment also known as 16th Continental Regiment and Sargent's Regiment, was raised on April 23, 1775, under Colonel Paul Dudley Sargent at Cambridge, Massachusetts.  The regiment would see action at the Battle of Bunker Hill, New York and New Jersey Campaign, Battle of Trenton, Battle of Princeton and the Battle of Saratoga.  The regiment was furloughed June 12, 1783, at West Point, New York and disbanded on November 3, 1783.
+2nd New Jersey Regiment | The 2nd New Jersey Regiment was raised, on 9 October 1775, at Trenton, New Jersey, for service with the Continental Army under the command of Colonel William Maxwell.  The regiment would see action at the Battle of Trois-Rivières, Battle of Valcour Island, Battle of Brandywine, Battle of Germantown, Battle of Crooked Billet, Battle of Monmouth, Sullivan Expedition, Battle of Springfield and the Battle of Yorktown.  The regiment was furloughed, on 6 June 1783, at Newburgh, New York, and disbanded 3 November 1783.
+Battle of Mamaroneck | The Battle of Mamaroneck was a skirmish in the New York and New Jersey campaign of the American Revolutionary War fought on October 22, 1776, at Mamaroneck, Westchester County, New York.  Following the retreat of George Washington's army to White Plains, British General William Howe landed troops in Westchester County, intending to cut off Washington's escape route.  To cover the eastern flank of his army, Howe ordered Major Robert Rogers and his Rangers to seize the village of Mamaroneck which had been recently abandoned by the Continental army.  On the night of October 22, 750 men under Colonel John Haslet attacked the British encampment.  Haslet's men achieved complete surprise, but Rogers' Rangers rallied and drove off the attackers.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 query: 'Battle of Harlem Heights September 16 1776 Battle of White Plains October 28 1776' | Hop 3 query: 'What were the dates and locations of the Battle of Harlem Heights and the Battle of White Plains, and how do these two battles differ as part of the New York and New Jersey campaign?' Both queries target the same information (dates and locations of the two battles) already fully provide
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step UNKNOWN: evidence: Summary 1 includes detailed analysis of passages about unrelated battles and military units: '10th Continental Regiment' (passage 7), 'Battle of Long Island' (passage 6), 'Battle of Pell's Point' (passage 3), and 'Battle of Mamaroneck' (passage 5). None of these passages are relevant to verifying the claim's conflation of Battle of Harlem Heights with the October 28, 1776 date. The solver processe
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

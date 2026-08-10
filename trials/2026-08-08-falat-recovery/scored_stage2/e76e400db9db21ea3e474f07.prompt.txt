@@ -1,0 +1,471 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.
+Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.
+List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        5. **CRITICAL: For every distinct entity mentioned in the claim (whether explicitly named or referenced indirectly), ensure that passages about that specific entity are available. If passages are missing for any entity in the claim, identify those missing evidence documents.**
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        **Critical requirement for identifying missing evidence documents**:
+        - **If a claim mentions multiple distinct entities (e.g., "Entity A is X. Entity B is not X."), you must have passages about EACH entity mentioned**
+        - **Even if the claim can be partially verified, if any entity in the claim lacks corresponding passages, you must identify that entity's evidence document as missing**
+        - **For comparison claims (e.g., "A is perennial. B is not perennial"), you need passages about both A and B, even if one can be verified**
+        - **When a claim mentions an entity only to negate something about it (e.g., "Duranta is not a perennial"), that entity still requires evidence documents**
+        - **The fact that you can verify part of a claim does not mean you should ignore entities that lack passages - explicitly identify all entities that need but lack evidence documents**
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - **List ALL entities from the claim that lack corresponding passages, even if other parts of the claim are verifiable**
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+        - **When identifying missing evidence documents, use the entity name or subject matter that would be the title/topic of the needed passage (e.g., if the claim mentions "Duranta" but no passages discuss it, identify "duranta" as a missing evidence document)**
+[STEP 4] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## passages ## ]]
+[1] «Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.»
+[2] «Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.»
+[3] «The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.»
+[4] «Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.»
+[5] «List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.»
+[6] «Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.»
+[7] «Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze this claim step by step:
+
+1. The claim states: "Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera 'I puritani'"
+
+2. From the passages, I can establish:
+   - Mikhail Glinka was Russian (passage 7: "was the first Russian composer to gain wide recognition within his own country")
+   - The opera "I puritani" was written by Vincenzo Bellini (passage 1: "Bellini's contribution being the hugely-successful 'I puritani'")
+   - Bellini is identified as an Italian composer (passage 1: "the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini")
+
+3. Verification of the claim:
+   - Glinka is Russian
+   - Bellini is Italian
+   - Therefore, they are NOT the same nationality
+   - Bellini did write "I puritani"
+   - The claim is TRUE
+
+4. Evidence check:
+   - I have sufficient information about Mikhail Glinka's nationality (Russian)
+   - I have sufficient information about who composed "I puritani" (Bellini)
+   - I have sufficient information about Bellini's nationality (Italian)
+   - All entities mentioned in the claim have corresponding passages with relevant information
+[[ ## summary ## ]]
+The claim is VERIFIED as TRUE. The passages confirm that:
+- Mikhail Glinka was Russian (passage 7)
+- Vincenzo Bellini, who composed the opera "I puritani" (passage 1), was Italian
+- Therefore, Glinka and Bellini were indeed different nationalities
+
+All necessary information to verify this claim is present in the provided passages. No missing evidence documents are required.
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## summary_1 ## ]]
+The claim is VERIFIED as TRUE. The passages confirm that:
+- Mikhail Glinka was Russian (passage 7)
+- Vincenzo Bellini, who composed the opera "I puritani" (passage 1), was Italian
+- Therefore, Glinka and Bellini were indeed different nationalities
+
+All necessary information to verify this claim is present in the provided passages. No missing evidence documents are required.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim states that Mikhail Glinka is not the same nationality as another opera composer who wrote "I puritani". To verify this claim, I need to:
+1. Identify the composer of "I puritani"
+2. Determine Mikhail Glinka's nationality
+3. Determine the nationality of the composer of "I puritani"
+4. Compare whether they are different nationalities
+
+According to the summary, this has already been verified: Mikhail Glinka was Russian, Vincenzo Bellini composed "I puritani" and was Italian. Since Russia and Italy are different countries, the claim is true - they are not the same nationality.
+
+[[ ## query ## ]]
+Who composed the opera "I puritani" and what was their nationality compared to Mikhail Glinka?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+The Great Glinka | The Great Glinka (Russian: Глинка , "Glinka " ) is a 1946 Soviet biopic film directed by Lev Arnshtam.  The film is about Mikhail Glinka, a Russian composer of the 19th century.  The film was awarded the Stalin Prize of II degree (1947) and it was entered into the 1946 Cannes Film Festival.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+List of compositions by Mikhail Glinka | Below is a list of compositions by Mikhail Glinka.  The works are categorized by genre, date of composition and titles.
+Mikhail Tushmalov | Mikhail Tushmalov "(Tushmalishvili, Georgian:თუშმალიშვილი)" (1861 - 1896) was a Russian Georgian opera conductor who held posts in Warsaw and Tiflis (Tbilisi).  He died in what is now the nation of Georgia.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## context ## ]]
+The claim is VERIFIED as TRUE. The passages confirm that:
+- Mikhail Glinka was Russian (passage 7)
+- Vincenzo Bellini, who composed the opera "I puritani" (passage 1), was Italian
+- Therefore, Glinka and Bellini were indeed different nationalities
+
+All necessary information to verify this claim is present in the provided passages. No missing evidence documents are required.
+
+[[ ## passages ## ]]
+[1] «Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.»
+[2] «The Great Glinka | The Great Glinka (Russian: Глинка , "Glinka " ) is a 1946 Soviet biopic film directed by Lev Arnshtam.  The film is about Mikhail Glinka, a Russian composer of the 19th century.  The film was awarded the Stalin Prize of II degree (1947) and it was entered into the 1946 Cannes Film Festival.»
+[3] «Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.»
+[4] «Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.»
+[5] «Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.»
+[6] «List of compositions by Mikhail Glinka | Below is a list of compositions by Mikhail Glinka.  The works are categorized by genre, date of composition and titles.»
+[7] «Mikhail Tushmalov | Mikhail Tushmalov "(Tushmalishvili, Georgian:თუშმალიშვილი)" (1861 - 1896) was a Russian Georgian opera conductor who held posts in Warsaw and Tiflis (Tbilisi).  He died in what is now the nation of Georgia.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+Let me analyze what the claim requires and what the passages provide.
+
+The claim states: "Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera 'I puritani'"
+
+To verify this claim, I need to establish:
+1. Mikhail Glinka's nationality
+2. The identity of the composer who wrote "I puritani"
+3. That composer's nationality
+4. Confirmation that these nationalities are different
+
+From the passages:
+- Passage 1 explicitly states Mikhail Glinka was Russian ("was the first Russian composer")
+- Passage 5 mentions that Vincenzo Bellini wrote "I puritani" for the Théâtre-Italien in Paris, and it was "hugely-successful"
+- However, passage 5 does NOT explicitly state Bellini's nationality
+
+The context provided states that passage 1 confirms Glinka was Russian and passage 1 confirms Bellini was Italian and composed "I puritani". But looking at the actual passages provided, passage 1 is only about Mikhail Glinka - it does not mention Bellini or his nationality at all. Passage 5 mentions Bellini composed "I puritani" but does not explicitly state that Bellini was Italian.
+
+Therefore, there is a discrepancy between what the context claims and what the passages actually contain.
+
+[[ ## summary ## ]]
+The claim CANNOT be fully verified with the provided passages. While the passages establish that:
+- Mikhail Glinka was Russian (Passage 1)
+- Vincenzo Bellini composed the opera "I puritani" (Passage 5)
+
+The passages do NOT explicitly state Bellini's nationality. To verify this claim completely, a passage specifically identifying Vincenzo Bellini's nationality (Italian) is required. Without explicit confirmation of Bellini's nationality in the provided passages, the conclusion about different nationalities cannot be definitively verified from the evidence given.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Mikhail Glinka is not the same nationality as another opera composer. This composer wrote the opera "I puritani"
+
+[[ ## summary_1 ## ]]
+The claim is VERIFIED as TRUE. The passages confirm that:
+- Mikhail Glinka was Russian (passage 7)
+- Vincenzo Bellini, who composed the opera "I puritani" (passage 1), was Italian
+- Therefore, Glinka and Bellini were indeed different nationalities
+
+All necessary information to verify this claim is present in the provided passages. No missing evidence documents are required.
+
+[[ ## summary_2 ## ]]
+The claim CANNOT be fully verified with the provided passages. While the passages establish that:
+- Mikhail Glinka was Russian (Passage 1)
+- Vincenzo Bellini composed the opera "I puritani" (Passage 5)
+
+The passages do NOT explicitly state Bellini's nationality. To verify this claim completely, a passage specifically identifying Vincenzo Bellini's nationality (Italian) is required. Without explicit confirmation of Bellini's nationality in the provided passages, the conclusion about different nationalities cannot be definitively verified from the evidence given.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries present conflicting assessments of the same claim. Summary_1 concludes the claim is TRUE, stating that both Glinka's Russian nationality and Bellini's Italian nationality are confirmed in the passages. Summary_2 argues the claim CANNOT be fully verified because while Glinka's Russian nationality is established, Bellini's nationality is not explicitly stated in the passages. 
+
+The key difference is whether the passages actually contain explicit information about Vincenzo Bellini's nationality. Summary_1 asserts this information is present (passage 1), while Summary_2 states it is absent. To resolve this discrepancy, we need to identify what information the passages actually contain regarding Bellini's nationality, and whether explicit confirmation or reasonable inference from context is sufficient for claim verification.
+
+[[ ## query ## ]]
+Do the provided passages explicitly state Vincenzo Bellini's nationality? If so, in which passage(s) is this information found, and how does this affect the verifiability of the claim that Mikhail Glinka and the composer of "I puritani" are of different nationalities?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+I puritani | I puritani ("The Puritans") is an opera in by Vincenzo Bellini.  It was originally written in two acts and later changed to three acts on the advice of Gioachino Rossini, with whom the young composer had become friends.  The music was set to a libretto by Count Carlo Pepoli, an Italian émigré poet whom Bellini had met at a salon run by the exile Princess Belgiojoso, which became a meeting place for many Italian revolutionaries.
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Strait passage | Strait passage is a concept in Admiralty law which allows for a vessel to pass through a strait.  Given the United Nations' extension of territorial waters to a maximum width of 12 miles, straits with width of less than 24 miles are entirely composed of territorial waters.  Under the United Nations Convention on the Law of the Sea however, innocent passage rules do not apply and ships both commercial and military are allowed passage as if they were traversing the high seas.
+Anti-nationalism | Anti-nationalism denotes the sentiments associated with an opposition to nationalism.  Some anti-nationalists are humanitarians or humanists who pursue an idealist view of world community, and self-identify as world citizens.  They often oppose chauvinism, jingoism and militarism, and desire peace rather than perpetual conflict, which they claim can be rooted in nationalism.  The imposition of nationalism as a belief or identity system, particularly when in conflict with more established and self-sustaining identity choices, often based on freely chosen religious or cultural beliefs and practices can be understood to undermine the legitimacy of territory-based nationalism.  Various forms of internationalism propose alternatives.  They do not all necessarily oppose the concepts of countries, nation states, national boundaries, cultural preservation, and identity politics; for example, present-day multilateralism does not, whereas proletarian internationalism and various kinds of cosmopolitanism explicitly do so.
+Carlo Pepoli | Count Carlo Pepoli (22 July 1796 – 7 December 1881) was an Italian politician and journalist.  He was also acclaimed as a poet, his most well-known work being the libretto for Vincenzo Bellini's final opera, "I puritani" which was given its premiere in Paris in January 1835.
+Safe Passage Project | Safe Passage Project Corporation is a registered 501(c)(3) not-for-profit organization housed at New York Law School that provides free legal counsel to immigrant children facing deportation.  The Safe Passage Project was created to address the unmet legal needs of immigrant youth living in New York, and does so by matching New York Law School students and pro bono attorneys to represent its clients.
+CareConfidential | CareConfidential is a charity which provides information and counselling independent of the NHS on pregnancy choices, and post-abortion support.  They do this through their website, helpline and online chat.  Information on their website and leaflets has been certified by the information Standard.  They formerly supported a network of crisis pregnancy centers, but as of 2014, no longer do so.  CareConfidential was founded as a programme of the pro-life organisation Christian Action Research and Education (CARE), and became an independent charity in 2011.  Since becoming independent CareConfidential do not explicitly state whether they are pro-life or pro-choice but seek to acknowledge the freedom of choice, respecting all clients' decisions.
+Hexameron (musical composition) | Hexaméron, Morceau de concert S.392 is a collaborative composition for solo piano.  It consists of six variations on a theme, along with an introduction, connecting interludes and a finale.  The theme is the "March of the Puritans" from Vincenzo Bellini's opera "I puritani".
+Vincenzo Bellini | Vincenzo Salvatore Carmelo Francesco Bellini (] ; 3 November 1801 – 23 September 1835) was an Italian opera composer, who was known for his long-flowing melodic lines for which he was named "the Swan of Catania".
+Simple non-inferential passage | A simple non-inferential passage is a type of nonargument characterized by the lack of a claim that anything is being proved.  Simple non-inferential passages include warnings, pieces of advice, statements of belief or opinion, loosely associated statements, and reports.  Simple non-inferential passages are nonarguments because while the statements involved may be premises, conclusions or both, the statements do not serve to infer a conclusion or support one another.  This is distinct from a logical fallacy, which indicates an error in reasoning.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+The Demon (opera) | The Demon (Russian: Демон ) is an opera in three acts (six scenes) by Russian composer Anton Rubinstein.  The work was composed in 1871.  The libretto was by Pavel Viskovatov, based on the poem of the same name by Mikhail Lermontov.
+Rogneda (opera) | Rogneda (Russian: "Рогнеда" ) is an opera in five acts, composed by Alexander Serov between 1863 and 1865.  The scenario, by the composer, was based on the novel "Askold's Grave" ("Аскольдова могила", 1833) by Mikhail Zagoskin and the poem "Rogneda" (ca. 1825) by Kondraty Ryleyev.  The actual Russian libretto was created by Dmitry Averkiev in the same manner as with the composer's previous opera, "Judith", with the words written to fit the vocal lines "after" the music had been composed.
+List of major opera composers | This list provides a guide to opera composers, as determined by their presence on a majority of compiled lists of significant opera composers.  (See the "Lists Consulted" section for full details.)  The composers run from Jacopo Peri, who wrote the first ever opera in late 16th century Italy, to John Adams, one of the leading figures in the contemporary operatic world.  The brief accompanying notes offer an explanation as to why each composer has been considered major.  Also included is a section about major women opera composers, compiled from the same lists.  For an introduction to operatic history, see opera.  The organisation of the list is by birthdate.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+Mikhail Glinka | Mikhail Ivanovich Glinka (Russian: Михаи́л Ива́нович Гли́нка ; 1 June [O.S. 20 May] 1804 15 February [O.S. 3 February] 1857 ) was the first Russian composer to gain wide recognition within his own country, and is often regarded as the fountainhead of Russian classical music.  Glinka's compositions were an important influence on future Russian composers, notably the members of The Five, who took Glinka's lead and produced a distinctive Russian style of music.
+The Great Glinka | The Great Glinka (Russian: Глинка , "Glinka " ) is a 1946 Soviet biopic film directed by Lev Arnshtam.  The film is about Mikhail Glinka, a Russian composer of the 19th century.  The film was awarded the Stalin Prize of II degree (1947) and it was entered into the 1946 Cannes Film Festival.
+Ruslan and Lyudmila (opera) | Ruslan and Lyudmila (Russian: Руслан и Людмила , "Ruslan i Lyudmila") is an opera in five acts (eight tableaux) composed by Mikhail Glinka between 1837 and 1842.  The opera is based on the 1820 poem of the same name by Alexander Pushkin.  The Russian libretto was written by Valerian Shirkov, Nestor Kukolnik and N. A. Markevich, among others.  Pushkin's death in the famous duel prevented him from writing the libretto himself as planned.
+Alexander Dargomyzhsky | Alexander Sergeyevich Dargomyzhsky (Russian: Алекса́ндр Серге́евич Даргомы́жский ) (14 February [O.S. 2 February] 1813 17 January [O.S. 5 January] 1869 ) was a 19th-century Russian composer.  He bridged the gap in Russian opera composition between Mikhail Glinka and the later generation of The Five and Pyotr Ilyich Tchaikovsky.
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+List of compositions by Mikhail Glinka | Below is a list of compositions by Mikhail Glinka.  The works are categorized by genre, date of composition and titles.
+Mikhail Tushmalov | Mikhail Tushmalov "(Tushmalishvili, Georgian:თუშმალიშვილი)" (1861 - 1896) was a Russian Georgian opera conductor who held posts in Warsaw and Tiflis (Tbilisi).  He died in what is now the nation of Georgia.
+I puritani | I puritani ("The Puritans") is an opera in by Vincenzo Bellini.  It was originally written in two acts and later changed to three acts on the advice of Gioachino Rossini, with whom the young composer had become friends.  The music was set to a libretto by Count Carlo Pepoli, an Italian émigré poet whom Bellini had met at a salon run by the exile Princess Belgiojoso, which became a meeting place for many Italian revolutionaries.
+Marino Faliero (opera) | Rossini had influenced the management of the Théâtre-Italien to commission works by the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini.  Both wrote operas for that house in Paris, Bellini's contribution being the hugely-successful "I puritani".  Donizetti's opera, which premiered on 12 March 1835 (a few months after "I puritani") was not nearly as much of a success.  However, it marked Donizetti's first opera to have its premiere in Paris.
+Strait passage | Strait passage is a concept in Admiralty law which allows for a vessel to pass through a strait.  Given the United Nations' extension of territorial waters to a maximum width of 12 miles, straits with width of less than 24 miles are entirely composed of territorial waters.  Under the United Nations Convention on the Law of the Sea however, innocent passage rules do not apply and ships both commercial and military are allowed passage as if they were traversing the high seas.
+Anti-nationalism | Anti-nationalism denotes the sentiments associated with an opposition to nationalism.  Some anti-nationalists are humanitarians or humanists who pursue an idealist view of world community, and self-identify as world citizens.  They often oppose chauvinism, jingoism and militarism, and desire peace rather than perpetual conflict, which they claim can be rooted in nationalism.  The imposition of nationalism as a belief or identity system, particularly when in conflict with more established and self-sustaining identity choices, often based on freely chosen religious or cultural beliefs and practices can be understood to undermine the legitimacy of territory-based nationalism.  Various forms of internationalism propose alternatives.  They do not all necessarily oppose the concepts of countries, nation states, national boundaries, cultural preservation, and identity politics; for example, present-day multilateralism does not, whereas proletarian internationalism and various kinds of cosmopolitanism explicitly do so.
+Carlo Pepoli | Count Carlo Pepoli (22 July 1796 – 7 December 1881) was an Italian politician and journalist.  He was also acclaimed as a poet, his most well-known work being the libretto for Vincenzo Bellini's final opera, "I puritani" which was given its premiere in Paris in January 1835.
+Safe Passage Project | Safe Passage Project Corporation is a registered 501(c)(3) not-for-profit organization housed at New York Law School that provides free legal counsel to immigrant children facing deportation.  The Safe Passage Project was created to address the unmet legal needs of immigrant youth living in New York, and does so by matching New York Law School students and pro bono attorneys to represent its clients.
+CareConfidential | CareConfidential is a charity which provides information and counselling independent of the NHS on pregnancy choices, and post-abortion support.  They do this through their website, helpline and online chat.  Information on their website and leaflets has been certified by the information Standard.  They formerly supported a network of crisis pregnancy centers, but as of 2014, no longer do so.  CareConfidential was founded as a programme of the pro-life organisation Christian Action Research and Education (CARE), and became an independent charity in 2011.  Since becoming independent CareConfidential do not explicitly state whether they are pro-life or pro-choice but seek to acknowledge the freedom of choice, respecting all clients' decisions.
+Hexameron (musical composition) | Hexaméron, Morceau de concert S.392 is a collaborative composition for solo piano.  It consists of six variations on a theme, along with an introduction, connecting interludes and a finale.  The theme is the "March of the Puritans" from Vincenzo Bellini's opera "I puritani".
+Vincenzo Bellini | Vincenzo Salvatore Carmelo Francesco Bellini (] ; 3 November 1801 – 23 September 1835) was an Italian opera composer, who was known for his long-flowing melodic lines for which he was named "the Swan of Catania".
+Simple non-inferential passage | A simple non-inferential passage is a type of nonargument characterized by the lack of a claim that anything is being proved.  Simple non-inferential passages include warnings, pieces of advice, statements of belief or opinion, loosely associated statements, and reports.  Simple non-inferential passages are nonarguments because while the statements involved may be premises, conclusions or both, the statements do not serve to infer a conclusion or support one another.  This is distinct from a logical fallacy, which indicates an error in reasoning.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 query: 'Who composed the opera "I puritani" and what was their nationality compared to Mikhail Glinka?' re-asks the same question already answered in hop 1 (Marino Faliero passage states 'Vincenzo Bellini' composed 'I puritani'). Hop 3 query continues the same pattern: 'Do the provided passages explicitly state Vincenzo Bellini's nationality?' when hop 1 already identified Bellini via 'outst
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: Summary_2 states: 'The passages do NOT explicitly state Bellini's nationality. To verify this claim completely, a passage specifically identifying Vincenzo Bellini's nationality (Italian) is required.' However, hop 1 passage 'Marino Faliero (opera)' explicitly states 'the outstanding Italian composers of the day—Donizetti and Vincenzo Bellini,' clearly identifying Bellini as Italian. The solver mi
+- code B.12 (Verdict_Despite_Insufficiency), anchored near step UNKNOWN: evidence: Summary_1 concludes: 'The claim is VERIFIED as TRUE...All necessary information to verify this claim is present in the provided passages. No missing evidence documents are required.' Then Summary_2 contradicts this: 'The claim CANNOT be fully verified with the provided passages...The passages do NOT explicitly state Bellini's nationality.' The first summary rendered a definitive verdict despite th
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step UNKNOWN: evidence: Hop 3 retrieval returned multiple irrelevant passages (Strait passage, Anti-nationalism, Safe Passage Project, CareConfidential, Simple non-inferential passage) that have no connection to opera composers or the claim. These passages appear in the final concatenated output without any indication that the solver recognized their irrelevance or filtered them from consideration.
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

@@ -1,0 +1,456 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The species of mammal which the town, a community that forms part of the Centre USD 397 district, was named after is Antilocapra americana.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Centre USD 397 | Centre USD 397 is a unified school district headquartered in Lost Springs, Kansas, United States.  The district includes the communities of Lincolnville, Lost Springs, Pilsen, Tampa, Ramona, Antelope, Burdick, nearby rural areas of Marion / Morris / Dickinson / Chase Counties.
+Antilocapridae | The Antilocapridae are a family of artiodactyls endemic to North America.  Their closest extant relatives are the giraffids with which they comprise the superfamily Giraffoidea.  Only one species, the pronghorn ("Antilocapra americana"), is living today; all other members of the family are extinct.  The living pronghorn is a small ruminant mammal resembling an antelope.  It bears small, forked horns.
+Pronghorn | The pronghorn ( ) ("Antilocapra americana") is a species of artiodactyl mammal indigenous to interior western and central North America.  Though not an antelope, it is often known colloquially in North America as the American antelope, prong buck, pronghorn antelope, or simply antelope because it closely resembles the true antelopes of the Old World and fills a similar ecological niche due to parallel evolution.
+Walajapet | Walajapet is a town or municipality and a part of Vellore district in the state of Tamil Nadu.  The streets in the town form a square shape which is a unique feature of the town.  It will be easy for you to reach any part of the town with this kind of infrastructure.  The streets are wide and nicely structured.  As of 2011, the town had a population of 32,397.
+Mexican pronghorn | The Mexican pronghorn ("Antilocapra americana mexicana") is a pronghorn native to Mexico and the United States.
+Centre High School | Centre High School is a rural public high school located 5 miles south of Lost Springs and 2 miles north of Lincolnville along U.S. Highway 77 in Kansas.  It is the only high school in Centre USD 397.
+Sonoran pronghorn | The Sonoran pronghorn ("Antilocapra americana sonoriensis") is an endangered subspecies of pronghorn that is endemic to the Sonoran Desert.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+The species of mammal which the town, a community that forms part of the Centre USD 397 district, was named after is Antilocapra americana.
+
+[[ ## passages ## ]]
+[1] «Centre USD 397 | Centre USD 397 is a unified school district headquartered in Lost Springs, Kansas, United States.  The district includes the communities of Lincolnville, Lost Springs, Pilsen, Tampa, Ramona, Antelope, Burdick, nearby rural areas of Marion / Morris / Dickinson / Chase Counties.»
+[2] «Antilocapridae | The Antilocapridae are a family of artiodactyls endemic to North America.  Their closest extant relatives are the giraffids with which they comprise the superfamily Giraffoidea.  Only one species, the pronghorn ("Antilocapra americana"), is living today; all other members of the family are extinct.  The living pronghorn is a small ruminant mammal resembling an antelope.  It bears small, forked horns.»
+[3] «Pronghorn | The pronghorn ( ) ("Antilocapra americana") is a species of artiodactyl mammal indigenous to interior western and central North America.  Though not an antelope, it is often known colloquially in North America as the American antelope, prong buck, pronghorn antelope, or simply antelope because it closely resembles the true antelopes of the Old World and fills a similar ecological niche due to parallel evolution.»
+[4] «Walajapet | Walajapet is a town or municipality and a part of Vellore district in the state of Tamil Nadu.  The streets in the town form a square shape which is a unique feature of the town.  It will be easy for you to reach any part of the town with this kind of infrastructure.  The streets are wide and nicely structured.  As of 2011, the town had a population of 32,397.»
+[5] «Mexican pronghorn | The Mexican pronghorn ("Antilocapra americana mexicana") is a pronghorn native to Mexico and the United States.»
+[6] «Centre High School | Centre High School is a rural public high school located 5 miles south of Lost Springs and 2 miles north of Lincolnville along U.S. Highway 77 in Kansas.  It is the only high school in Centre USD 397.»
+[7] «Sonoran pronghorn | The Sonoran pronghorn ("Antilocapra americana sonoriensis") is an endangered subspecies of pronghorn that is endemic to the Sonoran Desert.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze this claim step by step:
+
+1. **Identifying the claim components:**
+   - There is a town that is part of Centre USD 397 district
+   - This town was named after a species of mammal
+   - That species is claimed to be Antilocapra americana (pronghorn)
+
+2. **Analyzing the passages:**
+   - Passage [1] identifies communities in Centre USD 397: Lincolnville, Lost Springs, Pilsen, Tampa, Ramona, Antelope, Burdick
+   - Passage [2] confirms that Antilocapra americana is the pronghorn, a living mammal in the Antilocapridae family
+   - Passage [3] provides additional confirmation that Antilocapra americana is the pronghorn species
+   - Passages [5] and [7] reference subspecies of Antilocapra americana
+
+3. **Verification process:**
+   - The claim requires that one of the towns in Centre USD 397 was named after Antilocapra americana
+   - One community listed is "Antelope" - which could be the town in question
+   - However, the passages do NOT explicitly state that Antelope (the town) was named after the pronghorn (Antilocapra americana)
+   - While "Antelope" could logically be derived from pronghorn/antelope naming, and we know Antilocapra americana is commonly called "antelope" in North America (per passage [3]), the direct connection between the town name "Antelope" in Centre USD 397 and the species Antilocapra americana is not explicitly established in these passages
+
+4. **What is missing:**
+   - Explicit confirmation that the town of Antelope in Centre USD 397 was named after the pronghorn
+   - Confirmation that "Antelope" specifically refers to Antilocapra americana and not another antelope species or unrelated origin
+   - Direct historical or etymological documentation of Antelope, Kansas naming origin
+
+[[ ## summary ## ]]
+
+**Verification Status:** Partially verified - The claim cannot be fully verified from the provided passages.
+
+**What is established:**
+- Centre USD 397 is a unified school district that includes a community named "Antelope" (Passage [1])
+- Antilocapra americana is confirmed to be a species of mammal commonly known as "antelope" or "pronghorn" in North America (Passages [2] and [3])
+
+**What is NOT established:**
+- The passages do not explicitly state that the town of Antelope (which is part of Centre USD 397) was named after Antilocapra americana
+- There is no documentation provided connecting the naming origin of Antelope, Kansas to the pronghorn species
+
+**Information needed for full verification:**
+- Explicit confirmation that the community of Antelope within Centre USD 397 was named after the pronghorn
+- Historical or etymological documentation of how Antelope, Kansas (the specific town in Centre USD 397 district) received its name
+- Confirmation that if Antelope was named after an animal, it specifically refers to Antilocapra americana and not another species
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+The species of mammal which the town, a community that forms part of the Centre USD 397 district, was named after is Antilocapra americana.
+
+[[ ## summary_1 ## ]]
+**Verification Status:** Partially verified - The claim cannot be fully verified from the provided passages.
+
+**What is established:**
+- Centre USD 397 is a unified school district that includes a community named "Antelope" (Passage [1])
+- Antilocapra americana is confirmed to be a species of mammal commonly known as "antelope" or "pronghorn" in North America (Passages [2] and [3])
+
+**What is NOT established:**
+- The passages do not explicitly state that the town of Antelope (which is part of Centre USD 397) was named after Antilocapra americana
+- There is no documentation provided connecting the naming origin of Antelope, Kansas to the pronghorn species
+
+**Information needed for full verification:**
+- Explicit confirmation that the community of Antelope within Centre USD 397 was named after the pronghorn
+- Historical or etymological documentation of how Antelope, Kansas (the specific town in Centre USD 397 district) received its name
+- Confirmation that if Antelope was named after an animal, it specifically refers to Antilocapra americana and not another species
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim requires verification of a specific naming relationship: that the town of Antelope (part of Centre USD 397) was named after Antilocapra americana. While previous passages have established that:
+1. Antelope is a community in Centre USD 397
+2. Antilocapra americana is a mammal species (pronghorn/antelope)
+
+What remains unverified is the crucial linking claim: that the town's name derives from this specific species. To complete verification, I need to retrieve documents that explicitly discuss the etymological or historical origins of Antelope, Kansas's naming. Additionally, I should retrieve foundational information about Antelope, Kansas itself to ensure we have baseline documentation about the town, and verify whether the naming derives from Antilocapra americana versus other animals or alternative origins. The query should also capture any historical records about why this particular community received its name.
+[[ ## query ## ]]
+What is the origin and history of the name "Antelope, Kansas"? Was the town of Antelope in Centre USD 397 named after Antilocapra americana (pronghorn)? What is the etymology of Antelope, Kansas and what animal does it reference? Are there historical records about how Antelope community in Chase County, Kansas received its name?
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Antelope, Kansas | Antelope is an unincorporated community in Marion County, Kansas, United States.  Antelope got its name from antelope grazing near where the first school was being built.
+Centre USD 397 | Centre USD 397 is a unified school district headquartered in Lost Springs, Kansas, United States.  The district includes the communities of Lincolnville, Lost Springs, Pilsen, Tampa, Ramona, Antelope, Burdick, nearby rural areas of Marion / Morris / Dickinson / Chase Counties.
+Pronghorn | The pronghorn ( ) ("Antilocapra americana") is a species of artiodactyl mammal indigenous to interior western and central North America.  Though not an antelope, it is often known colloquially in North America as the American antelope, prong buck, pronghorn antelope, or simply antelope because it closely resembles the true antelopes of the Old World and fills a similar ecological niche due to parallel evolution.
+Antelope County, Nebraska | Antelope County is a county in the U.S. state of Nebraska.  As of the 2010 census, the population was 6,685.  Its county seat is Neligh.  The county was formed in 1871.  It received its name after a group of early settlers killed and ate several pronghorn.  Although these are not true antelope, they are colloquially known by that name.
+Jackalope | The jackalope is a mythical animal of North American folklore (a fearsome critter) described as a jackrabbit with antelope horns.  The word "jackalope" is a portmanteau of "jackrabbit" and "antelope", although the jackrabbit is not a rabbit, and the pronghorn is not an antelope.  Many jackalope taxidermy mounts, including the original, are made with deer antlers.
+Antelope Island bison herd | Antelope Island in Great Salt Lake, Utah, is part of Antelope Island State Park.  On the island, a semi–free-ranging population of American bison ("Bison bison, "buffalo) has been in existence since 1893.  Though the island was named for the pronghorn antelope that John C. Frémont and Kit Carson found there when they explored the Great Salt Lake, bison were later introduced and the island is now perhaps most famous for its bison herd.
+Antelope Valley | Antelope Valley is located in northern Los Angeles County, California and the southeast portion of Kern County, California, and constitutes the western tip of the Mojave Desert.  It is situated between the Tehachapi and the San Gabriel Mountains.  The valley was named for the pronghorns that roamed there until being all but eliminated by bad weather in the 1880s and subsequent hunting for fur.  The principal cities in the Antelope Valley are Palmdale and Lancaster.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+The species of mammal which the town, a community that forms part of the Centre USD 397 district, was named after is Antilocapra americana.
+
+[[ ## context ## ]]
+**Verification Status:** Partially verified - The claim cannot be fully verified from the provided passages.
+
+**What is established:**
+- Centre USD 397 is a unified school district that includes a community named "Antelope" (Passage [1])
+- Antilocapra americana is confirmed to be a species of mammal commonly known as "antelope" or "pronghorn" in North America (Passages [2] and [3])
+
+**What is NOT established:**
+- The passages do not explicitly state that the town of Antelope (which is part of Centre USD 397) was named after Antilocapra americana
+- There is no documentation provided connecting the naming origin of Antelope, Kansas to the pronghorn species
+
+**Information needed for full verification:**
+- Explicit confirmation that the community of Antelope within Centre USD 397 was named after the pronghorn
+- Historical or etymological documentation of how Antelope, Kansas (the specific town in Centre USD 397 district) received its name
+- Confirmation that if Antelope was named after an animal, it specifically refers to Antilocapra americana and not another species
+
+[[ ## passages ## ]]
+[1] «Antelope, Kansas | Antelope is an unincorporated community in Marion County, Kansas, United States.  Antelope got its name from antelope grazing near where the first school was being built.»
+[2] «Centre USD 397 | Centre USD 397 is a unified school district headquartered in Lost Springs, Kansas, United States.  The district includes the communities of Lincolnville, Lost Springs, Pilsen, Tampa, Ramona, Antelope, Burdick, nearby rural areas of Marion / Morris / Dickinson / Chase Counties.»
+[3] «Pronghorn | The pronghorn ( ) ("Antilocapra americana") is a species of artiodactyl mammal indigenous to interior western and central North America.  Though not an antelope, it is often known colloquially in North America as the American antelope, prong buck, pronghorn antelope, or simply antelope because it closely resembles the true antelopes of the Old World and fills a similar ecological niche due to parallel evolution.»
+[4] «Antelope County, Nebraska | Antelope County is a county in the U.S. state of Nebraska.  As of the 2010 census, the population was 6,685.  Its county seat is Neligh.  The county was formed in 1871.  It received its name after a group of early settlers killed and ate several pronghorn.  Although these are not true antelope, they are colloquially known by that name.»
+[5] «Jackalope | The jackalope is a mythical animal of North American folklore (a fearsome critter) described as a jackrabbit with antelope horns.  The word "jackalope" is a portmanteau of "jackrabbit" and "antelope", although the jackrabbit is not a rabbit, and the pronghorn is not an antelope.  Many jackalope taxidermy mounts, including the original, are made with deer antlers.»
+[6] «Antelope Island bison herd | Antelope Island in Great Salt Lake, Utah, is part of Antelope Island State Park.  On the island, a semi–free-ranging population of American bison ("Bison bison, "buffalo) has been in existence since 1893.  Though the island was named for the pronghorn antelope that John C. Frémont and Kit Carson found there when they explored the Great Salt Lake, bison were later introduced and the island is now perhaps most famous for its bison herd.»
+[7] «Antelope Valley | Antelope Valley is located in northern Los Angeles County, California and the southeast portion of Kern County, California, and constitutes the western tip of the Mojave Desert.  It is situated between the Tehachapi and the San Gabriel Mountains.  The valley was named for the pronghorns that roamed there until being all but eliminated by bad weather in the 1880s and subsequent hunting for fur.  The principal cities in the Antelope Valley are Palmdale and Lancaster.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim states that the town (Antelope, part of Centre USD 397) was named after Antilocapra americana. Let me examine what the passages establish:
+
+From Passage [1], we know that "Antelope got its name from antelope grazing near where the first school was being built." This indicates the town was named after "antelope" in general.
+
+From Passage [3], we learn that Antilocapra americana is the pronghorn, which is "often known colloquially in North America as the American antelope, prong buck, pronghorn antelope, or simply antelope." Critically, the passage notes: "Though not an antelope, it is often known colloquially in North America as the American antelope...because it closely resembles the true antelopes of the Old World."
+
+The key issue: Passage [1] states the town was named after "antelope grazing near where the first school was being built" but does not explicitly identify which species of antelope. While it is plausible that early settlers in Kansas would have been referring to pronghorns (Antilocapra americana) when they said "antelope" - since pronghorns are indigenous to the region and colloquially called antelope - the passages do not definitively establish that:
+1. The animals seen were specifically Antilocapra americana rather than another species
+2. The settlers intentionally named it after the scientific species Antilocapra americana
+
+Passages [6] and [7] provide examples of other locations (Antelope Island and Antelope Valley) explicitly confirmed to be named after pronghorns, but no such explicit confirmation exists for Antelope, Kansas in the provided passages.
+
+[[ ## summary ## ]]
+The claim cannot be fully verified from the provided passages. While Passage [1] confirms that Antelope, Kansas (part of Centre USD 397) was named after "antelope grazing near where the first school was being built," and Passage [3] establishes that Antilocapra americana (pronghorn) is colloquially called "antelope" in North America, the passages do not explicitly confirm that the town was specifically named after the species Antilocapra americana. The naming origin references "antelope" generically, and without additional documentation connecting the specific origin to the pronghorn species, the claim remains unverified despite being plausible given the regional geography.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The species of mammal which the town, a community that forms part of the Centre USD 397 district, was named after is Antilocapra americana.
+
+[[ ## summary_1 ## ]]
+**Verification Status:** Partially verified - The claim cannot be fully verified from the provided passages.
+
+**What is established:**
+- Centre USD 397 is a unified school district that includes a community named "Antelope" (Passage [1])
+- Antilocapra americana is confirmed to be a species of mammal commonly known as "antelope" or "pronghorn" in North America (Passages [2] and [3])
+
+**What is NOT established:**
+- The passages do not explicitly state that the town of Antelope (which is part of Centre USD 397) was named after Antilocapra americana
+- There is no documentation provided connecting the naming origin of Antelope, Kansas to the pronghorn species
+
+**Information needed for full verification:**
+- Explicit confirmation that the community of Antelope within Centre USD 397 was named after the pronghorn
+- Historical or etymological documentation of how Antelope, Kansas (the specific town in Centre USD 397 district) received its name
+- Confirmation that if Antelope was named after an animal, it specifically refers to Antilocapra americana and not another species
+
+[[ ## summary_2 ## ]]
+The claim cannot be fully verified from the provided passages. While Passage [1] confirms that Antelope, Kansas (part of Centre USD 397) was named after "antelope grazing near where the first school was being built," and Passage [3] establishes that Antilocapra americana (pronghorn) is colloquially called "antelope" in North America, the passages do not explicitly confirm that the town was specifically named after the species Antilocapra americana. The naming origin references "antelope" generically, and without additional documentation connecting the specific origin to the pronghorn species, the claim remains unverified despite being plausible given the regional geography.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries reach similar conclusions: while the evidence establishes that (1) Antelope is a community in Centre USD 397, (2) the town was named after "antelope" animals observed near the original school site, and (3) Antilocapra americana is the species commonly called "antelope" in North America, there is a gap between these facts and the specific claim. The claim requires confirmation that the town was named after the specific species Antilocapra americana, not just generically after "antelope." Summary_2 provides slightly more concrete information about the naming origin (antelope grazing near the school), but neither summary can definitively establish the species-specific connection. A targeted query is needed to find historical documentation that explicitly identifies which antelope species the town was named after, or confirms that "antelope" in the regional context refers specifically to Antilocapra americana.
+[[ ## query ## ]]
+What is the historical origin and etymology of Antelope, Kansas? Was the town specifically named after Antilocapra americana (pronghorn), or is there documentation about which antelope species (if any) inspired the town's name?
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Pronghorn | The pronghorn ( ) ("Antilocapra americana") is a species of artiodactyl mammal indigenous to interior western and central North America.  Though not an antelope, it is often known colloquially in North America as the American antelope, prong buck, pronghorn antelope, or simply antelope because it closely resembles the true antelopes of the Old World and fills a similar ecological niche due to parallel evolution.
+Antilocapridae | The Antilocapridae are a family of artiodactyls endemic to North America.  Their closest extant relatives are the giraffids with which they comprise the superfamily Giraffoidea.  Only one species, the pronghorn ("Antilocapra americana"), is living today; all other members of the family are extinct.  The living pronghorn is a small ruminant mammal resembling an antelope.  It bears small, forked horns.
+Antelope County, Nebraska | Antelope County is a county in the U.S. state of Nebraska.  As of the 2010 census, the population was 6,685.  Its county seat is Neligh.  The county was formed in 1871.  It received its name after a group of early settlers killed and ate several pronghorn.  Although these are not true antelope, they are colloquially known by that name.
+Mexican pronghorn | The Mexican pronghorn ("Antilocapra americana mexicana") is a pronghorn native to Mexico and the United States.
+Sonoran pronghorn | The Sonoran pronghorn ("Antilocapra americana sonoriensis") is an endangered subspecies of pronghorn that is endemic to the Sonoran Desert.
+Antelope, Kansas | Antelope is an unincorporated community in Marion County, Kansas, United States.  Antelope got its name from antelope grazing near where the first school was being built.
+Baja California pronghorn | The Baja California pronghorn or peninsular pronghorn ("Antilocapra americana peninsularis") is a critically endangered subspecies of pronghorn, endemic to Baja California in Mexico.  The wild population is estimated at 200.
+Jackalope | The jackalope is a mythical animal of North American folklore (a fearsome critter) described as a jackrabbit with antelope horns.  The word "jackalope" is a portmanteau of "jackrabbit" and "antelope", although the jackrabbit is not a rabbit, and the pronghorn is not an antelope.  Many jackalope taxidermy mounts, including the original, are made with deer antlers.
+Antelope Island bison herd | Antelope Island in Great Salt Lake, Utah, is part of Antelope Island State Park.  On the island, a semi–free-ranging population of American bison ("Bison bison, "buffalo) has been in existence since 1893.  Though the island was named for the pronghorn antelope that John C. Frémont and Kit Carson found there when they explored the Great Salt Lake, bison were later introduced and the island is now perhaps most famous for its bison herd.
+Antelope Valley | Antelope Valley is located in northern Los Angeles County, California and the southeast portion of Kern County, California, and constitutes the western tip of the Mojave Desert.  It is situated between the Tehachapi and the San Gabriel Mountains.  The valley was named for the pronghorns that roamed there until being all but eliminated by bad weather in the 1880s and subsequent hunting for fur.  The principal cities in the Antelope Valley are Palmdale and Lancaster.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Centre USD 397 | Centre USD 397 is a unified school district headquartered in Lost Springs, Kansas, United States.  The district includes the communities of Lincolnville, Lost Springs, Pilsen, Tampa, Ramona, Antelope, Burdick, nearby rural areas of Marion / Morris / Dickinson / Chase Counties.
+Antilocapridae | The Antilocapridae are a family of artiodactyls endemic to North America.  Their closest extant relatives are the giraffids with which they comprise the superfamily Giraffoidea.  Only one species, the pronghorn ("Antilocapra americana"), is living today; all other members of the family are extinct.  The living pronghorn is a small ruminant mammal resembling an antelope.  It bears small, forked horns.
+Pronghorn | The pronghorn ( ) ("Antilocapra americana") is a species of artiodactyl mammal indigenous to interior western and central North America.  Though not an antelope, it is often known colloquially in North America as the American antelope, prong buck, pronghorn antelope, or simply antelope because it closely resembles the true antelopes of the Old World and fills a similar ecological niche due to parallel evolution.
+Walajapet | Walajapet is a town or municipality and a part of Vellore district in the state of Tamil Nadu.  The streets in the town form a square shape which is a unique feature of the town.  It will be easy for you to reach any part of the town with this kind of infrastructure.  The streets are wide and nicely structured.  As of 2011, the town had a population of 32,397.
+Mexican pronghorn | The Mexican pronghorn ("Antilocapra americana mexicana") is a pronghorn native to Mexico and the United States.
+Centre High School | Centre High School is a rural public high school located 5 miles south of Lost Springs and 2 miles north of Lincolnville along U.S. Highway 77 in Kansas.  It is the only high school in Centre USD 397.
+Sonoran pronghorn | The Sonoran pronghorn ("Antilocapra americana sonoriensis") is an endangered subspecies of pronghorn that is endemic to the Sonoran Desert.
+Antelope, Kansas | Antelope is an unincorporated community in Marion County, Kansas, United States.  Antelope got its name from antelope grazing near where the first school was being built.
+Centre USD 397 | Centre USD 397 is a unified school district headquartered in Lost Springs, Kansas, United States.  The district includes the communities of Lincolnville, Lost Springs, Pilsen, Tampa, Ramona, Antelope, Burdick, nearby rural areas of Marion / Morris / Dickinson / Chase Counties.
+Pronghorn | The pronghorn ( ) ("Antilocapra americana") is a species of artiodactyl mammal indigenous to interior western and central North America.  Though not an antelope, it is often known colloquially in North America as the American antelope, prong buck, pronghorn antelope, or simply antelope because it closely resembles the true antelopes of the Old World and fills a similar ecological niche due to parallel evolution.
+Antelope County, Nebraska | Antelope County is a county in the U.S. state of Nebraska.  As of the 2010 census, the population was 6,685.  Its county seat is Neligh.  The county was formed in 1871.  It received its name after a group of early settlers killed and ate several pronghorn.  Although these are not true antelope, they are colloquially known by that name.
+Jackalope | The jackalope is a mythical animal of North American folklore (a fearsome critter) described as a jackrabbit with antelope horns.  The word "jackalope" is a portmanteau of "jackrabbit" and "antelope", although the jackrabbit is not a rabbit, and the pronghorn is not an antelope.  Many jackalope taxidermy mounts, including the original, are made with deer antlers.
+Antelope Island bison herd | Antelope Island in Great Salt Lake, Utah, is part of Antelope Island State Park.  On the island, a semi–free-ranging population of American bison ("Bison bison, "buffalo) has been in existence since 1893.  Though the island was named for the pronghorn antelope that John C. Frémont and Kit Carson found there when they explored the Great Salt Lake, bison were later introduced and the island is now perhaps most famous for its bison herd.
+Antelope Valley | Antelope Valley is located in northern Los Angeles County, California and the southeast portion of Kern County, California, and constitutes the western tip of the Mojave Desert.  It is situated between the Tehachapi and the San Gabriel Mountains.  The valley was named for the pronghorns that roamed there until being all but eliminated by bad weather in the 1880s and subsequent hunting for fur.  The principal cities in the Antelope Valley are Palmdale and Lancaster.
+Pronghorn | The pronghorn ( ) ("Antilocapra americana") is a species of artiodactyl mammal indigenous to interior western and central North America.  Though not an antelope, it is often known colloquially in North America as the American antelope, prong buck, pronghorn antelope, or simply antelope because it closely resembles the true antelopes of the Old World and fills a similar ecological niche due to parallel evolution.
+Antilocapridae | The Antilocapridae are a family of artiodactyls endemic to North America.  Their closest extant relatives are the giraffids with which they comprise the superfamily Giraffoidea.  Only one species, the pronghorn ("Antilocapra americana"), is living today; all other members of the family are extinct.  The living pronghorn is a small ruminant mammal resembling an antelope.  It bears small, forked horns.
+Antelope County, Nebraska | Antelope County is a county in the U.S. state of Nebraska.  As of the 2010 census, the population was 6,685.  Its county seat is Neligh.  The county was formed in 1871.  It received its name after a group of early settlers killed and ate several pronghorn.  Although these are not true antelope, they are colloquially known by that name.
+Mexican pronghorn | The Mexican pronghorn ("Antilocapra americana mexicana") is a pronghorn native to Mexico and the United States.
+Sonoran pronghorn | The Sonoran pronghorn ("Antilocapra americana sonoriensis") is an endangered subspecies of pronghorn that is endemic to the Sonoran Desert.
+Antelope, Kansas | Antelope is an unincorporated community in Marion County, Kansas, United States.  Antelope got its name from antelope grazing near where the first school was being built.
+Baja California pronghorn | The Baja California pronghorn or peninsular pronghorn ("Antilocapra americana peninsularis") is a critically endangered subspecies of pronghorn, endemic to Baja California in Mexico.  The wild population is estimated at 200.
+Jackalope | The jackalope is a mythical animal of North American folklore (a fearsome critter) described as a jackrabbit with antelope horns.  The word "jackalope" is a portmanteau of "jackrabbit" and "antelope", although the jackrabbit is not a rabbit, and the pronghorn is not an antelope.  Many jackalope taxidermy mounts, including the original, are made with deer antlers.
+Antelope Island bison herd | Antelope Island in Great Salt Lake, Utah, is part of Antelope Island State Park.  On the island, a semi–free-ranging population of American bison ("Bison bison, "buffalo) has been in existence since 1893.  Though the island was named for the pronghorn antelope that John C. Frémont and Kit Carson found there when they explored the Great Salt Lake, bison were later introduced and the island is now perhaps most famous for its bison herd.
+Antelope Valley | Antelope Valley is located in northern Los Angeles County, California and the southeast portion of Kern County, California, and constitutes the western tip of the Mojave Desert.  It is situated between the Tehachapi and the San Gabriel Mountains.  The valley was named for the pronghorns that roamed there until being all but eliminated by bad weather in the 1880s and subsequent hunting for fur.  The principal cities in the Antelope Valley are Palmdale and Lancaster.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: The coordinator's query in hop 3 ('What is the historical origin and etymology of Antelope, Kansas? Was the town specifically named after Antilocapra americana (pronghorn), or is there documentation about which antelope species (if any) inspired the town's name?') returns nearly identical documents to hop 2, including duplicates of 'Pronghorn', 'Antilocapridae', 'Antelope County, Nebraska', 'Antel
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: The solver in summary_2 states 'the passages do not explicitly confirm that the town was specifically named after the species Antilocapra americana' and 'without additional documentation connecting the specific origin to the pronghorn species, the claim remains unverified'. However, the passages establish: (1) Antelope, Kansas was named after 'antelope grazing near where the first school was being
+- code C.4 (Logical_Reasoning_Error), anchored near step UNKNOWN: evidence: The solver acknowledges that (a) Antelope, Kansas was named after antelope seen grazing, (b) Antilocapra americana is colloquially called 'antelope' in North America, (c) it is 'plausible given the regional geography', and (d) other nearby locations (Antelope County, Nebraska; Antelope Valley) were explicitly named after pronghorns. Despite this convergent evidence establishing the regional patter
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

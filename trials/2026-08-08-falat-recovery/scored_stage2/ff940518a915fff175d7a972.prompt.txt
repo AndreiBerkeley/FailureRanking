@@ -1,0 +1,498 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Arthur Hiller Penn was born before the director of "We, the Normal".
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.
+David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.
+Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.
+Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.
+Arthur Hiller (footballer) | Arthur Hiller (3 October 1881 – 14 August 1941) was a German footballer who played club football for 1.  FC Pforzheim, as well as at international level for Germany, where he became the national side's first captain.  His nephew, Marius Hiller, also played football, representing both Germany and Argentina at international level.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director of "We, the Normal".
+
+[[ ## passages ## ]]
+[1] «Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).»
+[2] «We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love»
+[3] «Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.»
+[4] «David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.»
+[5] «Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.»
+[6] «Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.»
+[7] «Arthur Hiller (footballer) | Arthur Hiller (3 October 1881 – 14 August 1941) was a German footballer who played club football for 1.  FC Pforzheim, as well as at international level for Germany, where he became the national side's first captain.  His nephew, Marius Hiller, also played football, representing both Germany and Argentina at international level.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze this claim step by step.
+
+The claim states: "Arthur Hiller Penn was born before the director of 'We, the Normal'."
+
+First, I need to identify who "Arthur Hiller Penn" is. Looking at the passages, I see:
+- Passage [1] mentions "Arthur Hiller Penn" (September 27, 1922 – September 28, 2010), described as an American director and producer. However, this appears to be "Arthur Penn" with the middle name "Hiller" - his full name is Arthur Hiller Penn.
+- Passage [3] confirms "Arthur Penn (1922 - 2010) was an American film and theatre director."
+- Passage [5] describes "Arthur Hiller" (November 22, 1923 – August 17, 2016), a Canadian-American television and film director - this is a different person.
+
+So "Arthur Hiller Penn" refers to Arthur Penn, born September 27, 1922.
+
+Next, I need to identify who directed "We, the Normal". 
+- Passage [2] mentions "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love" - this is NOT "We, the Normal." This appears to be a different work.
+- I cannot find any reference to a film, show, or work titled "We, the Normal" in the provided passages.
+- There is no information about who directed "We, the Normal."
+
+Without identifying the director of "We, the Normal" and their birth date, I cannot verify the comparison in the claim.
+
+[[ ## summary ## ]]
+The claim CANNOT BE VERIFIED from the provided passages.
+
+The claim requires:
+1. Identification of the film/work titled "We, the Normal" - The passages do not contain any reference to a work with this exact title. Passage [2] mentions "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love," which appears to be a different work.
+
+2. Identification of the director of "We, the Normal" - Without locating the correct work, the director cannot be identified.
+
+3. Birth date of the director of "We, the Normal" - Once the director is identified, their birth date would be needed to compare with Arthur Hiller Penn's birth date (September 27, 1922).
+
+To verify this claim, a retrieval system would need to:
+- Find the correct work titled "We, the Normal" and confirm its director
+- Obtain the birth date of that director
+- Then compare it with Arthur Hiller Penn's confirmed birth date of September 27, 1922
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director of "We, the Normal".
+
+[[ ## summary_1 ## ]]
+The claim CANNOT BE VERIFIED from the provided passages.
+
+The claim requires:
+1. Identification of the film/work titled "We, the Normal" - The passages do not contain any reference to a work with this exact title. Passage [2] mentions "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love," which appears to be a different work.
+
+2. Identification of the director of "We, the Normal" - Without locating the correct work, the director cannot be identified.
+
+3. Birth date of the director of "We, the Normal" - Once the director is identified, their birth date would be needed to compare with Arthur Hiller Penn's birth date (September 27, 1922).
+
+To verify this claim, a retrieval system would need to:
+- Find the correct work titled "We, the Normal" and confirm its director
+- Obtain the birth date of that director
+- Then compare it with Arthur Hiller Penn's confirmed birth date of September 27, 1922
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that the claim cannot be verified because the work "We, the Normal" has not been properly identified, and consequently its director has not been identified. The summary notes that a passage mentioned "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love," which appears to be a different work. To verify the claim, I need to:
+
+1. Locate the correct work titled "We, the Normal" and identify its director
+2. Find the birth date of that director
+3. Compare it with Arthur Hiller Penn's confirmed birth date (September 27, 1922)
+
+The query should search for information about this specific film/work and its director, as well as potentially retrieve baseline information about Arthur Hiller Penn to confirm his birth date for comparison purposes.
+[[ ## query ## ]]
+What is the film or work titled "We, the Normal" and who is its director? What is the birth date of the director of "We, the Normal"? Who is Arthur Hiller Penn and what is his birth date?
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.
+What You Mean We? | What You Mean We?  is the title of a 1986 American made-for-television musical short film starring the performance artist Laurie Anderson, who also wrote and directed the piece.
+What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).
+We Are What We Are (2010 film) | We Are What We Are (Spanish: Somos lo que hay ) is a 2010 Mexican cannibal horror film directed by Jorge Michel Grau.  The movie is about a family of cannibals who, after the death of the father, try to continue a ritualistic tradition of kidnapping and eating other humans.  The film stars Paulina Gaitán and Daniel Giménez Cacho.
+What Shall We Do Now? | "What Shall We Do Now?"  (working title "Backs to the Wall") is a song by Pink Floyd, written by Roger Waters.
+Who Is Lydia Loveless? | Who is Lydia Loveless is a 2016 documentary film by Gorman Bechard that chronicles the making of musician Lydia Loveless's latest album, as well as following her on the road and looking into what life is life for a band at her level in the music industry.  "I also wanted to look at stuff we normally don’t see a lot of.  What are the finances for a band like this?  Where does the money go?  Who gets the money?  Is Spotify good?  Is Spotify bad?  How does piracy affect you?  What about the fans?  I really wanted to go into all of that for a band that can sell out 200- or 250-seat venues and bars but is still traveling in an old Ford van.  A good night is when they have a couple of hotel rooms.  No one is rolling in the dough, so to speak.  So what is it at that point when you have amazing critical success and acclaim but you’re not there yet?"  In October 2015, Bechard and his crew filmed a live Lydia Loveless concert at Skully's in her hometown of Columbus for the documentary.
+After the Triumph of Your Birth | After the Triumph of Your Birth is a 2012 American drama film written and directed by Jim Akin.  The film stars Tom Dunne, Tessa Ferrer, Bronagh Gallagher, Maria Mckee, Maria Doyle Kennedy and Rob Zabrecky.  The film tells the story of Eli Willit, a haunted man who sets out on foot at the beginning of the film on a seven-day journey that will take him from the desert to the ocean.  In need of spiritual cleansing, Eli's walkabout leads him not just to the water, but also through his life's memories, as we are presented with four separate-story lines dealing with spiritual fragility and the questioning of what constitutes existence and reality.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        Your task is to generate a summary that evaluates whether the claim can be verified from the provided passages. Your summary will be used to guide a three-hop retrieval system to find all required evidence documents.
+        
+        **Critical Requirement**: Your summary must be structured to ensure that a retrieval system will identify and retrieve ALL required evidence documents across three retrieval hops. The feedback will indicate which required evidence documents were successfully retrieved and which were missed.
+        
+        **Three-Hop Retrieval Strategy**:
+        - **Hop 1**: The retrieval system will extract key entities and concepts from the claim itself to retrieve initial documents
+        - **Hop 2**: The system will analyze the retrieved documents and context to identify additional entities that need verification
+        - **Hop 3**: The system will retrieve final documents based on connections and relationships discovered in previous hops
+        
+        **Guidelines for Writing Your Summary**:
+        
+        1. **Identify ALL entities in the claim**: Your summary should explicitly mention every specific entity (people, events, organizations, films, tournaments, seasons, locations, etc.) that appears in the claim. This helps the retrieval system identify what documents are needed.
+        
+        2. **Highlight missing information gaps**: When information is missing from the passages, clearly state what specific documents or facts would be needed. Use explicit document titles or entity names when possible (e.g., "Information about the film 'Undiscovered' and its ticket sales", "Gene Mayer's birth date", "who coached the Memphis Grizzlies in 2004-05").
+        
+        3. **Name entities from context that need verification**: If the context identifies specific entities (like "Lionel Hollins" or "Maurice Cheeks") that are relevant but not fully covered in passages, explicitly mention these names in your summary so they can be retrieved.
+        
+        4. **State verification requirements explicitly**: Clearly articulate what information would be needed to verify the claim, using specific entity names and document types (e.g., "the 1980 Lorraine Open results", "Serena Williams' birth date", "the 2004-05 Memphis Grizzlies season coaching staff").
+        
+        5. **Connect multi-hop relationships**: For claims requiring multiple pieces of information (e.g., "the actor from movie X that did Y"), explicitly state each step: identify movie X, identify the actor, verify the actor did Y.
+        
+        6. **Distinguish between similar entities**: When there might be confusion between entities (e.g., Golden Calf vs. Golden Globes, different people with coaching roles), be explicit about which specific entity or fact needs to be verified.
+        
+        7. **Format for retrieval**: Structure your summary to make it easy for a retrieval system to extract search queries. Use phrases like "requires information about [specific entity/document]" or "needs verification of [specific fact from specific source]".
+        
+        Your summary should conclude with a clear statement about whether the claim is verified, cannot be verified, or is false based on available passages, while making it obvious what additional documents would complete the verification chain.
+[STEP 11] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director of "We, the Normal".
+
+[[ ## context ## ]]
+The claim CANNOT BE VERIFIED from the provided passages.
+
+The claim requires:
+1. Identification of the film/work titled "We, the Normal" - The passages do not contain any reference to a work with this exact title. Passage [2] mentions "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love," which appears to be a different work.
+
+2. Identification of the director of "We, the Normal" - Without locating the correct work, the director cannot be identified.
+
+3. Birth date of the director of "We, the Normal" - Once the director is identified, their birth date would be needed to compare with Arthur Hiller Penn's birth date (September 27, 1922).
+
+To verify this claim, a retrieval system would need to:
+- Find the correct work titled "We, the Normal" and confirm its director
+- Obtain the birth date of that director
+- Then compare it with Arthur Hiller Penn's confirmed birth date of September 27, 1922
+
+[[ ## passages ## ]]
+[1] «We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.»
+[2] «What You Mean We? | What You Mean We?  is the title of a 1986 American made-for-television musical short film starring the performance artist Laurie Anderson, who also wrote and directed the piece.»
+[3] «What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).»
+[4] «We Are What We Are (2010 film) | We Are What We Are (Spanish: Somos lo que hay ) is a 2010 Mexican cannibal horror film directed by Jorge Michel Grau.  The movie is about a family of cannibals who, after the death of the father, try to continue a ritualistic tradition of kidnapping and eating other humans.  The film stars Paulina Gaitán and Daniel Giménez Cacho.»
+[5] «What Shall We Do Now? | "What Shall We Do Now?"  (working title "Backs to the Wall") is a song by Pink Floyd, written by Roger Waters.»
+[6] «Who Is Lydia Loveless? | Who is Lydia Loveless is a 2016 documentary film by Gorman Bechard that chronicles the making of musician Lydia Loveless's latest album, as well as following her on the road and looking into what life is life for a band at her level in the music industry.  "I also wanted to look at stuff we normally don’t see a lot of.  What are the finances for a band like this?  Where does the money go?  Who gets the money?  Is Spotify good?  Is Spotify bad?  How does piracy affect you?  What about the fans?  I really wanted to go into all of that for a band that can sell out 200- or 250-seat venues and bars but is still traveling in an old Ford van.  A good night is when they have a couple of hotel rooms.  No one is rolling in the dough, so to speak.  So what is it at that point when you have amazing critical success and acclaim but you’re not there yet?"  In October 2015, Bechard and his crew filmed a live Lydia Loveless concert at Skully's in her hometown of Columbus for the documentary.»
+[7] «After the Triumph of Your Birth | After the Triumph of Your Birth is a 2012 American drama film written and directed by Jim Akin.  The film stars Tom Dunne, Tessa Ferrer, Bronagh Gallagher, Maria Mckee, Maria Doyle Kennedy and Rob Zabrecky.  The film tells the story of Eli Willit, a haunted man who sets out on foot at the beginning of the film on a seven-day journey that will take him from the desert to the ocean.  In need of spiritual cleansing, Eli's walkabout leads him not just to the water, but also through his life's memories, as we are presented with four separate-story lines dealing with spiritual fragility and the questioning of what constitutes existence and reality.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim requires verifying two key pieces of information:
+
+1. **Arthur Hiller Penn's birth date**: The context establishes this as September 27, 1922.
+
+2. **The director of "We, the Normal" and their birth date**: This is the critical missing information. The provided passages contain no reference to a work titled "We, the Normal". The passages include films with similar titles like "We Are What We Are" (2010 and 2013 versions), "What You Mean We?" (1986), and "What We Almost Made" (2008), but none match "We, the Normal" exactly.
+
+The context correctly identifies that the claim cannot be verified from the provided passages because the work "We, the Normal" cannot be located. Without identifying this specific work and its director, it is impossible to obtain the director's birth date and perform the required comparison with Arthur Hiller Penn's birth date.
+
+To complete the verification chain, a three-hop retrieval system would need to:
+- **Hop 1**: Search for "We, the Normal" film/work and its director
+- **Hop 2**: Identify the specific director and extract their biographical information
+- **Hop 3**: Retrieve the director's birth date to enable comparison with September 27, 1922
+
+[[ ## summary ## ]]
+The claim cannot be verified from the provided passages. 
+
+**Missing critical information:**
+- The work titled "We, the Normal" is not referenced in any of the provided passages. A retrieval system needs to locate this specific work and identify its director.
+- Once the director is identified, their birth date must be retrieved to enable comparison with Arthur Hiller Penn's established birth date of September 27, 1922.
+
+**Specific retrieval requirements:**
+1. Find the film, television work, or other creative work titled "We, the Normal" and confirm its director's name
+2. Obtain the birth date of the director of "We, the Normal"
+3. Compare this birth date with Arthur Hiller Penn's birth date (September 27, 1922) to verify whether Penn was born first
+
+**Current status**: The passages provided contain references to similarly titled works (such as "We Are What We Are," "What You Mean We?", and "What We Almost Made"), but none of these match "We, the Normal" exactly, and therefore the director cannot be identified from available information.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director of "We, the Normal".
+
+[[ ## summary_1 ## ]]
+The claim CANNOT BE VERIFIED from the provided passages.
+
+The claim requires:
+1. Identification of the film/work titled "We, the Normal" - The passages do not contain any reference to a work with this exact title. Passage [2] mentions "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love," which appears to be a different work.
+
+2. Identification of the director of "We, the Normal" - Without locating the correct work, the director cannot be identified.
+
+3. Birth date of the director of "We, the Normal" - Once the director is identified, their birth date would be needed to compare with Arthur Hiller Penn's birth date (September 27, 1922).
+
+To verify this claim, a retrieval system would need to:
+- Find the correct work titled "We, the Normal" and confirm its director
+- Obtain the birth date of that director
+- Then compare it with Arthur Hiller Penn's confirmed birth date of September 27, 1922
+
+[[ ## summary_2 ## ]]
+The claim cannot be verified from the provided passages. 
+
+**Missing critical information:**
+- The work titled "We, the Normal" is not referenced in any of the provided passages. A retrieval system needs to locate this specific work and identify its director.
+- Once the director is identified, their birth date must be retrieved to enable comparison with Arthur Hiller Penn's established birth date of September 27, 1922.
+
+**Specific retrieval requirements:**
+1. Find the film, television work, or other creative work titled "We, the Normal" and confirm its director's name
+2. Obtain the birth date of the director of "We, the Normal"
+3. Compare this birth date with Arthur Hiller Penn's birth date (September 27, 1922) to verify whether Penn was born first
+
+**Current status**: The passages provided contain references to similarly titled works (such as "We Are What We Are," "What You Mean We?", and "What We Almost Made"), but none of these match "We, the Normal" exactly, and therefore the director cannot be identified from available information.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries correctly identify that the claim cannot be verified from the provided passages. The core issue is that "We, the Normal" is not referenced in any of the passages, making it impossible to identify its director and compare their birth date with Arthur Hiller Penn's established birth date of September 27, 1922. To resolve this claim, a retrieval system must locate the specific work "We, the Normal," identify its director, and obtain that director's birth date for comparison.
+[[ ## query ## ]]
+Who is the director of "We, the Normal"? What is the director's birth date?
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+R. S. Moyes | R S Moyes (dates of birth and death unknown) was a director of Crystal Palace who served also as manager in 1936.
+We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.
+Jim Mickle | Jim Mickle (born 1979) is an American film director known for such films as "Mulberry Street", "Stake Land", "We Are What We Are" and "Cold in July".  He also co-developed the SundanceTV series "Hap and Leonard".
+Historic Barns of Connecticut | Historic Barns of Connecticut is a Connecticut Trust for Historic Preservation project dedicated to the documention and preservation of barns.  The program includes a grant program and a database.  The project began listing barns in 2004.  By June 2011 8,200 barns had been documented in Connecticut, said project director Todd Levine.  "The first step in preservation is documentation, so we need to know what we are losing to know what we need to do to protect them".
+William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "
+Directors register | In corporate law, the directors register is a list of the directors elected by the shareholders, generally stored in the company's minute book.  By law, companies are required to keep this list up to date to remove those directors who are deceased or resign, and to add those who have been elected by the shareholders.  However, the register must also list any person who had been a director indefinitely.  The record must indicate the dates a director started and stopped holding office.  As directors carry certain personal legal obligations to a corporation (for example, being responsible for any money held in trust for another person, e.g. sales taxes not remitted to a government), those seeking recourse against directors are allowed to rely on the directors register as proof that a director held office on any particular day.
+Mark Kenneth Woods | Mark Kenneth Woods (date of birth unknown) is a Canadian comedy writer, actor, producer, director and TV host.
+Clive Donner | Clive Stanley Donner (21 January 1926 – 6 September 2010) was a British film director who was a defining part of the British New Wave, directing films such as "The Caretaker", "Nothing But the Best", "Here We Go Round the Mulberry Bush" and "What's New Pussycat? ".  He also directed television movies and commercials through the mid-1990s.
+Paul Norman (director) | Paul Norman (born 1956) is an American former pornographic director who directed approximately 134 films from 1986–1999.  His birth name is Paul Apstein.
+Frank Harris (director) | Frank Harris is an American film director, producer and cinematographer who has been working in films since the late 1970s.  His work as a director includes "Killpoint" in 1984, "Low Blow" and "The Patriot" in 1986, "If We Knew Then" in 1987 and "Lockdown" in 1990.  He is also a former television reporter.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.
+David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.
+Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.
+Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.
+Arthur Hiller (footballer) | Arthur Hiller (3 October 1881 – 14 August 1941) was a German footballer who played club football for 1.  FC Pforzheim, as well as at international level for Germany, where he became the national side's first captain.  His nephew, Marius Hiller, also played football, representing both Germany and Argentina at international level.
+We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.
+What You Mean We? | What You Mean We?  is the title of a 1986 American made-for-television musical short film starring the performance artist Laurie Anderson, who also wrote and directed the piece.
+What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).
+We Are What We Are (2010 film) | We Are What We Are (Spanish: Somos lo que hay ) is a 2010 Mexican cannibal horror film directed by Jorge Michel Grau.  The movie is about a family of cannibals who, after the death of the father, try to continue a ritualistic tradition of kidnapping and eating other humans.  The film stars Paulina Gaitán and Daniel Giménez Cacho.
+What Shall We Do Now? | "What Shall We Do Now?"  (working title "Backs to the Wall") is a song by Pink Floyd, written by Roger Waters.
+Who Is Lydia Loveless? | Who is Lydia Loveless is a 2016 documentary film by Gorman Bechard that chronicles the making of musician Lydia Loveless's latest album, as well as following her on the road and looking into what life is life for a band at her level in the music industry.  "I also wanted to look at stuff we normally don’t see a lot of.  What are the finances for a band like this?  Where does the money go?  Who gets the money?  Is Spotify good?  Is Spotify bad?  How does piracy affect you?  What about the fans?  I really wanted to go into all of that for a band that can sell out 200- or 250-seat venues and bars but is still traveling in an old Ford van.  A good night is when they have a couple of hotel rooms.  No one is rolling in the dough, so to speak.  So what is it at that point when you have amazing critical success and acclaim but you’re not there yet?"  In October 2015, Bechard and his crew filmed a live Lydia Loveless concert at Skully's in her hometown of Columbus for the documentary.
+After the Triumph of Your Birth | After the Triumph of Your Birth is a 2012 American drama film written and directed by Jim Akin.  The film stars Tom Dunne, Tessa Ferrer, Bronagh Gallagher, Maria Mckee, Maria Doyle Kennedy and Rob Zabrecky.  The film tells the story of Eli Willit, a haunted man who sets out on foot at the beginning of the film on a seven-day journey that will take him from the desert to the ocean.  In need of spiritual cleansing, Eli's walkabout leads him not just to the water, but also through his life's memories, as we are presented with four separate-story lines dealing with spiritual fragility and the questioning of what constitutes existence and reality.
+R. S. Moyes | R S Moyes (dates of birth and death unknown) was a director of Crystal Palace who served also as manager in 1936.
+We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.
+Jim Mickle | Jim Mickle (born 1979) is an American film director known for such films as "Mulberry Street", "Stake Land", "We Are What We Are" and "Cold in July".  He also co-developed the SundanceTV series "Hap and Leonard".
+Historic Barns of Connecticut | Historic Barns of Connecticut is a Connecticut Trust for Historic Preservation project dedicated to the documention and preservation of barns.  The program includes a grant program and a database.  The project began listing barns in 2004.  By June 2011 8,200 barns had been documented in Connecticut, said project director Todd Levine.  "The first step in preservation is documentation, so we need to know what we are losing to know what we need to do to protect them".
+William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "
+Directors register | In corporate law, the directors register is a list of the directors elected by the shareholders, generally stored in the company's minute book.  By law, companies are required to keep this list up to date to remove those directors who are deceased or resign, and to add those who have been elected by the shareholders.  However, the register must also list any person who had been a director indefinitely.  The record must indicate the dates a director started and stopped holding office.  As directors carry certain personal legal obligations to a corporation (for example, being responsible for any money held in trust for another person, e.g. sales taxes not remitted to a government), those seeking recourse against directors are allowed to rely on the directors register as proof that a director held office on any particular day.
+Mark Kenneth Woods | Mark Kenneth Woods (date of birth unknown) is a Canadian comedy writer, actor, producer, director and TV host.
+Clive Donner | Clive Stanley Donner (21 January 1926 – 6 September 2010) was a British film director who was a defining part of the British New Wave, directing films such as "The Caretaker", "Nothing But the Best", "Here We Go Round the Mulberry Bush" and "What's New Pussycat? ".  He also directed television movies and commercials through the mid-1990s.
+Paul Norman (director) | Paul Norman (born 1956) is an American former pornographic director who directed approximately 134 films from 1986–1999.  His birth name is Paul Apstein.
+Frank Harris (director) | Frank Harris is an American film director, producer and cinematographer who has been working in films since the late 1970s.  His work as a director includes "Killpoint" in 1984, "Low Blow" and "The Patriot" in 1986, "If We Knew Then" in 1987 and "Lockdown" in 1990.  He is also a former television reporter.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Both solver summaries state that 'The work titled "We, the Normal" is not referenced in any of the provided passages' and request to 'Find the film, television work, or other creative work titled "We, the Normal"' but never name a specific entity, person, or concrete fact that is missing. The summaries do not specify, for example, 'information about director X is needed' or 'the 1990 film We, the 
+- code B.13 (Query_Form_Mismatch), anchored near step 8: evidence: Query hop 2: 'What is the film or work titled "We, the Normal" and who is its director? What is the birth date of the director of "We, the Normal"? Who is Arthur Hiller Penn and what is his birth date?' - This is formulated as multiple natural-language yes/no questions bundled together rather than as targeted entity retrieval queries.
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Query hop 3: 'Who is the director of "We, the Normal"? What is the director's birth date?' - This is formulated as natural-language questions rather than as a targeted retrieval query with concrete entity names.
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query hop 2 asks 'What is the film or work titled "We, the Normal" and who is its director? What is the birth date of the director of "We, the Normal"?' and query hop 3 asks 'Who is the director of "We, the Normal"? What is the director's birth date?' - Both queries ask essentially the same question about identifying the director of "We, the Normal" and their birth date, with near-identical wordin
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary 2 explicitly names the missing entity: 'The work titled "We, the Normal" is not referenced in any of the provided passages. A retrieval system needs to locate this specific work and identify its director.' Query hop 3 targets this entity: 'Who is the director of "We, the Normal"?' However, the hop 3 retrieval returns documents about 'We Are What We Are' and other similar-titled films but n
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

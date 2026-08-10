@@ -1,0 +1,562 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Both the bass guitarist from Arma Angelus and Spike Slawson are Celtic punk rock musicians. Other members of Arma Angelus included Pete Wentz and Jay Jancetic.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Arma Angelus | Arma Angelus was a metalcore band from Chicago, Illinois.  The band was formed in 1998 and disbanded in 2002.  Members of the band were Pete Wentz (vocals, now bass guitarist and backing vocalist in Fall Out Boy), Tim McIlrath (bass guitar, now lead singer of Rise Against), Jay Jancetic (guitar, last played guitar for the Chicago "Holy Roman Empire" and Harm's Way), Daniel Binaei (guitarist, formerly of Racetraitor), Adam Bishop (guitarist, now an English teacher at Mission Viejo High School in Mission Viejo, California) and Timothy Miller (drums, Last played drums for Arizona-based punk band Last Action Zeros & now owner of Immortal Art Tattoo & Body Piercing, located in Scottsdale, Arizona).
+Pete Wentz | Peter Lewis Kingston Wentz III (born June 5, 1979) is an American musician.  He is best known for being the bassist, lyricist, and backing vocalist for the American rock band Fall Out Boy.  Before Fall Out Boy's inception in 2001, Wentz was a fixture of the Chicago hardcore scene and was notably the lead vocalist and lyricist for Arma Angelus.  During Fall Out Boy's hiatus in 2009–12, Wentz formed the experimental, electropop and dubstep group Black Cards.  He owns a record label, DCD2 Records, which has signed bands including Panic!  at the Disco and Gym Class Heroes.  Fall Out Boy returned in February 2013.
+Spike Slawson | Spike Slawson is an American punk rock musician, a member of Me First and the Gimme Gimmes, Swingin' Utters, Filthy Thievin' Bastards, Re-Volts, and Uke-Hunt.
+Where Sleeplessness Is Rest from Nightmares | Where Sleeplessness Is Rest from Nightmares is the only studio album by the Chicago metalcore band, Arma Angelus.  It was released December 4, 2001 through Eulogy Recordings.
+Trashland | Trashland is the second and last studio album by Brazilian post-punk band Mercenárias.  It was released in 1988 via EMI, and produced by Edgard Scandurra (of Ira!  and Ultraje a Rigor, and a long-time friend and former member of Mercenárias) and Thomas Pappon (of Voluntários da Pátria, Smack and Fellini fame).  Contrasting with the aggressiveness of the punk-like sonority of their previous album, "Cadê as Armas? ", "Trashland" is characterized by more atmospheric pieces reminiscent of Siouxsie and the Banshees, with emphasis given to the tracks "Kyrie", "Angelus", "Mesmas Leis", "Lembranças" and "Provérbios do Inferno", a compilation of William Blake's Proverbs of Hell translated into Portuguese and set to music.
+Filthy Thieving Bastards | The Filthy Thieving Bastards is an American folk/punk rock group formed in 2000 in San Francisco, California.  The band was originally a side project put together by Johnny Bonnel and Darius Koski of the Swingin' Utters.  Spike Slawson (also from Swingin' Utters) later joined the band, along with recording engineer Randy Burk.  Greg Lisher from Camper Van Beethoven guested on guitar for several songs on their second release.  Their music is influenced by folk rock, Celtic rock, country music, 60's pop, and punk rock, with an acknowledged and oft-noted debt to the music of The Pogues.
+Joe Trohman | Joseph Mark "Joe" Trohman (born September 1, 1984) is an American musician, composer, and record producer.  He is best known as the lead guitarist and backing vocalist of the American rock band Fall Out Boy, as well as the lead and rhythm guitarist for heavy metal supergroup The Damned Things.  Fall Out Boy began as Trohman and Pete Wentz's side project from the hardcore punk scene they were involved with, and the band has scored three number one albums on the US "Billboard" 200.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+[STEP 4] (user) [[ ## claim ## ]]
+Both the bass guitarist from Arma Angelus and Spike Slawson are Celtic punk rock musicians. Other members of Arma Angelus included Pete Wentz and Jay Jancetic.
+
+[[ ## passages ## ]]
+[1] «Arma Angelus | Arma Angelus was a metalcore band from Chicago, Illinois.  The band was formed in 1998 and disbanded in 2002.  Members of the band were Pete Wentz (vocals, now bass guitarist and backing vocalist in Fall Out Boy), Tim McIlrath (bass guitar, now lead singer of Rise Against), Jay Jancetic (guitar, last played guitar for the Chicago "Holy Roman Empire" and Harm's Way), Daniel Binaei (guitarist, formerly of Racetraitor), Adam Bishop (guitarist, now an English teacher at Mission Viejo High School in Mission Viejo, California) and Timothy Miller (drums, Last played drums for Arizona-based punk band Last Action Zeros & now owner of Immortal Art Tattoo & Body Piercing, located in Scottsdale, Arizona).»
+[2] «Pete Wentz | Peter Lewis Kingston Wentz III (born June 5, 1979) is an American musician.  He is best known for being the bassist, lyricist, and backing vocalist for the American rock band Fall Out Boy.  Before Fall Out Boy's inception in 2001, Wentz was a fixture of the Chicago hardcore scene and was notably the lead vocalist and lyricist for Arma Angelus.  During Fall Out Boy's hiatus in 2009–12, Wentz formed the experimental, electropop and dubstep group Black Cards.  He owns a record label, DCD2 Records, which has signed bands including Panic!  at the Disco and Gym Class Heroes.  Fall Out Boy returned in February 2013.»
+[3] «Spike Slawson | Spike Slawson is an American punk rock musician, a member of Me First and the Gimme Gimmes, Swingin' Utters, Filthy Thievin' Bastards, Re-Volts, and Uke-Hunt.»
+[4] «Where Sleeplessness Is Rest from Nightmares | Where Sleeplessness Is Rest from Nightmares is the only studio album by the Chicago metalcore band, Arma Angelus.  It was released December 4, 2001 through Eulogy Recordings.»
+[5] «Trashland | Trashland is the second and last studio album by Brazilian post-punk band Mercenárias.  It was released in 1988 via EMI, and produced by Edgard Scandurra (of Ira!  and Ultraje a Rigor, and a long-time friend and former member of Mercenárias) and Thomas Pappon (of Voluntários da Pátria, Smack and Fellini fame).  Contrasting with the aggressiveness of the punk-like sonority of their previous album, "Cadê as Armas? ", "Trashland" is characterized by more atmospheric pieces reminiscent of Siouxsie and the Banshees, with emphasis given to the tracks "Kyrie", "Angelus", "Mesmas Leis", "Lembranças" and "Provérbios do Inferno", a compilation of William Blake's Proverbs of Hell translated into Portuguese and set to music.»
+[6] «Filthy Thieving Bastards | The Filthy Thieving Bastards is an American folk/punk rock group formed in 2000 in San Francisco, California.  The band was originally a side project put together by Johnny Bonnel and Darius Koski of the Swingin' Utters.  Spike Slawson (also from Swingin' Utters) later joined the band, along with recording engineer Randy Burk.  Greg Lisher from Camper Van Beethoven guested on guitar for several songs on their second release.  Their music is influenced by folk rock, Celtic rock, country music, 60's pop, and punk rock, with an acknowledged and oft-noted debt to the music of The Pogues.»
+[7] «Joe Trohman | Joseph Mark "Joe" Trohman (born September 1, 1984) is an American musician, composer, and record producer.  He is best known as the lead guitarist and backing vocalist of the American rock band Fall Out Boy, as well as the lead and rhythm guitarist for heavy metal supergroup The Damned Things.  Fall Out Boy began as Trohman and Pete Wentz's side project from the hardcore punk scene they were involved with, and the band has scored three number one albums on the US "Billboard" 200.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze each component of the claim:
+
+1. "Both the bass guitarist from Arma Angelus and Spike Slawson are Celtic punk rock musicians"
+   - From passage [1], the bass guitarist of Arma Angelus was Tim McIlrath
+   - From passage [3], Spike Slawson is described as "an American punk rock musician"
+   - From passage [6], the Filthy Thieving Bastards (which Spike Slawson is a member of) is described as "folk/punk rock group" with music influenced by "folk rock, Celtic rock, country music, 60's pop, and punk rock"
+   - Spike Slawson's Celtic punk credentials: While passage [6] mentions Celtic rock influence for one of his bands, it doesn't explicitly call Spike Slawson a "Celtic punk rock musician"
+   - Tim McIlrath's credentials: Passage [1] says he is "now lead singer of Rise Against" but provides no information about whether he is a Celtic punk rock musician
+
+2. "Other members of Arma Angelus included Pete Wentz and Jay Jancetic"
+   - From passage [1], Pete Wentz is confirmed as a member (vocals)
+   - From passage [1], Jay Jancetic is confirmed as a member (guitar)
+   - From passage [2], Pete Wentz is confirmed as "lead vocalist and lyricist for Arma Angelus"
+   - This part is verified
+
+Key issues:
+- The claim states "the bass guitarist from Arma Angelus" but doesn't name them. Tim McIlrath is the bass guitarist mentioned in passage [1]
+- There is no evidence in the passages that Tim McIlrath is a Celtic punk rock musician
+- While Spike Slawson is in bands with Celtic/folk influences, he is not explicitly described as a "Celtic punk rock musician"
+- Missing evidence: Information about Tim McIlrath's musical style/genre and explicit confirmation that Spike Slawson performs Celtic punk rock
+
+[[ ## summary ## ]]
+
+The claim cannot be fully verified with the provided passages. 
+
+Verified components:
+- Pete Wentz and Jay Jancetic were indeed members of Arma Angelus ✓
+
+Unverified/problematic components:
+- The bass guitarist of Arma Angelus was Tim McIlrath (per passage [1]), but the passages provide no information confirming he is a Celtic punk rock musician. Passage [1] only states he is "now lead singer of Rise Against"
+- While Spike Slawson is confirmed as a punk rock musician (passage [3]), and one of his bands (Filthy Thieving Bastards) has Celtic rock influences (passage [6]), he is not explicitly described as a "Celtic punk rock musician"
+
+Missing evidence needed:
+- Information about Tim McIlrath's musical style/genre classification to verify if he performs Celtic punk rock
+- Explicit confirmation that Spike Slawson is classified as a "Celtic punk rock musician" or documentation of his primary musical genre
+- Potentially biographical information on Rise Against's genre to determine if Tim McIlrath's current work is Celtic punk
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Both the bass guitarist from Arma Angelus and Spike Slawson are Celtic punk rock musicians. Other members of Arma Angelus included Pete Wentz and Jay Jancetic.
+
+[[ ## summary_1 ## ]]
+The claim cannot be fully verified with the provided passages. 
+
+Verified components:
+- Pete Wentz and Jay Jancetic were indeed members of Arma Angelus ✓
+
+Unverified/problematic components:
+- The bass guitarist of Arma Angelus was Tim McIlrath (per passage [1]), but the passages provide no information confirming he is a Celtic punk rock musician. Passage [1] only states he is "now lead singer of Rise Against"
+- While Spike Slawson is confirmed as a punk rock musician (passage [3]), and one of his bands (Filthy Thieving Bastards) has Celtic rock influences (passage [6]), he is not explicitly described as a "Celtic punk rock musician"
+
+Missing evidence needed:
+- Information about Tim McIlrath's musical style/genre classification to verify if he performs Celtic punk rock
+- Explicit confirmation that Spike Slawson is classified as a "Celtic punk rock musician" or documentation of his primary musical genre
+- Potentially biographical information on Rise Against's genre to determine if Tim McIlrath's current work is Celtic punk
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary identifies that while some components of the claim are verified (Pete Wentz and Jay Jancetic as Arma Angelus members), key aspects remain unverified. Specifically, the claim requires confirmation that: (1) Tim McIlrath, the bass guitarist of Arma Angelus, is a Celtic punk rock musician, and (2) Spike Slawson is definitively a Celtic punk rock musician. The summary indicates that while Spike Slawson is confirmed as a punk rock musician with some Celtic rock influences, he is not explicitly classified as "Celtic punk rock." Similarly, Tim McIlrath's connection to Celtic punk rock is not established in the available passages. To fully verify this claim, we need explicit genre classification and musical style documentation for both individuals.
+
+[[ ## query ## ]]
+Is Tim McIlrath, former bass guitarist of Arma Angelus, classified as a Celtic punk rock musician? What is Spike Slawson's primary musical genre classification, and is he explicitly described as a "Celtic punk rock musician"?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Tim McIlrath | Timothy James "Tim" McIlrath (born November 3, 1978) is an American punk rock musician.  He is the lead singer, rhythm guitarist, songwriter and co-founder of the American punk rock band Rise Against.  McIlrath is known to support animal rights and actively promotes PETA with his band.  He is also straight edge.
+Celtic punk | Celtic punk is punk rock mixed with traditional Celtic music.  The genre was popularized in the 1980s by The Pogues, a band of London Irish punk musicians in London who celebrated their Irish heritage.  Celtic punk bands often play covers of traditional Irish, Welsh or Scottish folk and political songs, as well as original compositions.  Common themes in Celtic punk music include politics, culture, religion, drinking and working class pride.
+Arma Angelus | Arma Angelus was a metalcore band from Chicago, Illinois.  The band was formed in 1998 and disbanded in 2002.  Members of the band were Pete Wentz (vocals, now bass guitarist and backing vocalist in Fall Out Boy), Tim McIlrath (bass guitar, now lead singer of Rise Against), Jay Jancetic (guitar, last played guitar for the Chicago "Holy Roman Empire" and Harm's Way), Daniel Binaei (guitarist, formerly of Racetraitor), Adam Bishop (guitarist, now an English teacher at Mission Viejo High School in Mission Viejo, California) and Timothy Miller (drums, Last played drums for Arizona-based punk band Last Action Zeros & now owner of Immortal Art Tattoo & Body Piercing, located in Scottsdale, Arizona).
+Spike Slawson | Spike Slawson is an American punk rock musician, a member of Me First and the Gimme Gimmes, Swingin' Utters, Filthy Thievin' Bastards, Re-Volts, and Uke-Hunt.
+Filthy Thieving Bastards | The Filthy Thieving Bastards is an American folk/punk rock group formed in 2000 in San Francisco, California.  The band was originally a side project put together by Johnny Bonnel and Darius Koski of the Swingin' Utters.  Spike Slawson (also from Swingin' Utters) later joined the band, along with recording engineer Randy Burk.  Greg Lisher from Camper Van Beethoven guested on guitar for several songs on their second release.  Their music is influenced by folk rock, Celtic rock, country music, 60's pop, and punk rock, with an acknowledged and oft-noted debt to the music of The Pogues.
+Kurt Robertson | Kurt Robertson, also known as "Dirty Kurt" (born July 21, 1965 in Vancouver, British Columbia), is a Canadian punk rock guitarist and musician.  Robertson was a member of Vancouver-based Celtic punk band The Real McKenzies from 1993 to 2013, appearing on their first seven full-length studio albums.  In 2014, he joined the skate punk band SNFU.
+Johnny Rioux | Johnny Rioux is a musician, primarily known for playing in and working with many punk rock bands.  He was initially based in Boston but is now based in Texas.  He currently plays bass guitar with the Street Dogs, celtic rock band Murder the Stout (along with former Street Dogs guitarist Marcus Hollar) and Street Dogs' americana side project FM359.  He has previously played with Roger Miret and the Disasters, The Bruisers and The Kickovers.  He has also worked with bands in non-musician roles including as a guitar technician for The Mighty Mighty Bosstones and tour manager for Dropkick Murphys.  He has recently started producing, and has so far produced for Flatfoot 56, the Street Dogs and Roger Miret and the Disasters.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+Both the bass guitarist from Arma Angelus and Spike Slawson are Celtic punk rock musicians. Other members of Arma Angelus included Pete Wentz and Jay Jancetic.
+
+[[ ## context ## ]]
+The claim cannot be fully verified with the provided passages. 
+
+Verified components:
+- Pete Wentz and Jay Jancetic were indeed members of Arma Angelus ✓
+
+Unverified/problematic components:
+- The bass guitarist of Arma Angelus was Tim McIlrath (per passage [1]), but the passages provide no information confirming he is a Celtic punk rock musician. Passage [1] only states he is "now lead singer of Rise Against"
+- While Spike Slawson is confirmed as a punk rock musician (passage [3]), and one of his bands (Filthy Thieving Bastards) has Celtic rock influences (passage [6]), he is not explicitly described as a "Celtic punk rock musician"
+
+Missing evidence needed:
+- Information about Tim McIlrath's musical style/genre classification to verify if he performs Celtic punk rock
+- Explicit confirmation that Spike Slawson is classified as a "Celtic punk rock musician" or documentation of his primary musical genre
+- Potentially biographical information on Rise Against's genre to determine if Tim McIlrath's current work is Celtic punk
+
+[[ ## passages ## ]]
+[1] «Tim McIlrath | Timothy James "Tim" McIlrath (born November 3, 1978) is an American punk rock musician.  He is the lead singer, rhythm guitarist, songwriter and co-founder of the American punk rock band Rise Against.  McIlrath is known to support animal rights and actively promotes PETA with his band.  He is also straight edge.»
+[2] «Celtic punk | Celtic punk is punk rock mixed with traditional Celtic music.  The genre was popularized in the 1980s by The Pogues, a band of London Irish punk musicians in London who celebrated their Irish heritage.  Celtic punk bands often play covers of traditional Irish, Welsh or Scottish folk and political songs, as well as original compositions.  Common themes in Celtic punk music include politics, culture, religion, drinking and working class pride.»
+[3] «Arma Angelus | Arma Angelus was a metalcore band from Chicago, Illinois.  The band was formed in 1998 and disbanded in 2002.  Members of the band were Pete Wentz (vocals, now bass guitarist and backing vocalist in Fall Out Boy), Tim McIlrath (bass guitar, now lead singer of Rise Against), Jay Jancetic (guitar, last played guitar for the Chicago "Holy Roman Empire" and Harm's Way), Daniel Binaei (guitarist, formerly of Racetraitor), Adam Bishop (guitarist, now an English teacher at Mission Viejo High School in Mission Viejo, California) and Timothy Miller (drums, Last played drums for Arizona-based punk band Last Action Zeros & now owner of Immortal Art Tattoo & Body Piercing, located in Scottsdale, Arizona).»
+[4] «Spike Slawson | Spike Slawson is an American punk rock musician, a member of Me First and the Gimme Gimmes, Swingin' Utters, Filthy Thievin' Bastards, Re-Volts, and Uke-Hunt.»
+[5] «Filthy Thieving Bastards | The Filthy Thieving Bastards is an American folk/punk rock group formed in 2000 in San Francisco, California.  The band was originally a side project put together by Johnny Bonnel and Darius Koski of the Swingin' Utters.  Spike Slawson (also from Swingin' Utters) later joined the band, along with recording engineer Randy Burk.  Greg Lisher from Camper Van Beethoven guested on guitar for several songs on their second release.  Their music is influenced by folk rock, Celtic rock, country music, 60's pop, and punk rock, with an acknowledged and oft-noted debt to the music of The Pogues.»
+[6] «Kurt Robertson | Kurt Robertson, also known as "Dirty Kurt" (born July 21, 1965 in Vancouver, British Columbia), is a Canadian punk rock guitarist and musician.  Robertson was a member of Vancouver-based Celtic punk band The Real McKenzies from 1993 to 2013, appearing on their first seven full-length studio albums.  In 2014, he joined the skate punk band SNFU.»
+[7] «Johnny Rioux | Johnny Rioux is a musician, primarily known for playing in and working with many punk rock bands.  He was initially based in Boston but is now based in Texas.  He currently plays bass guitar with the Street Dogs, celtic rock band Murder the Stout (along with former Street Dogs guitarist Marcus Hollar) and Street Dogs' americana side project FM359.  He has previously played with Roger Miret and the Disasters, The Bruisers and The Kickovers.  He has also worked with bands in non-musician roles including as a guitar technician for The Mighty Mighty Bosstones and tour manager for Dropkick Murphys.  He has recently started producing, and has so far produced for Flatfoot 56, the Street Dogs and Roger Miret and the Disasters.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze this claim systematically:
+
+**Claim Components to Verify:**
+1. The bass guitarist from Arma Angelus is a Celtic punk rock musician
+2. Spike Slawson is a Celtic punk rock musician
+3. Pete Wentz was a member of Arma Angelus
+4. Jay Jancetic was a member of Arma Angelus
+
+**Analysis of Provided Passages:**
+
+From passage [3], I can confirm:
+- Pete Wentz was indeed a member of Arma Angelus (vocals) ✓
+- Jay Jancetic was indeed a member of Arma Angelus (guitar) ✓
+- Tim McIlrath was the bass guitarist of Arma Angelus ✓
+
+**Problem 1: Is Tim McIlrath a Celtic punk rock musician?**
+- Passage [1] identifies Tim McIlrath as "an American punk rock musician" and "lead singer, rhythm guitarist, songwriter and co-founder of the American punk rock band Rise Against"
+- Passage [1] does NOT describe his music as Celtic punk rock
+- Passage [2] defines Celtic punk but doesn't mention Tim McIlrath or Rise Against
+- There is NO passage connecting Tim McIlrath to Celtic punk rock music
+- Missing evidence: A passage about Tim McIlrath's or Rise Against's musical style/genre to verify Celtic punk rock classification
+
+**Problem 2: Is Spike Slawson a Celtic punk rock musician?**
+- Passage [4] identifies Spike Slawson as "an American punk rock musician"
+- Passage [4] lists his bands but does NOT describe him as a Celtic punk rock musician specifically
+- Passage [5] mentions Spike Slawson is in Filthy Thieving Bastards, which is described as influenced by "folk rock, Celtic rock, country music, 60's pop, and punk rock"
+- However, passage [5] says Filthy Thieving Bastards is "folk/punk rock," not specifically "Celtic punk rock"
+- Spike Slawson is in multiple bands (Me First and the Gimme Gimmes, Swingin' Utters, Re-Volts, Uke-Hunt) - none are explicitly identified as Celtic punk rock
+- Missing evidence: Explicit confirmation that Spike Slawson performs in or is classified as a Celtic punk rock musician
+
+**Missing Documentation:**
+1. Information about Tim McIlrath's musical genre classification or Rise Against's musical style to verify Celtic punk rock
+2. Explicit classification of Spike Slawson as a "Celtic punk rock musician" or confirmation of which of his bands, if any, perform Celtic punk rock specifically
+
+[[ ## summary ## ]]
+
+The claim **cannot be fully verified** with the provided passages.
+
+**What can be verified:**
+- Pete Wentz and Jay Jancetic were both members of Arma Angelus ✓
+- Tim McIlrath was the bass guitarist of Arma Angelus ✓
+
+**What cannot be verified:**
+
+1. **Tim McIlrath as a Celtic punk rock musician:** While passage [1] establishes that Tim McIlrath is a punk rock musician and was the bass guitarist of Arma Angelus, there is no information in the passages indicating he performs Celtic punk rock. He is currently the lead singer of Rise Against, but Rise Against's genre classification is not provided in any passage. A passage describing Rise Against's musical style or explicitly identifying Tim McIlrath as a Celtic punk rock musician would be needed.
+
+2. **Spike Slawson as a Celtic punk rock musician:** Passage [4] identifies Spike Slawson as a "punk rock musician," but does not classify him specifically as a "Celtic punk rock musician." While passage [5] indicates that one of his bands, Filthy Thieving Bastards, incorporates Celtic rock influences, this band is described as "folk/punk rock," not "Celtic punk rock." His other bands listed in passage [4] are not described in the passages provided. Missing evidence needed: Explicit documentation identifying Spike Slawson as a Celtic punk rock musician or confirmation that at least one of his primary bands performs Celtic punk rock music.
+
+**Specific passages needed:**
+- A passage about Tim McIlrath's or Rise Against's genre classification confirming Celtic punk rock
+- A passage explicitly identifying Spike Slawson or his primary band(s) as Celtic punk rock musician(s)
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the field `query`.
+        
+        # Task Description
+        You will receive a claim and two summaries that assess whether the claim can be verified from provided passages (not shown to you). The summaries often disagree on whether verification is possible. Your task is to generate a query that will retrieve the missing or disputed evidence documents needed to verify the claim.
+        
+        # Key Principles
+        
+        1. **Focus on Multi-Hop Claims**: Most claims require connecting multiple pieces of information across different topics. Your query should help retrieve ALL required evidence documents, not just one.
+        
+        2. **Retrieve Broad Topic Documents**: The retrieval system works best when queries target the main entities/topics mentioned in the claim rather than asking narrow questions. Each hop in the reasoning chain typically corresponds to retrieving a document about a specific entity or topic.
+        
+        3. **Cover All Components**: Analyze the claim to identify all entities, relationships, and facts that need verification. Your query should be broad enough to trigger retrieval of documents for each major component.
+        
+        # Strategy
+        
+        1. **Identify all entities and topics** in the claim that would require separate evidence documents (typically 2-4 key topics).
+        
+        2. **Determine what's disputed or missing** according to the summaries - this indicates which documents may not have been retrieved yet.
+        
+        3. **Formulate a query that mentions ALL key entities/topics** from the claim, especially:
+           - Named entities (people, places, organizations, films, TV shows, products, events)
+           - Relationships between entities (who created what, who replaced what, who starred in what)
+           - Specific attributes (degrees, locations, dates, roles)
+        
+        4. **Use broad, inclusive language** rather than yes/no questions. Frame queries as "What is the relationship between X, Y, and Z?" rather than "Does X relate to Y?"
+        
+        5. **Include specific names and titles** mentioned in the claim rather than generic descriptions. For example, use "Yes Minister" rather than "the television series."
+        
+        # Examples of Good Query Patterns
+        
+        - For replacement/succession claims: Include both the original entity and its replacement plus the context (e.g., "Ferrari 360 Ferrari F430 Australian Nations Cup Championship")
+        - For biographical claims about creative works: Include the person's name, the work's title, and the specific role/attribute (e.g., "Vanessa Kirby Joanna film Irish actor Dublin Institute of Technology")
+        - For multi-person creative collaborations: Include all relevant work titles and the specific roles/relationships (e.g., "Che strano chiamarsi Federico co-writer Yes Minister director")
+        
+        # Important Notes
+        
+        - The retrieval system appears to match queries against document titles/topics, so including the right entity names is critical
+        - Missing even one key entity name from your query may cause its evidence document to not be retrieved
+        - Broader queries that mention all relevant entities perform better than narrow, specific questions
+[STEP 14] (user) [[ ## claim ## ]]
+Both the bass guitarist from Arma Angelus and Spike Slawson are Celtic punk rock musicians. Other members of Arma Angelus included Pete Wentz and Jay Jancetic.
+
+[[ ## summary_1 ## ]]
+The claim cannot be fully verified with the provided passages. 
+
+Verified components:
+- Pete Wentz and Jay Jancetic were indeed members of Arma Angelus ✓
+
+Unverified/problematic components:
+- The bass guitarist of Arma Angelus was Tim McIlrath (per passage [1]), but the passages provide no information confirming he is a Celtic punk rock musician. Passage [1] only states he is "now lead singer of Rise Against"
+- While Spike Slawson is confirmed as a punk rock musician (passage [3]), and one of his bands (Filthy Thieving Bastards) has Celtic rock influences (passage [6]), he is not explicitly described as a "Celtic punk rock musician"
+
+Missing evidence needed:
+- Information about Tim McIlrath's musical style/genre classification to verify if he performs Celtic punk rock
+- Explicit confirmation that Spike Slawson is classified as a "Celtic punk rock musician" or documentation of his primary musical genre
+- Potentially biographical information on Rise Against's genre to determine if Tim McIlrath's current work is Celtic punk
+
+[[ ## summary_2 ## ]]
+The claim **cannot be fully verified** with the provided passages.
+
+**What can be verified:**
+- Pete Wentz and Jay Jancetic were both members of Arma Angelus ✓
+- Tim McIlrath was the bass guitarist of Arma Angelus ✓
+
+**What cannot be verified:**
+
+1. **Tim McIlrath as a Celtic punk rock musician:** While passage [1] establishes that Tim McIlrath is a punk rock musician and was the bass guitarist of Arma Angelus, there is no information in the passages indicating he performs Celtic punk rock. He is currently the lead singer of Rise Against, but Rise Against's genre classification is not provided in any passage. A passage describing Rise Against's musical style or explicitly identifying Tim McIlrath as a Celtic punk rock musician would be needed.
+
+2. **Spike Slawson as a Celtic punk rock musician:** Passage [4] identifies Spike Slawson as a "punk rock musician," but does not classify him specifically as a "Celtic punk rock musician." While passage [5] indicates that one of his bands, Filthy Thieving Bastards, incorporates Celtic rock influences, this band is described as "folk/punk rock," not "Celtic punk rock." His other bands listed in passage [4] are not described in the passages provided. Missing evidence needed: Explicit documentation identifying Spike Slawson as a Celtic punk rock musician or confirmation that at least one of his primary bands performs Celtic punk rock music.
+
+**Specific passages needed:**
+- A passage about Tim McIlrath's or Rise Against's genre classification confirming Celtic punk rock
+- A passage explicitly identifying Spike Slawson or his primary band(s) as Celtic punk rock musician(s)
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries agree that the core issue is verifying whether Tim McIlrath (bass guitarist of Arma Angelus) and Spike Slawson are Celtic punk rock musicians. The summaries confirm that Pete Wentz and Jay Jancetic were members of Arma Angelus, and that Tim McIlrath was the bass guitarist. However, neither summary has evidence confirming the specific "Celtic punk rock" genre classification for either musician.
+
+The missing evidence needed is:
+1. Information about Tim McIlrath's musical style/genre - specifically whether he or Rise Against perform Celtic punk rock
+2. Information about Spike Slawson's primary band(s) and their genre - specifically whether he performs Celtic punk rock (the Filthy Thieving Bastards connection to Celtic rock exists but doesn't confirm "Celtic punk rock")
+
+The query should retrieve documents about both Tim McIlrath/Rise Against and Spike Slawson, along with their musical genres and band affiliations, to verify the Celtic punk rock classification.
+[[ ## query ## ]]
+Tim McIlrath Rise Against Spike Slawson Celtic punk rock genre musicians bands
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Tim McIlrath | Timothy James "Tim" McIlrath (born November 3, 1978) is an American punk rock musician.  He is the lead singer, rhythm guitarist, songwriter and co-founder of the American punk rock band Rise Against.  McIlrath is known to support animal rights and actively promotes PETA with his band.  He is also straight edge.
+Spike Slawson | Spike Slawson is an American punk rock musician, a member of Me First and the Gimme Gimmes, Swingin' Utters, Filthy Thievin' Bastards, Re-Volts, and Uke-Hunt.
+Give It All | "Give It All" is a song by American rock band Rise Against.  It was originally recorded for the 2004 compilation album "Rock Against Bush, Vol.  1", while a slightly altered version appeared on the band's third studio album "Siren Song of the Counter Culture" later that year.  It is a hardcore punk song, with lyrics that are about "being a punk rocker in today's world," according to lead vocalist Tim McIlrath.  It was released as "Siren Song of the Counter Culture"'s first single in October 2004.
+The Honor System (band) | The Honor System was an American punk rock band from Chicago, Illinois, formed in 1999 by Dan Hanaway and Rob DePaola, after the breakup of their previous band The Broadways.  The band briefly featured future Rise Against frontman Tim McIlrath as a bassist.  They broke up in 2004, leaving behind two studio albums and three EPs.
+Audience of One (song) | "Audience of One" is a song by American punk rock band Rise Against, written by the band's frontman Tim McIlrath.  It is the second single from their 2008 album "Appeal to Reason".  Hitting number four on the "Billboard" Alternative Songs chart, "Audience of One" is Rise Against's third-highest charting single, behind the previous single from "Appeal to Reason", "Re-Education (Through Labor)", which peaked at number three and the third single "Savior".
+Filthy Thieving Bastards | The Filthy Thieving Bastards is an American folk/punk rock group formed in 2000 in San Francisco, California.  The band was originally a side project put together by Johnny Bonnel and Darius Koski of the Swingin' Utters.  Spike Slawson (also from Swingin' Utters) later joined the band, along with recording engineer Randy Burk.  Greg Lisher from Camper Van Beethoven guested on guitar for several songs on their second release.  Their music is influenced by folk rock, Celtic rock, country music, 60's pop, and punk rock, with an acknowledged and oft-noted debt to the music of The Pogues.
+Tragedy + Time | "Tragedy + Time" is a song by American punk rock band Rise Against.  The song was released as the second single from their seventh album, titled "The Black Market".  The song impacted radio on October 21, 2014.  According to lead singer Tim McIlrath, the title of the song comes from the phrase "tragedy plus time equals comedy".  The song is a playable track in Guitar Hero Live.
+Baxter (punk band) | Baxter (sometimes typeset . baxter.)  was a Chicago post-hardcore band.  The band consisted of Tim McIlrath (later of Rise Against and The Killing Tree), Neil Hennessy, (later of The Lawrence Arms, The Killing Tree, The Falcon and Colossal), Anthony Fiore (drums) as well Timothy Remis, (later of The Killing Tree) and a bassist only referred to as J. Wood.
+Celtic punk | Celtic punk is punk rock mixed with traditional Celtic music.  The genre was popularized in the 1980s by The Pogues, a band of London Irish punk musicians in London who celebrated their Irish heritage.  Celtic punk bands often play covers of traditional Irish, Welsh or Scottish folk and political songs, as well as original compositions.  Common themes in Celtic punk music include politics, culture, religion, drinking and working class pride.
+The Violence | "The Violence" is a song by American punk rock band Rise Against.  The song was released on April 20, 2017 as the lead single from their eighth studio album, "Wolves".  Inspired by the 2016 United States presidential election cycle, "The Violence" contains lyrics described by vocalist Tim McIlrath as being about "whether violence is an inevitability of the human condition, or whether it's a choice we make, and therefore, can reject."  The song has charted on both Billboard's Alternative Songs chart and Mainstream Rock Songs chart.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Arma Angelus | Arma Angelus was a metalcore band from Chicago, Illinois.  The band was formed in 1998 and disbanded in 2002.  Members of the band were Pete Wentz (vocals, now bass guitarist and backing vocalist in Fall Out Boy), Tim McIlrath (bass guitar, now lead singer of Rise Against), Jay Jancetic (guitar, last played guitar for the Chicago "Holy Roman Empire" and Harm's Way), Daniel Binaei (guitarist, formerly of Racetraitor), Adam Bishop (guitarist, now an English teacher at Mission Viejo High School in Mission Viejo, California) and Timothy Miller (drums, Last played drums for Arizona-based punk band Last Action Zeros & now owner of Immortal Art Tattoo & Body Piercing, located in Scottsdale, Arizona).
+Pete Wentz | Peter Lewis Kingston Wentz III (born June 5, 1979) is an American musician.  He is best known for being the bassist, lyricist, and backing vocalist for the American rock band Fall Out Boy.  Before Fall Out Boy's inception in 2001, Wentz was a fixture of the Chicago hardcore scene and was notably the lead vocalist and lyricist for Arma Angelus.  During Fall Out Boy's hiatus in 2009–12, Wentz formed the experimental, electropop and dubstep group Black Cards.  He owns a record label, DCD2 Records, which has signed bands including Panic!  at the Disco and Gym Class Heroes.  Fall Out Boy returned in February 2013.
+Spike Slawson | Spike Slawson is an American punk rock musician, a member of Me First and the Gimme Gimmes, Swingin' Utters, Filthy Thievin' Bastards, Re-Volts, and Uke-Hunt.
+Where Sleeplessness Is Rest from Nightmares | Where Sleeplessness Is Rest from Nightmares is the only studio album by the Chicago metalcore band, Arma Angelus.  It was released December 4, 2001 through Eulogy Recordings.
+Trashland | Trashland is the second and last studio album by Brazilian post-punk band Mercenárias.  It was released in 1988 via EMI, and produced by Edgard Scandurra (of Ira!  and Ultraje a Rigor, and a long-time friend and former member of Mercenárias) and Thomas Pappon (of Voluntários da Pátria, Smack and Fellini fame).  Contrasting with the aggressiveness of the punk-like sonority of their previous album, "Cadê as Armas? ", "Trashland" is characterized by more atmospheric pieces reminiscent of Siouxsie and the Banshees, with emphasis given to the tracks "Kyrie", "Angelus", "Mesmas Leis", "Lembranças" and "Provérbios do Inferno", a compilation of William Blake's Proverbs of Hell translated into Portuguese and set to music.
+Filthy Thieving Bastards | The Filthy Thieving Bastards is an American folk/punk rock group formed in 2000 in San Francisco, California.  The band was originally a side project put together by Johnny Bonnel and Darius Koski of the Swingin' Utters.  Spike Slawson (also from Swingin' Utters) later joined the band, along with recording engineer Randy Burk.  Greg Lisher from Camper Van Beethoven guested on guitar for several songs on their second release.  Their music is influenced by folk rock, Celtic rock, country music, 60's pop, and punk rock, with an acknowledged and oft-noted debt to the music of The Pogues.
+Joe Trohman | Joseph Mark "Joe" Trohman (born September 1, 1984) is an American musician, composer, and record producer.  He is best known as the lead guitarist and backing vocalist of the American rock band Fall Out Boy, as well as the lead and rhythm guitarist for heavy metal supergroup The Damned Things.  Fall Out Boy began as Trohman and Pete Wentz's side project from the hardcore punk scene they were involved with, and the band has scored three number one albums on the US "Billboard" 200.
+Tim McIlrath | Timothy James "Tim" McIlrath (born November 3, 1978) is an American punk rock musician.  He is the lead singer, rhythm guitarist, songwriter and co-founder of the American punk rock band Rise Against.  McIlrath is known to support animal rights and actively promotes PETA with his band.  He is also straight edge.
+Celtic punk | Celtic punk is punk rock mixed with traditional Celtic music.  The genre was popularized in the 1980s by The Pogues, a band of London Irish punk musicians in London who celebrated their Irish heritage.  Celtic punk bands often play covers of traditional Irish, Welsh or Scottish folk and political songs, as well as original compositions.  Common themes in Celtic punk music include politics, culture, religion, drinking and working class pride.
+Arma Angelus | Arma Angelus was a metalcore band from Chicago, Illinois.  The band was formed in 1998 and disbanded in 2002.  Members of the band were Pete Wentz (vocals, now bass guitarist and backing vocalist in Fall Out Boy), Tim McIlrath (bass guitar, now lead singer of Rise Against), Jay Jancetic (guitar, last played guitar for the Chicago "Holy Roman Empire" and Harm's Way), Daniel Binaei (guitarist, formerly of Racetraitor), Adam Bishop (guitarist, now an English teacher at Mission Viejo High School in Mission Viejo, California) and Timothy Miller (drums, Last played drums for Arizona-based punk band Last Action Zeros & now owner of Immortal Art Tattoo & Body Piercing, located in Scottsdale, Arizona).
+Spike Slawson | Spike Slawson is an American punk rock musician, a member of Me First and the Gimme Gimmes, Swingin' Utters, Filthy Thievin' Bastards, Re-Volts, and Uke-Hunt.
+Filthy Thieving Bastards | The Filthy Thieving Bastards is an American folk/punk rock group formed in 2000 in San Francisco, California.  The band was originally a side project put together by Johnny Bonnel and Darius Koski of the Swingin' Utters.  Spike Slawson (also from Swingin' Utters) later joined the band, along with recording engineer Randy Burk.  Greg Lisher from Camper Van Beethoven guested on guitar for several songs on their second release.  Their music is influenced by folk rock, Celtic rock, country music, 60's pop, and punk rock, with an acknowledged and oft-noted debt to the music of The Pogues.
+Kurt Robertson | Kurt Robertson, also known as "Dirty Kurt" (born July 21, 1965 in Vancouver, British Columbia), is a Canadian punk rock guitarist and musician.  Robertson was a member of Vancouver-based Celtic punk band The Real McKenzies from 1993 to 2013, appearing on their first seven full-length studio albums.  In 2014, he joined the skate punk band SNFU.
+Johnny Rioux | Johnny Rioux is a musician, primarily known for playing in and working with many punk rock bands.  He was initially based in Boston but is now based in Texas.  He currently plays bass guitar with the Street Dogs, celtic rock band Murder the Stout (along with former Street Dogs guitarist Marcus Hollar) and Street Dogs' americana side project FM359.  He has previously played with Roger Miret and the Disasters, The Bruisers and The Kickovers.  He has also worked with bands in non-musician roles including as a guitar technician for The Mighty Mighty Bosstones and tour manager for Dropkick Murphys.  He has recently started producing, and has so far produced for Flatfoot 56, the Street Dogs and Roger Miret and the Disasters.
+Tim McIlrath | Timothy James "Tim" McIlrath (born November 3, 1978) is an American punk rock musician.  He is the lead singer, rhythm guitarist, songwriter and co-founder of the American punk rock band Rise Against.  McIlrath is known to support animal rights and actively promotes PETA with his band.  He is also straight edge.
+Spike Slawson | Spike Slawson is an American punk rock musician, a member of Me First and the Gimme Gimmes, Swingin' Utters, Filthy Thievin' Bastards, Re-Volts, and Uke-Hunt.
+Give It All | "Give It All" is a song by American rock band Rise Against.  It was originally recorded for the 2004 compilation album "Rock Against Bush, Vol.  1", while a slightly altered version appeared on the band's third studio album "Siren Song of the Counter Culture" later that year.  It is a hardcore punk song, with lyrics that are about "being a punk rocker in today's world," according to lead vocalist Tim McIlrath.  It was released as "Siren Song of the Counter Culture"'s first single in October 2004.
+The Honor System (band) | The Honor System was an American punk rock band from Chicago, Illinois, formed in 1999 by Dan Hanaway and Rob DePaola, after the breakup of their previous band The Broadways.  The band briefly featured future Rise Against frontman Tim McIlrath as a bassist.  They broke up in 2004, leaving behind two studio albums and three EPs.
+Audience of One (song) | "Audience of One" is a song by American punk rock band Rise Against, written by the band's frontman Tim McIlrath.  It is the second single from their 2008 album "Appeal to Reason".  Hitting number four on the "Billboard" Alternative Songs chart, "Audience of One" is Rise Against's third-highest charting single, behind the previous single from "Appeal to Reason", "Re-Education (Through Labor)", which peaked at number three and the third single "Savior".
+Filthy Thieving Bastards | The Filthy Thieving Bastards is an American folk/punk rock group formed in 2000 in San Francisco, California.  The band was originally a side project put together by Johnny Bonnel and Darius Koski of the Swingin' Utters.  Spike Slawson (also from Swingin' Utters) later joined the band, along with recording engineer Randy Burk.  Greg Lisher from Camper Van Beethoven guested on guitar for several songs on their second release.  Their music is influenced by folk rock, Celtic rock, country music, 60's pop, and punk rock, with an acknowledged and oft-noted debt to the music of The Pogues.
+Tragedy + Time | "Tragedy + Time" is a song by American punk rock band Rise Against.  The song was released as the second single from their seventh album, titled "The Black Market".  The song impacted radio on October 21, 2014.  According to lead singer Tim McIlrath, the title of the song comes from the phrase "tragedy plus time equals comedy".  The song is a playable track in Guitar Hero Live.
+Baxter (punk band) | Baxter (sometimes typeset . baxter.)  was a Chicago post-hardcore band.  The band consisted of Tim McIlrath (later of Rise Against and The Killing Tree), Neil Hennessy, (later of The Lawrence Arms, The Killing Tree, The Falcon and Colossal), Anthony Fiore (drums) as well Timothy Remis, (later of The Killing Tree) and a bassist only referred to as J. Wood.
+Celtic punk | Celtic punk is punk rock mixed with traditional Celtic music.  The genre was popularized in the 1980s by The Pogues, a band of London Irish punk musicians in London who celebrated their Irish heritage.  Celtic punk bands often play covers of traditional Irish, Welsh or Scottish folk and political songs, as well as original compositions.  Common themes in Celtic punk music include politics, culture, religion, drinking and working class pride.
+The Violence | "The Violence" is a song by American punk rock band Rise Against.  The song was released on April 20, 2017 as the lead single from their eighth studio album, "Wolves".  Inspired by the 2016 United States presidential election cycle, "The Violence" contains lyrics described by vocalist Tim McIlrath as being about "whether violence is an inevitability of the human condition, or whether it's a choice we make, and therefore, can reject."  The song has charted on both Billboard's Alternative Songs chart and Mainstream Rock Songs chart.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.6 (Solver_Passage_Content_Misreading), anchored near step UNKNOWN: evidence: In summary_1, the solver states 'The bass guitarist of Arma Angelus was Tim McIlrath (per passage [1]), but the passages provide no information confirming he is a Celtic punk rock musician.' However, after hop 3, the passages explicitly state that Tim McIlrath is 'an American punk rock musician' who is 'the lead singer, rhythm guitarist, songwriter and co-founder of the American punk rock band Ris
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary_1 explicitly names the missing evidence: 'Missing evidence needed: Information about Tim McIlrath's musical style/genre classification to verify if he performs Celtic punk rock' and 'Explicit confirmation that Spike Slawson is classified as a "Celtic punk rock musician"'. Summary_2 similarly states 'Missing evidence needed: Explicit documentation identifying Spike Slawson as a Celtic punk 
+- code B.12 (Verdict_Despite_Insufficiency), anchored near step UNKNOWN: evidence: The final output states 'FINAL OUTPUT — concatenation of all retrieved documents' without any verdict or analysis, simply concatenating passages. However, both summaries (summary_1 and summary_2) explicitly state 'The claim cannot be fully verified with the provided passages' yet the agent appears to complete the task without rendering a final judgment on whether the claim is supported, refuted, o
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

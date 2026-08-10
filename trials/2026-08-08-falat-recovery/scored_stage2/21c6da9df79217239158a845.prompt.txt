@@ -1,0 +1,495 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Billy Idol is older than the Australian singer-songwriter who co-wrote "Love No Limit" with Dave Hall.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+My Love (Mary J. Blige song) | "My Love" is a song by American R&B singer Mary J. Blige from her 1992 debut album "What's the 411? " The song was co-written by singer-songwriter Kenny Greene and Dave Hall, who served as the song's original producer.
+You Have to Believe | "You Have to Believe" is a 2015 electronic dance song produced by American DJ/remixer/producer Dave Audé, featuring vocals from Australian singer/songwriter/actress Olivia Newton-John and her daughter, singer/actress Chloe Lattanzi, who co-wrote the single with another Australian singer/songwriter, Vassy.
+Ritchie Cordell | Ritchie Cordell (born Richard Joel Rosenblatt; March 10, 1943 – April 13, 2004) was an American songwriter, singer and record producer.  He wrote and produced several hits for Tommy James and The Shondells, including "I Think We're Alone Now" (later also recorded by Tiffany and Girls Aloud) and "Mony Mony" (later also recorded by Billy Idol), and co-produced Joan Jett's "I Love Rock 'n' Roll".
+Billy Field (Australian singer) | William Bruce "Billy" Field (born 20 January 1953) is an Australian singer and songwriter, best known for his hit singles "True Love" (1982) (No. 17), "Bad Habits" (1981) (No. 4) and "You Weren't In Love with Me" (1981) (No. 1).
+Is This Love? (Alison Moyet song) | "Is This Love?"  is a song performed by the English singer Alison Moyet and co-written by Moyet and Dave Stewart who co-wrote and produced the song under the pseudonym Jean Guiot.  The song was released in November 1986 as the first single from her then-upcoming second album "Raindancing".
+Dave Mason (Australian musician) | David Lawrence "Dave" Mason (born ca. 1954) is an Australian singer-songwriter and record producer originally from Dubbo.  He is the founding mainstay of indie pop, rock group, The Reels.  For the group, Mason wrote and sang their hit singles, "Love Will Find a Way" (October 1979), "Prefab Heart" (1980), "After the News" (July 1980), and "Shout and Deliver" (March 1981).  He also wrote "Quasimodo's Dream", which was a non-charting single from May 1981.  However, in May 2001, it was listed by Australasian Performing Rights Association (APRA) at No. 10 of their Top 30 Australian songs of all time.
+Billy Klippert | Billy Klippert is a Canadian rock singer/songwriter who rose to fame via the first season of Canadian Idol, in which he finished third.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        5. **CRITICAL: For every distinct entity mentioned in the claim (whether explicitly named or referenced indirectly), ensure that passages about that specific entity are available. If passages are missing for any entity in the claim, identify those missing evidence documents.**
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        **Critical requirement for identifying missing evidence documents**:
+        - **If a claim mentions multiple distinct entities (e.g., "Entity A is X. Entity B is not X."), you must have passages about EACH entity mentioned**
+        - **Even if the claim can be partially verified, if any entity in the claim lacks corresponding passages, you must identify that entity's evidence document as missing**
+        - **For comparison claims (e.g., "A is perennial. B is not perennial"), you need passages about both A and B, even if one can be verified**
+        - **When a claim mentions an entity only to negate something about it (e.g., "Duranta is not a perennial"), that entity still requires evidence documents**
+        - **The fact that you can verify part of a claim does not mean you should ignore entities that lack passages - explicitly identify all entities that need but lack evidence documents**
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - **List ALL entities from the claim that lack corresponding passages, even if other parts of the claim are verifiable**
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+        - **When identifying missing evidence documents, use the entity name or subject matter that would be the title/topic of the needed passage (e.g., if the claim mentions "Duranta" but no passages discuss it, identify "duranta" as a missing evidence document)**
+[STEP 4] (user) [[ ## claim ## ]]
+Billy Idol is older than the Australian singer-songwriter who co-wrote "Love No Limit" with Dave Hall.
+
+[[ ## passages ## ]]
+[1] «My Love (Mary J. Blige song) | "My Love" is a song by American R&B singer Mary J. Blige from her 1992 debut album "What's the 411? " The song was co-written by singer-songwriter Kenny Greene and Dave Hall, who served as the song's original producer.»
+[2] «You Have to Believe | "You Have to Believe" is a 2015 electronic dance song produced by American DJ/remixer/producer Dave Audé, featuring vocals from Australian singer/songwriter/actress Olivia Newton-John and her daughter, singer/actress Chloe Lattanzi, who co-wrote the single with another Australian singer/songwriter, Vassy.»
+[3] «Ritchie Cordell | Ritchie Cordell (born Richard Joel Rosenblatt; March 10, 1943 – April 13, 2004) was an American songwriter, singer and record producer.  He wrote and produced several hits for Tommy James and The Shondells, including "I Think We're Alone Now" (later also recorded by Tiffany and Girls Aloud) and "Mony Mony" (later also recorded by Billy Idol), and co-produced Joan Jett's "I Love Rock 'n' Roll".»
+[4] «Billy Field (Australian singer) | William Bruce "Billy" Field (born 20 January 1953) is an Australian singer and songwriter, best known for his hit singles "True Love" (1982) (No. 17), "Bad Habits" (1981) (No. 4) and "You Weren't In Love with Me" (1981) (No. 1).»
+[5] «Is This Love? (Alison Moyet song) | "Is This Love?"  is a song performed by the English singer Alison Moyet and co-written by Moyet and Dave Stewart who co-wrote and produced the song under the pseudonym Jean Guiot.  The song was released in November 1986 as the first single from her then-upcoming second album "Raindancing".»
+[6] «Dave Mason (Australian musician) | David Lawrence "Dave" Mason (born ca. 1954) is an Australian singer-songwriter and record producer originally from Dubbo.  He is the founding mainstay of indie pop, rock group, The Reels.  For the group, Mason wrote and sang their hit singles, "Love Will Find a Way" (October 1979), "Prefab Heart" (1980), "After the News" (July 1980), and "Shout and Deliver" (March 1981).  He also wrote "Quasimodo's Dream", which was a non-charting single from May 1981.  However, in May 2001, it was listed by Australasian Performing Rights Association (APRA) at No. 10 of their Top 30 Australian songs of all time.»
+[7] «Billy Klippert | Billy Klippert is a Canadian rock singer/songwriter who rose to fame via the first season of Canadian Idol, in which he finished third.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze this claim step by step.
+
+The claim states: "Billy Idol is older than the Australian singer-songwriter who co-wrote 'Love No Limit' with Dave Hall."
+
+First, I need to identify the entities mentioned:
+1. Billy Idol - a person whose age needs to be compared
+2. An Australian singer-songwriter who co-wrote "Love No Limit" with Dave Hall - this person needs to be identified
+3. Dave Hall - mentioned as a co-writer
+
+From the passages provided:
+- Passage [1] mentions Dave Hall co-writing "My Love" with Kenny Greene (not "Love No Limit")
+- Passage [2] mentions Dave Audé (not Dave Hall) producing "You Have to Believe" with Olivia Newton-John and Vassy
+- Passage [3] provides Billy Idol's name in context but not his birth date
+- Passage [4] mentions Billy Field, an Australian singer born 20 January 1953
+- Passage [5] mentions Dave Stewart co-writing with Alison Moyet
+- Passage [6] mentions Dave Mason, an Australian musician born ca. 1954
+- Passage [7] mentions Billy Klippert
+
+None of the passages mention a song called "Love No Limit" or its co-writers. The passages do mention several Dave-related figures (Dave Hall, Dave Audé, Dave Stewart, Dave Mason) but none in connection with a song titled "Love No Limit."
+
+The critical missing information:
+1. No passage identifies who the Australian singer-songwriter who co-wrote "Love No Limit" with Dave Hall is
+2. No passage provides Billy Idol's birth date/age
+3. No passage mentions the song "Love No Limit" at all
+
+[[ ## summary ## ]]
+The passages provided are insufficient to verify this claim. Specifically:
+
+**Missing evidence documents needed:**
+1. **"Love No Limit" (song)** - No passages mention this song or identify its co-writers
+2. **Billy Idol (biography/profile)** - While Billy Idol is mentioned in passing in passage [3], his birth date/age is not provided, which is necessary for age comparison
+3. **The Australian singer-songwriter co-writer** - Since the song "Love No Limit" is not mentioned in any passages, the identity of the Australian singer-songwriter who co-wrote it with Dave Hall cannot be determined, and therefore no biographical information about them can be verified
+
+The passages contain information about various musicians named Billy (Billy Field, Billy Klippert) and various producers/songwriters named Dave (Dave Hall, Dave Audé, Dave Stewart, Dave Mason), but none of these passages connect any Australian singer-songwriter to a song titled "Love No Limit" or to Dave Hall as a co-writer of that song. Without identifying who the Australian artist is and obtaining their birth date, as well as Billy Idol's birth date, the age comparison cannot be made.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Billy Idol is older than the Australian singer-songwriter who co-wrote "Love No Limit" with Dave Hall.
+
+[[ ## summary_1 ## ]]
+The passages provided are insufficient to verify this claim. Specifically:
+
+**Missing evidence documents needed:**
+1. **"Love No Limit" (song)** - No passages mention this song or identify its co-writers
+2. **Billy Idol (biography/profile)** - While Billy Idol is mentioned in passing in passage [3], his birth date/age is not provided, which is necessary for age comparison
+3. **The Australian singer-songwriter co-writer** - Since the song "Love No Limit" is not mentioned in any passages, the identity of the Australian singer-songwriter who co-wrote it with Dave Hall cannot be determined, and therefore no biographical information about them can be verified
+
+The passages contain information about various musicians named Billy (Billy Field, Billy Klippert) and various producers/songwriters named Dave (Dave Hall, Dave Audé, Dave Stewart, Dave Mason), but none of these passages connect any Australian singer-songwriter to a song titled "Love No Limit" or to Dave Hall as a co-writer of that song. Without identifying who the Australian artist is and obtaining their birth date, as well as Billy Idol's birth date, the age comparison cannot be made.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim requires verification of three key pieces of information:
+1. The identity of the Australian singer-songwriter who co-wrote "Love No Limit" with Dave Hall
+2. Billy Idol's birth date/age
+3. The Australian co-writer's birth date/age
+
+The summary indicates that the passages provided do not contain information about "Love No Limit" or its co-writers, and while Billy Idol is mentioned, his birth date is not provided. To verify this claim, we need to search for information that establishes: (a) who co-wrote "Love No Limit" with Dave Hall, (b) whether that person is Australian, and (c) the comparative ages of Billy Idol and this person.
+
+[[ ## query ## ]]
+"Love No Limit" Dave Hall co-writer Australian singer-songwriter
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+My Love (Mary J. Blige song) | "My Love" is a song by American R&B singer Mary J. Blige from her 1992 debut album "What's the 411? " The song was co-written by singer-songwriter Kenny Greene and Dave Hall, who served as the song's original producer.
+Dave Rennick | David Wiley "Dave" Rennick (born 8 January 1983) is an Australian singer-songwriter.  Rennick is the co-front man and songwriter for indie rock band Dappled Cities and is also the founder and songwriter for indie super-group The Curse of Company.
+You Have to Believe | "You Have to Believe" is a 2015 electronic dance song produced by American DJ/remixer/producer Dave Audé, featuring vocals from Australian singer/songwriter/actress Olivia Newton-John and her daughter, singer/actress Chloe Lattanzi, who co-wrote the single with another Australian singer/songwriter, Vassy.
+Love No Limit | "Love No Limit" is a song by American recording artist Mary J. Blige.  It was co-written by Kenny Greene and Dave Hall for her debut album, "What's the 411? " (1992), with the latter serving as the song's producer.  Released as the album's fourth and final single, the song became a top five hit, reaching number-five on the R&B singles chart, and peaked at number forty-four on the US "Billboard" Hot 100 chart.
+Garth Porter | Garth Ivan Richard Porter (born 24 September 1948) is a New Zealand-born Australian multi-instrumental musician, songwriter and record producer.  He was a member, on keyboards and backing vocals, of the pop group, Sherbet (1970–84), and co-wrote both of their number-one singles, "Summer Love" (March 1975) and "Howzat" (May 1976).  Porter is a co-writer and producer for country music singer Lee Kernaghan.
+It Walks Like Love | It Walks Like Love is the fourth album from Australian singer/songwriter Loene Carmen.  It was released on May 12, 2009 on Chiquita Records through Inertia Records in Australia.  It was recorded at Big Jesus Burger Studios in Sydney, NSW by Burke Reid and features musicians from Australian bands The Holy Soul and The Scare, and a duet with Jed Kurzel from the Mess Hall.
+Dave Elkins | Dave Elkins (born Dave Gimenez) is an American musician, best known as the co-founder and lead singer of the band Mae.  His other notable musical projects include Sky's the Limit and Schematic.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+Billy Idol is older than the Australian singer-songwriter who co-wrote "Love No Limit" with Dave Hall.
+
+[[ ## context ## ]]
+The passages provided are insufficient to verify this claim. Specifically:
+
+**Missing evidence documents needed:**
+1. **"Love No Limit" (song)** - No passages mention this song or identify its co-writers
+2. **Billy Idol (biography/profile)** - While Billy Idol is mentioned in passing in passage [3], his birth date/age is not provided, which is necessary for age comparison
+3. **The Australian singer-songwriter co-writer** - Since the song "Love No Limit" is not mentioned in any passages, the identity of the Australian singer-songwriter who co-wrote it with Dave Hall cannot be determined, and therefore no biographical information about them can be verified
+
+The passages contain information about various musicians named Billy (Billy Field, Billy Klippert) and various producers/songwriters named Dave (Dave Hall, Dave Audé, Dave Stewart, Dave Mason), but none of these passages connect any Australian singer-songwriter to a song titled "Love No Limit" or to Dave Hall as a co-writer of that song. Without identifying who the Australian artist is and obtaining their birth date, as well as Billy Idol's birth date, the age comparison cannot be made.
+
+[[ ## passages ## ]]
+[1] «My Love (Mary J. Blige song) | "My Love" is a song by American R&B singer Mary J. Blige from her 1992 debut album "What's the 411? " The song was co-written by singer-songwriter Kenny Greene and Dave Hall, who served as the song's original producer.»
+[2] «Dave Rennick | David Wiley "Dave" Rennick (born 8 January 1983) is an Australian singer-songwriter.  Rennick is the co-front man and songwriter for indie rock band Dappled Cities and is also the founder and songwriter for indie super-group The Curse of Company.»
+[3] «You Have to Believe | "You Have to Believe" is a 2015 electronic dance song produced by American DJ/remixer/producer Dave Audé, featuring vocals from Australian singer/songwriter/actress Olivia Newton-John and her daughter, singer/actress Chloe Lattanzi, who co-wrote the single with another Australian singer/songwriter, Vassy.»
+[4] «Love No Limit | "Love No Limit" is a song by American recording artist Mary J. Blige.  It was co-written by Kenny Greene and Dave Hall for her debut album, "What's the 411? " (1992), with the latter serving as the song's producer.  Released as the album's fourth and final single, the song became a top five hit, reaching number-five on the R&B singles chart, and peaked at number forty-four on the US "Billboard" Hot 100 chart.»
+[5] «Garth Porter | Garth Ivan Richard Porter (born 24 September 1948) is a New Zealand-born Australian multi-instrumental musician, songwriter and record producer.  He was a member, on keyboards and backing vocals, of the pop group, Sherbet (1970–84), and co-wrote both of their number-one singles, "Summer Love" (March 1975) and "Howzat" (May 1976).  Porter is a co-writer and producer for country music singer Lee Kernaghan.»
+[6] «It Walks Like Love | It Walks Like Love is the fourth album from Australian singer/songwriter Loene Carmen.  It was released on May 12, 2009 on Chiquita Records through Inertia Records in Australia.  It was recorded at Big Jesus Burger Studios in Sydney, NSW by Burke Reid and features musicians from Australian bands The Holy Soul and The Scare, and a duet with Jed Kurzel from the Mess Hall.»
+[7] «Dave Elkins | Dave Elkins (born Dave Gimenez) is an American musician, best known as the co-founder and lead singer of the band Mae.  His other notable musical projects include Sky's the Limit and Schematic.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze what is needed to verify this claim:
+
+The claim requires:
+1. Identifying Billy Idol and his birth date
+2. Identifying the Australian singer-songwriter who co-wrote "Love No Limit" with Dave Hall
+3. Comparing their ages
+
+Examining the passages:
+
+**"Love No Limit" identification:** Passage [4] provides information about "Love No Limit" - it is a song by Mary J. Blige co-written by Kenny Greene and Dave Hall for her 1992 debut album. This passage does NOT identify an Australian singer-songwriter as a co-writer. Instead, it identifies Kenny Greene and Dave Hall as the co-writers.
+
+**The critical issue:** The claim asserts that an Australian singer-songwriter co-wrote "Love No Limit" with Dave Hall, but passage [4] explicitly states the song was co-written by Kenny Greene and Dave Hall. There is no Australian singer-songwriter mentioned as a co-writer of this song in the passages.
+
+**Billy Idol's information:** Passage [3] mentions Billy Idol in passing but provides no birth date or age information.
+
+**Potential misidentification:** The passages do mention several Australian musicians (Dave Rennick in [2], Olivia Newton-John and Vassy in [3], Garth Porter in [5], and Loene Carmen in [6]), but none of these are identified as co-writers of "Love No Limit."
+
+[[ ## summary ## ]]
+
+**Verification Status:** Cannot be verified - the claim appears to be based on incorrect information about the song's authorship.
+
+**What the passages provide:**
+- Passage [4] definitively identifies "Love No Limit" as a song by Mary J. Blige co-written by Kenny Greene and Dave Hall (not by an Australian singer-songwriter and Dave Hall)
+- Multiple Australian musicians are mentioned across the passages, but none are identified as a co-writer of "Love No Limit"
+
+**Critical missing elements:**
+1. **Contradiction identified:** The claim's core premise appears to be false - according to passage [4], "Love No Limit" was co-written by Kenny Greene and Dave Hall, not by an Australian singer-songwriter and Dave Hall
+2. **Billy Idol's birth date:** Even if the song's authorship were clarified, passage [3] mentions Billy Idol but provides no birth date information needed for age comparison
+3. **The actual Australian co-writer:** Since the passage indicates no Australian artist co-wrote "Love No Limit," the identity of who this person is supposed to be remains unresolved
+
+The claim cannot be verified because the underlying factual claim about who co-wrote "Love No Limit" contradicts the information in passage [4].
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Billy Idol is older than the Australian singer-songwriter who co-wrote "Love No Limit" with Dave Hall.
+
+[[ ## summary_1 ## ]]
+The passages provided are insufficient to verify this claim. Specifically:
+
+**Missing evidence documents needed:**
+1. **"Love No Limit" (song)** - No passages mention this song or identify its co-writers
+2. **Billy Idol (biography/profile)** - While Billy Idol is mentioned in passing in passage [3], his birth date/age is not provided, which is necessary for age comparison
+3. **The Australian singer-songwriter co-writer** - Since the song "Love No Limit" is not mentioned in any passages, the identity of the Australian singer-songwriter who co-wrote it with Dave Hall cannot be determined, and therefore no biographical information about them can be verified
+
+The passages contain information about various musicians named Billy (Billy Field, Billy Klippert) and various producers/songwriters named Dave (Dave Hall, Dave Audé, Dave Stewart, Dave Mason), but none of these passages connect any Australian singer-songwriter to a song titled "Love No Limit" or to Dave Hall as a co-writer of that song. Without identifying who the Australian artist is and obtaining their birth date, as well as Billy Idol's birth date, the age comparison cannot be made.
+
+[[ ## summary_2 ## ]]
+**Verification Status:** Cannot be verified - the claim appears to be based on incorrect information about the song's authorship.
+
+**What the passages provide:**
+- Passage [4] definitively identifies "Love No Limit" as a song by Mary J. Blige co-written by Kenny Greene and Dave Hall (not by an Australian singer-songwriter and Dave Hall)
+- Multiple Australian musicians are mentioned across the passages, but none are identified as a co-writer of "Love No Limit"
+
+**Critical missing elements:**
+1. **Contradiction identified:** The claim's core premise appears to be false - according to passage [4], "Love No Limit" was co-written by Kenny Greene and Dave Hall, not by an Australian singer-songwriter and Dave Hall
+2. **Billy Idol's birth date:** Even if the song's authorship were clarified, passage [3] mentions Billy Idol but provides no birth date information needed for age comparison
+3. **The actual Australian co-writer:** Since the passage indicates no Australian artist co-wrote "Love No Limit," the identity of who this person is supposed to be remains unresolved
+
+The claim cannot be verified because the underlying factual claim about who co-wrote "Love No Limit" contradicts the information in passage [4].
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries reveal a critical contradiction in the claim's foundation. Summary_1 indicates that the passages lack sufficient information to identify the Australian singer-songwriter who allegedly co-wrote "Love No Limit" with Dave Hall. However, summary_2 provides definitive evidence that contradicts the claim's premise: according to passage [4], "Love No Limit" was actually co-written by Kenny Greene and Dave Hall, not by an Australian singer-songwriter and Dave Hall. This means the claim is based on incorrect information about the song's authorship. Even if Billy Idol's age could be determined, the claim cannot be verified because the Australian co-writer referenced in the claim does not actually exist as a co-writer of this song. The core factual assertion is false, making any age comparison moot.
+
+[[ ## query ## ]]
+Who co-wrote the song "Love No Limit" with Dave Hall, and is this person an Australian singer-songwriter? What is Billy Idol's birth date compared to the actual co-writer's birth date?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+My Love (Mary J. Blige song) | "My Love" is a song by American R&B singer Mary J. Blige from her 1992 debut album "What's the 411? " The song was co-written by singer-songwriter Kenny Greene and Dave Hall, who served as the song's original producer.
+List of songs recorded by Rihanna | Barbadian singer Rihanna has recorded material for her eight studio albums and has collaborated with other artists for duets and featured songs on their respective albums and charity singles.  After signing a record contract with the Def Jam Recordings in February 2005, Rihanna began to work with producers Carl Sturken and Evan Rogers, who co-wrote and co-produced 12 out of the 15 songs on her 2005 debut album, "Music of the Sun".  Award-winning songwriter Diane Warren co-wrote the title track, while Grammy Award-winning singer-songwriter Deniece Williams co-wrote the song "Willing to Wait".  Sturken and Rogers co-wrote and co-produced 9 songs out of 16 on Rihanna's 2006 album "A Girl like Me".  The album's lead single "SOS" was written by Evan "Kidd" Bogart and J. R. Rotem.  It contains a sped-up sample of "Tainted Love", written in 1965 by Ed Cobb, who was credited as a co-writer on "SOS".
+You Have to Believe | "You Have to Believe" is a 2015 electronic dance song produced by American DJ/remixer/producer Dave Audé, featuring vocals from Australian singer/songwriter/actress Olivia Newton-John and her daughter, singer/actress Chloe Lattanzi, who co-wrote the single with another Australian singer/songwriter, Vassy.
+What the Hell | "What the Hell" is a song by Canadian singer-songwriter Avril Lavigne from her fourth studio album, "Goodbye Lullaby" (2011).  It was released on January 10, 2011 by RCA Records as the lead single from the album.  The song was produced by Max Martin and Shellback, who co-wrote the song with Lavigne.  According to Lavigne, she wrote the song as her "personal message for freedom".
+Place of birth | The place of birth (POB) is the place where a person was born.  This place is often used in legal documents, together with name and date of birth, to uniquely identify a person.  As a general rule with respect to passports, the place of birth is determined to be country that currently has "sovereignty" over the actual place of birth regardless of when the birth actually occurred.  The place of birth is not necessarily the place where the parents of the new baby live.  If the baby is born in a hospital in another place, that place is the place of birth.  In many countries, this also means that the government requires that the birth of the new baby is registered in the place of birth.
+Is This Love? (Alison Moyet song) | "Is This Love?"  is a song performed by the English singer Alison Moyet and co-written by Moyet and Dave Stewart who co-wrote and produced the song under the pseudonym Jean Guiot.  The song was released in November 1986 as the first single from her then-upcoming second album "Raindancing".
+Love No Limit | "Love No Limit" is a song by American recording artist Mary J. Blige.  It was co-written by Kenny Greene and Dave Hall for her debut album, "What's the 411? " (1992), with the latter serving as the song's producer.  Released as the album's fourth and final single, the song became a top five hit, reaching number-five on the R&B singles chart, and peaked at number forty-four on the US "Billboard" Hot 100 chart.
+Billy Crain | William Sherwood "Billy" Crain (born August 9, 1954 in Nashville, Tennessee) is an American songwriter and musician.  He has been a staple performer in the Southern rock scene since the early 1970s.  He's the younger brother to former Charlie Daniels Band guitarist Tommy Crain, who died in 2011.  He has performed with various artists including The Allman Brothers Band, The Rossington-Collins Band, The Rolling Stones and ZZ Top.  In the late 1980s he pursued songwriting and record production.  He co-wrote the song "Call It Love" (by Poco) with Ron Guilbeau and Rick Lonow; "It's My Time" by Martina McBride (co-writers Kim Tribble and Tammy Hyler); "Another Nine Minutes" (co-writers Tim Buppert and Tom Douglas); and "Let 'er Rip" by the Dixie Chicks (co-written with Sandy Ramos).
+Amber (Amber album) | Amber, Amber's second album, was released in 1999 on Tommy Boy Records, and features Dance-pop, Hi-NRG, House music, and Urban contemporary songs.  It is her most well-received album by the American Pop mainstream to date.  She co-wrote three songs with songwriters/producers Rick Nowels and Billy Steinberg: "Sexual (Li Da Di)," "Above the Clouds," and "Love One Another."  The song "Above the Clouds" was featured in the Season Three finale of the television series "Sex and The City."
+Love Ballad (Tove Lo song) | "Love Ballad" is a song by Swedish recording artist and songwriter Tove Lo.  It was co-written by Lo, Ludvig Söderberg and Jakob Jerlström, and was produced by her co-writers under their production name The Struts.  In 2012, after signing a publishing deal with Warner/Chappell Music and co-writing songs for artists including Girls Aloud and Icona Pop, Lo decided to become an independent singer to keep her most personal songs for herself.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+My Love (Mary J. Blige song) | "My Love" is a song by American R&B singer Mary J. Blige from her 1992 debut album "What's the 411? " The song was co-written by singer-songwriter Kenny Greene and Dave Hall, who served as the song's original producer.
+You Have to Believe | "You Have to Believe" is a 2015 electronic dance song produced by American DJ/remixer/producer Dave Audé, featuring vocals from Australian singer/songwriter/actress Olivia Newton-John and her daughter, singer/actress Chloe Lattanzi, who co-wrote the single with another Australian singer/songwriter, Vassy.
+Ritchie Cordell | Ritchie Cordell (born Richard Joel Rosenblatt; March 10, 1943 – April 13, 2004) was an American songwriter, singer and record producer.  He wrote and produced several hits for Tommy James and The Shondells, including "I Think We're Alone Now" (later also recorded by Tiffany and Girls Aloud) and "Mony Mony" (later also recorded by Billy Idol), and co-produced Joan Jett's "I Love Rock 'n' Roll".
+Billy Field (Australian singer) | William Bruce "Billy" Field (born 20 January 1953) is an Australian singer and songwriter, best known for his hit singles "True Love" (1982) (No. 17), "Bad Habits" (1981) (No. 4) and "You Weren't In Love with Me" (1981) (No. 1).
+Is This Love? (Alison Moyet song) | "Is This Love?"  is a song performed by the English singer Alison Moyet and co-written by Moyet and Dave Stewart who co-wrote and produced the song under the pseudonym Jean Guiot.  The song was released in November 1986 as the first single from her then-upcoming second album "Raindancing".
+Dave Mason (Australian musician) | David Lawrence "Dave" Mason (born ca. 1954) is an Australian singer-songwriter and record producer originally from Dubbo.  He is the founding mainstay of indie pop, rock group, The Reels.  For the group, Mason wrote and sang their hit singles, "Love Will Find a Way" (October 1979), "Prefab Heart" (1980), "After the News" (July 1980), and "Shout and Deliver" (March 1981).  He also wrote "Quasimodo's Dream", which was a non-charting single from May 1981.  However, in May 2001, it was listed by Australasian Performing Rights Association (APRA) at No. 10 of their Top 30 Australian songs of all time.
+Billy Klippert | Billy Klippert is a Canadian rock singer/songwriter who rose to fame via the first season of Canadian Idol, in which he finished third.
+My Love (Mary J. Blige song) | "My Love" is a song by American R&B singer Mary J. Blige from her 1992 debut album "What's the 411? " The song was co-written by singer-songwriter Kenny Greene and Dave Hall, who served as the song's original producer.
+Dave Rennick | David Wiley "Dave" Rennick (born 8 January 1983) is an Australian singer-songwriter.  Rennick is the co-front man and songwriter for indie rock band Dappled Cities and is also the founder and songwriter for indie super-group The Curse of Company.
+You Have to Believe | "You Have to Believe" is a 2015 electronic dance song produced by American DJ/remixer/producer Dave Audé, featuring vocals from Australian singer/songwriter/actress Olivia Newton-John and her daughter, singer/actress Chloe Lattanzi, who co-wrote the single with another Australian singer/songwriter, Vassy.
+Love No Limit | "Love No Limit" is a song by American recording artist Mary J. Blige.  It was co-written by Kenny Greene and Dave Hall for her debut album, "What's the 411? " (1992), with the latter serving as the song's producer.  Released as the album's fourth and final single, the song became a top five hit, reaching number-five on the R&B singles chart, and peaked at number forty-four on the US "Billboard" Hot 100 chart.
+Garth Porter | Garth Ivan Richard Porter (born 24 September 1948) is a New Zealand-born Australian multi-instrumental musician, songwriter and record producer.  He was a member, on keyboards and backing vocals, of the pop group, Sherbet (1970–84), and co-wrote both of their number-one singles, "Summer Love" (March 1975) and "Howzat" (May 1976).  Porter is a co-writer and producer for country music singer Lee Kernaghan.
+It Walks Like Love | It Walks Like Love is the fourth album from Australian singer/songwriter Loene Carmen.  It was released on May 12, 2009 on Chiquita Records through Inertia Records in Australia.  It was recorded at Big Jesus Burger Studios in Sydney, NSW by Burke Reid and features musicians from Australian bands The Holy Soul and The Scare, and a duet with Jed Kurzel from the Mess Hall.
+Dave Elkins | Dave Elkins (born Dave Gimenez) is an American musician, best known as the co-founder and lead singer of the band Mae.  His other notable musical projects include Sky's the Limit and Schematic.
+My Love (Mary J. Blige song) | "My Love" is a song by American R&B singer Mary J. Blige from her 1992 debut album "What's the 411? " The song was co-written by singer-songwriter Kenny Greene and Dave Hall, who served as the song's original producer.
+List of songs recorded by Rihanna | Barbadian singer Rihanna has recorded material for her eight studio albums and has collaborated with other artists for duets and featured songs on their respective albums and charity singles.  After signing a record contract with the Def Jam Recordings in February 2005, Rihanna began to work with producers Carl Sturken and Evan Rogers, who co-wrote and co-produced 12 out of the 15 songs on her 2005 debut album, "Music of the Sun".  Award-winning songwriter Diane Warren co-wrote the title track, while Grammy Award-winning singer-songwriter Deniece Williams co-wrote the song "Willing to Wait".  Sturken and Rogers co-wrote and co-produced 9 songs out of 16 on Rihanna's 2006 album "A Girl like Me".  The album's lead single "SOS" was written by Evan "Kidd" Bogart and J. R. Rotem.  It contains a sped-up sample of "Tainted Love", written in 1965 by Ed Cobb, who was credited as a co-writer on "SOS".
+You Have to Believe | "You Have to Believe" is a 2015 electronic dance song produced by American DJ/remixer/producer Dave Audé, featuring vocals from Australian singer/songwriter/actress Olivia Newton-John and her daughter, singer/actress Chloe Lattanzi, who co-wrote the single with another Australian singer/songwriter, Vassy.
+What the Hell | "What the Hell" is a song by Canadian singer-songwriter Avril Lavigne from her fourth studio album, "Goodbye Lullaby" (2011).  It was released on January 10, 2011 by RCA Records as the lead single from the album.  The song was produced by Max Martin and Shellback, who co-wrote the song with Lavigne.  According to Lavigne, she wrote the song as her "personal message for freedom".
+Place of birth | The place of birth (POB) is the place where a person was born.  This place is often used in legal documents, together with name and date of birth, to uniquely identify a person.  As a general rule with respect to passports, the place of birth is determined to be country that currently has "sovereignty" over the actual place of birth regardless of when the birth actually occurred.  The place of birth is not necessarily the place where the parents of the new baby live.  If the baby is born in a hospital in another place, that place is the place of birth.  In many countries, this also means that the government requires that the birth of the new baby is registered in the place of birth.
+Is This Love? (Alison Moyet song) | "Is This Love?"  is a song performed by the English singer Alison Moyet and co-written by Moyet and Dave Stewart who co-wrote and produced the song under the pseudonym Jean Guiot.  The song was released in November 1986 as the first single from her then-upcoming second album "Raindancing".
+Love No Limit | "Love No Limit" is a song by American recording artist Mary J. Blige.  It was co-written by Kenny Greene and Dave Hall for her debut album, "What's the 411? " (1992), with the latter serving as the song's producer.  Released as the album's fourth and final single, the song became a top five hit, reaching number-five on the R&B singles chart, and peaked at number forty-four on the US "Billboard" Hot 100 chart.
+Billy Crain | William Sherwood "Billy" Crain (born August 9, 1954 in Nashville, Tennessee) is an American songwriter and musician.  He has been a staple performer in the Southern rock scene since the early 1970s.  He's the younger brother to former Charlie Daniels Band guitarist Tommy Crain, who died in 2011.  He has performed with various artists including The Allman Brothers Band, The Rossington-Collins Band, The Rolling Stones and ZZ Top.  In the late 1980s he pursued songwriting and record production.  He co-wrote the song "Call It Love" (by Poco) with Ron Guilbeau and Rick Lonow; "It's My Time" by Martina McBride (co-writers Kim Tribble and Tammy Hyler); "Another Nine Minutes" (co-writers Tim Buppert and Tom Douglas); and "Let 'er Rip" by the Dixie Chicks (co-written with Sandy Ramos).
+Amber (Amber album) | Amber, Amber's second album, was released in 1999 on Tommy Boy Records, and features Dance-pop, Hi-NRG, House music, and Urban contemporary songs.  It is her most well-received album by the American Pop mainstream to date.  She co-wrote three songs with songwriters/producers Rick Nowels and Billy Steinberg: "Sexual (Li Da Di)," "Above the Clouds," and "Love One Another."  The song "Above the Clouds" was featured in the Season Three finale of the television series "Sex and The City."
+Love Ballad (Tove Lo song) | "Love Ballad" is a song by Swedish recording artist and songwriter Tove Lo.  It was co-written by Lo, Ludvig Söderberg and Jakob Jerlström, and was produced by her co-writers under their production name The Struts.  In 2012, after signing a publishing deal with Warner/Chappell Music and co-writing songs for artists including Girls Aloud and Icona Pop, Lo decided to become an independent singer to keep her most personal songs for herself.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Summary_1 states 'Billy Idol (biography/profile) - While Billy Idol is mentioned in passing in passage [3], his birth date/age is not provided, which is necessary for age comparison' but never names Billy Idol's birth date as the specific missing entity to retrieve. Summary_2 similarly states 'Billy Idol's birth date: Even if the song's authorship were clarified, passage [3] mentions Billy Idol bu
+- code B.6 (Solver_Passage_Content_Misreading), anchored near step 12: evidence: Summary_2 claims 'the claim's core premise appears to be false - according to passage [4], "Love No Limit" was co-written by Kenny Greene and Dave Hall, not by an Australian singer-songwriter and Dave Hall' and states this as a 'Contradiction identified.' However, the solver fails to recognize that the claim may be referring to a different person or song entirely, and treats the absence of an Aust
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: The third query is: 'Who co-wrote the song "Love No Limit" with Dave Hall, and is this person an Australian singer-songwriter? What is Billy Idol's birth date compared to the actual co-writer's birth date?' This is a multi-part natural-language question bundling three distinct targets (identity verification, nationality verification, and age comparison) rather than a focused entity-based retrieval
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary_1 explicitly names the missing entity: 'Billy Idol (biography/profile) - While Billy Idol is mentioned in passing in passage [3], his birth date/age is not provided, which is necessary for age comparison.' The second query targets this: '"Love No Limit" Dave Hall co-writer Australian singer-songwriter' (implicitly seeking Billy Idol info). However, across all three hops, no passage contain
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

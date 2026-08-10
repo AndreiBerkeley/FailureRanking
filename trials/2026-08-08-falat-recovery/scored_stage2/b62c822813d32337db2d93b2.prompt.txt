@@ -1,0 +1,569 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The locals consider the township of Stirling a suburb of a town. That town is represented by  Rebekha Carina Che Sharkie, an Australian politician.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Rebekha Sharkie | Rebekha Carina Che Sharkie (born 1972) is an Australian politician.  Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election, she is the first Nick Xenophon Team member to be elected to the Australian House of Representatives.
+Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.
+Jamie Briggs | Jamie Edward Briggs (born 9 June 1977) is a former Australian politician, who represented the House of Representatives seat of Mayo for the Liberal Party of Australia from the 2008 Mayo by-election to the 2 July 2016 federal election.  Briggs was promoted from a shadow parliamentary secretary role to the outer ministry upon the 2013 election of the Abbott Government.  He remained in the outer ministry though with a change in portfolio upon the ascension of the Turnbull Government, however he quit the ministry and moved to the backbench in late 2015 following inappropriate conduct during an official overseas trip.  Briggs lost his seat in the 2016 federal election to Nick Xenophon Team candidate Rebekha Sharkie.
+Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.
+Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.
+Thiruvilandur | Thiruvilandur is a town situated to the north of the town of Mayiladuthurai in Tamil Nadu, India.  The area is also called Indalur.  It is considered to be a suburb of Mayiladuthurai.  The township is famous for Parimala_Ranganatha_Perumal_Temple of lord Vishnu which is one of the 108 divyadesams of Mahavishnu.
+City of Stirling | The City of Stirling is a local government area in the northern suburbs of the Western Australian capital city of Perth about 10 km north of Perth's central business district.  The City covers an area of 105.2 km2 and had a population of 205,960 in 2011, making it the largest local government area by population in Western Australia.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+[STEP 4] (user) [[ ## claim ## ]]
+The locals consider the township of Stirling a suburb of a town. That town is represented by  Rebekha Carina Che Sharkie, an Australian politician.
+
+[[ ## passages ## ]]
+[1] «Rebekha Sharkie | Rebekha Carina Che Sharkie (born 1972) is an Australian politician.  Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election, she is the first Nick Xenophon Team member to be elected to the Australian House of Representatives.»
+[2] «Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.»
+[3] «Jamie Briggs | Jamie Edward Briggs (born 9 June 1977) is a former Australian politician, who represented the House of Representatives seat of Mayo for the Liberal Party of Australia from the 2008 Mayo by-election to the 2 July 2016 federal election.  Briggs was promoted from a shadow parliamentary secretary role to the outer ministry upon the 2013 election of the Abbott Government.  He remained in the outer ministry though with a change in portfolio upon the ascension of the Turnbull Government, however he quit the ministry and moved to the backbench in late 2015 following inappropriate conduct during an official overseas trip.  Briggs lost his seat in the 2016 federal election to Nick Xenophon Team candidate Rebekha Sharkie.»
+[4] «Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.»
+[5] «Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.»
+[6] «Thiruvilandur | Thiruvilandur is a town situated to the north of the town of Mayiladuthurai in Tamil Nadu, India.  The area is also called Indalur.  It is considered to be a suburb of Mayiladuthurai.  The township is famous for Parimala_Ranganatha_Perumal_Temple of lord Vishnu which is one of the 108 divyadesams of Mahavishnu.»
+[7] «City of Stirling | The City of Stirling is a local government area in the northern suburbs of the Western Australian capital city of Perth about 10 km north of Perth's central business district.  The City covers an area of 105.2 km2 and had a population of 205,960 in 2011, making it the largest local government area by population in Western Australia.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me break down the claim and verify each component:
+
+1. The claim states: "The locals consider the township of Stirling a suburb of a town."
+   - Passage [5] confirms Stirling is a town in the Adelaide Hills, South Australia
+   - Passage [2] states locals consider Crafers (not Stirling) to be a suburb of the nearby township of Stirling
+   - This appears to be reversed from the claim
+
+2. The claim then states: "That town is represented by Rebekha Carina Che Sharkie, an Australian politician."
+   - Passage [1] confirms Rebekha Carina Che Sharkie is an Australian politician
+   - Passage [1] states she represents the Division of Mayo (not Stirling)
+   - Passage [3] confirms she defeated Jamie Briggs in Mayo in 2016
+
+3. Geographic verification:
+   - There are TWO places called Stirling mentioned: one in South Australia (Adelaide Hills) and one in Western Australia (Perth area)
+   - Passage [4] mentions Division of Stirling in Perth, Western Australia
+   - Passage [7] mentions City of Stirling in Perth, Western Australia
+   - Passage [5] clearly identifies Stirling, South Australia as the township where locals consider Crafers a suburb
+
+The critical issue: The claim reverses the suburb relationship. Passage [2] explicitly states that locals consider CRAFERS to be a suburb of STIRLING (not the reverse). Additionally, Rebekha Sharkie represents the Division of Mayo, not any Stirling division.
+
+However, there's also missing information: We need to verify whether the Division of Mayo encompasses or is represented by Stirling or any area near Stirling. The passages don't provide geographic details about which electoral division covers Stirling, South Australia.
+[[ ## summary ## ]]
+The passages contain contradictory information to the claim and insufficient evidence to fully verify it. 
+
+Key findings:
+1. **Suburb relationship reversed**: Passage [2] explicitly states that locals consider Crafers to be a suburb of the nearby township of Stirling—the opposite of what the claim states.
+
+2. **Electoral representation mismatch**: Passage [1] confirms that Rebekha Carina Che Sharkie is an Australian politician, but she represents the Division of Mayo, not any division called Stirling or any area in the Adelaide Hills where Stirling is located.
+
+3. **Missing evidence**: The passages do not specify which electoral division represents Stirling, South Australia. To verify the claim, we would need:
+   - Evidence documents about which Australian electoral division covers Stirling, South Australia
+   - Clarification of whether Rebekha Sharkie represents any area related to Stirling, South Australia
+   - Confirmation of the actual suburb-township relationships in the Stirling area
+
+The geographic and political information provided in the passages does not support the claim as stated.
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+The locals consider the township of Stirling a suburb of a town. That town is represented by  Rebekha Carina Che Sharkie, an Australian politician.
+
+[[ ## summary_1 ## ]]
+The passages contain contradictory information to the claim and insufficient evidence to fully verify it. 
+
+Key findings:
+1. **Suburb relationship reversed**: Passage [2] explicitly states that locals consider Crafers to be a suburb of the nearby township of Stirling—the opposite of what the claim states.
+
+2. **Electoral representation mismatch**: Passage [1] confirms that Rebekha Carina Che Sharkie is an Australian politician, but she represents the Division of Mayo, not any division called Stirling or any area in the Adelaide Hills where Stirling is located.
+
+3. **Missing evidence**: The passages do not specify which electoral division represents Stirling, South Australia. To verify the claim, we would need:
+   - Evidence documents about which Australian electoral division covers Stirling, South Australia
+   - Clarification of whether Rebekha Sharkie represents any area related to Stirling, South Australia
+   - Confirmation of the actual suburb-township relationships in the Stirling area
+
+The geographic and political information provided in the passages does not support the claim as stated.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that the claim contains factual errors that contradict the provided passages. Specifically: (1) the suburb relationship is reversed - Crafers is a suburb of Stirling, not the other way around, and (2) Rebekha Carina Che Sharkie represents the Division of Mayo, not an electoral division covering Stirling in the Adelaide Hills. To properly verify the claim, we need to identify which Australian electoral division actually represents Stirling, South Australia, and determine which politician represents that division.
+
+[[ ## query ## ]]
+Which Australian electoral division represents Stirling, South Australia, and which politician is the current representative for that division?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Michael Keenan | Michael Fayat Keenan (born 19 March 1972), Australian politician, was elected to the House of Representatives as member for the Division of Stirling, Western Australia for the Liberal Party of Australia at the 2004 federal election.  Currently, Keenan is the Australian Minister for Justice.
+Steven Marshall | Steven Spence Marshall (born 21 January 1968) is an Australian politician and the current South Australian Leader of the Opposition.  He has been a member of the South Australian Division of the Liberal Party of Australia in the South Australian House of Assembly since 2010, representing the electorate of Dunstan (known as Norwood before 2014).
+David Pisoni | David Gregory Pisoni (born 1963) is a South Australian politician.  He has been a member of the South Australian House of Assembly since 2006, representing the electorate of Unley for the South Australian Division of the Liberal Party of Australia.
+Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.
+Division of Angas | The Division of Angas refers to two former electoral divisions for the Australian House of Representatives, both based in rural South Australia:
+David Ridgway (politician) | David Wickham Ridgway (born 14 November 1960) is a South Australian politician, and current Leader of the Opposition in the South Australian Legislative Council, representing the South Australian Division of the Liberal Party of Australia.
+Mark Goldsworthy | Roger Mark Goldsworthy (born 24 September 1956) is an Australian politician who has been the member for the electoral district of Kavel since 2002, representing the South Australian Division of the Liberal Party of Australia.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+The locals consider the township of Stirling a suburb of a town. That town is represented by  Rebekha Carina Che Sharkie, an Australian politician.
+
+[[ ## context ## ]]
+The passages contain contradictory information to the claim and insufficient evidence to fully verify it. 
+
+Key findings:
+1. **Suburb relationship reversed**: Passage [2] explicitly states that locals consider Crafers to be a suburb of the nearby township of Stirling—the opposite of what the claim states.
+
+2. **Electoral representation mismatch**: Passage [1] confirms that Rebekha Carina Che Sharkie is an Australian politician, but she represents the Division of Mayo, not any division called Stirling or any area in the Adelaide Hills where Stirling is located.
+
+3. **Missing evidence**: The passages do not specify which electoral division represents Stirling, South Australia. To verify the claim, we would need:
+   - Evidence documents about which Australian electoral division covers Stirling, South Australia
+   - Clarification of whether Rebekha Sharkie represents any area related to Stirling, South Australia
+   - Confirmation of the actual suburb-township relationships in the Stirling area
+
+The geographic and political information provided in the passages does not support the claim as stated.
+
+[[ ## passages ## ]]
+[1] «Michael Keenan | Michael Fayat Keenan (born 19 March 1972), Australian politician, was elected to the House of Representatives as member for the Division of Stirling, Western Australia for the Liberal Party of Australia at the 2004 federal election.  Currently, Keenan is the Australian Minister for Justice.»
+[2] «Steven Marshall | Steven Spence Marshall (born 21 January 1968) is an Australian politician and the current South Australian Leader of the Opposition.  He has been a member of the South Australian Division of the Liberal Party of Australia in the South Australian House of Assembly since 2010, representing the electorate of Dunstan (known as Norwood before 2014).»
+[3] «David Pisoni | David Gregory Pisoni (born 1963) is a South Australian politician.  He has been a member of the South Australian House of Assembly since 2006, representing the electorate of Unley for the South Australian Division of the Liberal Party of Australia.»
+[4] «Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.»
+[5] «Division of Angas | The Division of Angas refers to two former electoral divisions for the Australian House of Representatives, both based in rural South Australia:»
+[6] «David Ridgway (politician) | David Wickham Ridgway (born 14 November 1960) is a South Australian politician, and current Leader of the Opposition in the South Australian Legislative Council, representing the South Australian Division of the Liberal Party of Australia.»
+[7] «Mark Goldsworthy | Roger Mark Goldsworthy (born 24 September 1956) is an Australian politician who has been the member for the electoral district of Kavel since 2002, representing the South Australian Division of the Liberal Party of Australia.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze this claim systematically:
+
+**Claim Components:**
+1. Stirling is a township that locals consider a suburb of "a town"
+2. That town is represented by Rebekha Carina Che Sharkie
+3. Rebekha Carina Che Sharkie is an Australian politician
+
+**Analysis of Provided Passages:**
+
+The passages provided do NOT contain information about:
+- Rebekha Carina Che Sharkie (she is not mentioned in any passage)
+- The township of Stirling in the context of locals' perceptions
+- Any suburb-township relationship involving Stirling
+- Any "town" that Stirling is considered a suburb of
+
+**What the passages DO contain:**
+- Passage [1]: Michael Keenan is the member for Division of Stirling, Western Australia (not Rebekha Sharkie, and this is in Western Australia, not necessarily where the township of Stirling is located)
+- Passage [4]: The Division of Stirling is in Perth, Western Australia and includes the City of Stirling
+- Passages [2], [3], [6], [7]: South Australian politicians representing various electorates, but none specifically about Stirling or Rebekha Sharkie
+
+**Critical Missing Information:**
+1. Any passage about Rebekha Carina Che Sharkie and her electoral representation
+2. Any passage about the township of Stirling (appears to be in South Australia based on context, not the Perth Division of Stirling in Western Australia)
+3. Any passage describing local perceptions of Stirling as a suburb
+4. Any passage identifying which town Stirling might be considered a suburb of
+5. Any passage linking that town to Rebekha Sharkie's electoral division
+
+**Note on Context Provided:**
+The context document mentions that passages contain contradictory information and references passage [2] discussing Crafers as a suburb of Stirling, but passage [2] in the actual passages provided discusses Steven Marshall and does not contain this information. This suggests the passages provided here are incomplete or different from those referenced in the context.
+
+[[ ## summary ## ]]
+
+**Verification Status:** Cannot be verified with the provided passages.
+
+**What is Present:**
+- Passage [1] confirms there is a Division of Stirling in Western Australia represented by Michael Keenan (not Rebekha Sharkie)
+- Passage [4] describes the Division of Stirling as located in Perth, Western Australia
+
+**What is Missing:**
+The provided passages do not contain any information that would allow verification of the claim. Specifically, the following passages/information are needed:
+
+1. **A passage about Rebekha Carina Che Sharkie** - identifying her electoral division, location, and political role. She is not mentioned in any of the provided passages.
+
+2. **A passage about the township of Stirling** - the claim appears to reference a township (likely in South Australia based on context), distinct from the Division of Stirling in Perth, Western Australia discussed in the passages.
+
+3. **A passage about local geographic perceptions** - describing whether locals consider Stirling a suburb of any particular town, and identifying that town.
+
+4. **A passage linking Rebekha Sharkie to Stirling** - confirming she represents any electoral division that includes or covers the township of Stirling.
+
+The passages provided focus on Western Australian and South Australian politicians and electoral divisions but contain no information about Rebekha Carina Che Sharkie or her electoral representation. Without passages specifically addressing each component of this multi-hop claim, verification is impossible.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the field `query`.
+        
+        # Task Description
+        You will receive a claim and two summaries that assess whether the claim can be verified from provided passages (not shown to you). The summaries often disagree on whether verification is possible. Your task is to generate a query that will retrieve the missing or disputed evidence documents needed to verify the claim.
+        
+        # Key Principles
+        
+        1. **Focus on Multi-Hop Claims**: Most claims require connecting multiple pieces of information across different topics. Your query should help retrieve ALL required evidence documents, not just one.
+        
+        2. **Retrieve Broad Topic Documents**: The retrieval system works best when queries target the main entities/topics mentioned in the claim rather than asking narrow questions. Each hop in the reasoning chain typically corresponds to retrieving a document about a specific entity or topic.
+        
+        3. **Cover All Components**: Analyze the claim to identify all entities, relationships, and facts that need verification. Your query should be broad enough to trigger retrieval of documents for each major component.
+        
+        # Strategy
+        
+        1. **Identify all entities and topics** in the claim that would require separate evidence documents (typically 2-4 key topics).
+        
+        2. **Determine what's disputed or missing** according to the summaries - this indicates which documents may not have been retrieved yet.
+        
+        3. **Formulate a query that mentions ALL key entities/topics** from the claim, especially:
+           - Named entities (people, places, organizations, films, TV shows, products, events)
+           - Relationships between entities (who created what, who replaced what, who starred in what)
+           - Specific attributes (degrees, locations, dates, roles)
+        
+        4. **Use broad, inclusive language** rather than yes/no questions. Frame queries as "What is the relationship between X, Y, and Z?" rather than "Does X relate to Y?"
+        
+        5. **Include specific names and titles** mentioned in the claim rather than generic descriptions. For example, use "Yes Minister" rather than "the television series."
+        
+        # Examples of Good Query Patterns
+        
+        - For replacement/succession claims: Include both the original entity and its replacement plus the context (e.g., "Ferrari 360 Ferrari F430 Australian Nations Cup Championship")
+        - For biographical claims about creative works: Include the person's name, the work's title, and the specific role/attribute (e.g., "Vanessa Kirby Joanna film Irish actor Dublin Institute of Technology")
+        - For multi-person creative collaborations: Include all relevant work titles and the specific roles/relationships (e.g., "Che strano chiamarsi Federico co-writer Yes Minister director")
+        
+        # Important Notes
+        
+        - The retrieval system appears to match queries against document titles/topics, so including the right entity names is critical
+        - Missing even one key entity name from your query may cause its evidence document to not be retrieved
+        - Broader queries that mention all relevant entities perform better than narrow, specific questions
+[STEP 14] (user) [[ ## claim ## ]]
+The locals consider the township of Stirling a suburb of a town. That town is represented by  Rebekha Carina Che Sharkie, an Australian politician.
+
+[[ ## summary_1 ## ]]
+The passages contain contradictory information to the claim and insufficient evidence to fully verify it. 
+
+Key findings:
+1. **Suburb relationship reversed**: Passage [2] explicitly states that locals consider Crafers to be a suburb of the nearby township of Stirling—the opposite of what the claim states.
+
+2. **Electoral representation mismatch**: Passage [1] confirms that Rebekha Carina Che Sharkie is an Australian politician, but she represents the Division of Mayo, not any division called Stirling or any area in the Adelaide Hills where Stirling is located.
+
+3. **Missing evidence**: The passages do not specify which electoral division represents Stirling, South Australia. To verify the claim, we would need:
+   - Evidence documents about which Australian electoral division covers Stirling, South Australia
+   - Clarification of whether Rebekha Sharkie represents any area related to Stirling, South Australia
+   - Confirmation of the actual suburb-township relationships in the Stirling area
+
+The geographic and political information provided in the passages does not support the claim as stated.
+
+[[ ## summary_2 ## ]]
+**Verification Status:** Cannot be verified with the provided passages.
+
+**What is Present:**
+- Passage [1] confirms there is a Division of Stirling in Western Australia represented by Michael Keenan (not Rebekha Sharkie)
+- Passage [4] describes the Division of Stirling as located in Perth, Western Australia
+
+**What is Missing:**
+The provided passages do not contain any information that would allow verification of the claim. Specifically, the following passages/information are needed:
+
+1. **A passage about Rebekha Carina Che Sharkie** - identifying her electoral division, location, and political role. She is not mentioned in any of the provided passages.
+
+2. **A passage about the township of Stirling** - the claim appears to reference a township (likely in South Australia based on context), distinct from the Division of Stirling in Perth, Western Australia discussed in the passages.
+
+3. **A passage about local geographic perceptions** - describing whether locals consider Stirling a suburb of any particular town, and identifying that town.
+
+4. **A passage linking Rebekha Sharkie to Stirling** - confirming she represents any electoral division that includes or covers the township of Stirling.
+
+The passages provided focus on Western Australian and South Australian politicians and electoral divisions but contain no information about Rebekha Carina Che Sharkie or her electoral representation. Without passages specifically addressing each component of this multi-hop claim, verification is impossible.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The two summaries reveal a critical gap in the evidence: they identify different divisions of Stirling (one in Western Australia, one potentially in South Australia) and note that Rebekha Carina Che Sharkie is not mentioned in any of the provided passages. The claim involves multiple components that need verification:
+
+1. A township called Stirling and what locals consider it a suburb of
+2. Rebekha Carina Che Sharkie as an Australian politician
+3. Her representation of the electoral division covering that town/township
+
+The summaries indicate that the passages retrieved so far have focused on Western Australian electoral divisions and South Australian geographic relationships, but have failed to establish the connection between Rebekha Sharkie and any Stirling area. The key missing evidence is:
+- Which electoral division Rebekha Carina Che Sharkie actually represents
+- Whether that division covers a township called Stirling
+- The geographic suburb-township relationships that locals recognize in the Stirling area
+
+A broader query including all key entities and their relationships should trigger retrieval of documents about Rebekha Sharkie's electoral representation and the specific Stirling township referenced in the claim.
+
+[[ ## query ## ]]
+Rebekha Carina Che Sharkie Australian politician electoral division Stirling township suburb
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Rebekha Sharkie | Rebekha Carina Che Sharkie (born 1972) is an Australian politician.  Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election, she is the first Nick Xenophon Team member to be elected to the Australian House of Representatives.
+Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.
+Electoral results for the Division of Stirling | This is a list of electoral results for the Division of Stirling in Australian federal elections from the division's creation in 1955 until the present.
+Electoral district of Chatsworth | Chatsworth is an electoral district of the Legislative Assembly in the Australian state of Queensland.  The electorate is centred on the south-eastern suburbs of Brisbane and stretches north to Tingalpa, west to Carina Heights, east to Tingalpa Creek and south to Bulimba Creek.
+Jamie Briggs | Jamie Edward Briggs (born 9 June 1977) is a former Australian politician, who represented the House of Representatives seat of Mayo for the Liberal Party of Australia from the 2008 Mayo by-election to the 2 July 2016 federal election.  Briggs was promoted from a shadow parliamentary secretary role to the outer ministry upon the 2013 election of the Abbott Government.  He remained in the outer ministry though with a change in portfolio upon the ascension of the Turnbull Government, however he quit the ministry and moved to the backbench in late 2015 following inappropriate conduct during an official overseas trip.  Briggs lost his seat in the 2016 federal election to Nick Xenophon Team candidate Rebekha Sharkie.
+Division of Scullin | The Division of Scullin is an Australian Electoral Division in the state of Victoria.  It is located in the outer northern suburbs of Melbourne, including Diamond Creek, Epping, Lalor, Mill Park, South Morang, Thomastown and Wattle Glen, as well as the townships of Hurstbridge, Plenty and Yarrambat.
+Division of Kooyong | The Division of Kooyong is an Australian Electoral Division in the state of Victoria.  The Division was proclaimed in 1900, and was one of the original 75 divisions to be contested at the first Federal election.  It covers an area of approximately 52 km2 in the inner-east suburbs of Melbourne.  It is named after the suburb of Kooyong, on which it was originally based.  However, Kooyong has not been in its namesake electorate for some time, being instead in neighbouring Higgins.  Nonetheless, the seat has retained the name of Kooyong, primarily because the Australian Electoral Commission's guidelines on electoral redistributions require it to preserve the names of original electorates where possible.
+Division of Dalley | The Division of Dalley was an Australian Electoral Division in New South Wales.  The division was created in 1900 and was one of the original 75 divisions contested at the first federal election.  It was named for the colonial politician William Dalley and was located in the inner suburbs of Sydney, including Balmain, Glebe and Leichhardt.  It was abolished in 1969.
+Electoral results for the district of Stirling | This is a list of electoral results for the Electoral district of Stirling in Western Australian state elections.
+Division of Namadgi | The Division of Namadgi was an Australian Electoral Division in the Australian Capital Territory.  It was located in the southern suburbs of Canberra, and included all suburbs in the district of Tuggeranong, the southern Woden Valley suburbs of Chifley, Farrer, Isaacs, Mawson, Pearce and Torrens, and the remainder of the ACT south and west of the Murrumbidgee River.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Rebekha Sharkie | Rebekha Carina Che Sharkie (born 1972) is an Australian politician.  Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election, she is the first Nick Xenophon Team member to be elected to the Australian House of Representatives.
+Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.
+Jamie Briggs | Jamie Edward Briggs (born 9 June 1977) is a former Australian politician, who represented the House of Representatives seat of Mayo for the Liberal Party of Australia from the 2008 Mayo by-election to the 2 July 2016 federal election.  Briggs was promoted from a shadow parliamentary secretary role to the outer ministry upon the 2013 election of the Abbott Government.  He remained in the outer ministry though with a change in portfolio upon the ascension of the Turnbull Government, however he quit the ministry and moved to the backbench in late 2015 following inappropriate conduct during an official overseas trip.  Briggs lost his seat in the 2016 federal election to Nick Xenophon Team candidate Rebekha Sharkie.
+Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.
+Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.
+Thiruvilandur | Thiruvilandur is a town situated to the north of the town of Mayiladuthurai in Tamil Nadu, India.  The area is also called Indalur.  It is considered to be a suburb of Mayiladuthurai.  The township is famous for Parimala_Ranganatha_Perumal_Temple of lord Vishnu which is one of the 108 divyadesams of Mahavishnu.
+City of Stirling | The City of Stirling is a local government area in the northern suburbs of the Western Australian capital city of Perth about 10 km north of Perth's central business district.  The City covers an area of 105.2 km2 and had a population of 205,960 in 2011, making it the largest local government area by population in Western Australia.
+Michael Keenan | Michael Fayat Keenan (born 19 March 1972), Australian politician, was elected to the House of Representatives as member for the Division of Stirling, Western Australia for the Liberal Party of Australia at the 2004 federal election.  Currently, Keenan is the Australian Minister for Justice.
+Steven Marshall | Steven Spence Marshall (born 21 January 1968) is an Australian politician and the current South Australian Leader of the Opposition.  He has been a member of the South Australian Division of the Liberal Party of Australia in the South Australian House of Assembly since 2010, representing the electorate of Dunstan (known as Norwood before 2014).
+David Pisoni | David Gregory Pisoni (born 1963) is a South Australian politician.  He has been a member of the South Australian House of Assembly since 2006, representing the electorate of Unley for the South Australian Division of the Liberal Party of Australia.
+Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.
+Division of Angas | The Division of Angas refers to two former electoral divisions for the Australian House of Representatives, both based in rural South Australia:
+David Ridgway (politician) | David Wickham Ridgway (born 14 November 1960) is a South Australian politician, and current Leader of the Opposition in the South Australian Legislative Council, representing the South Australian Division of the Liberal Party of Australia.
+Mark Goldsworthy | Roger Mark Goldsworthy (born 24 September 1956) is an Australian politician who has been the member for the electoral district of Kavel since 2002, representing the South Australian Division of the Liberal Party of Australia.
+Rebekha Sharkie | Rebekha Carina Che Sharkie (born 1972) is an Australian politician.  Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election, she is the first Nick Xenophon Team member to be elected to the Australian House of Representatives.
+Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.
+Electoral results for the Division of Stirling | This is a list of electoral results for the Division of Stirling in Australian federal elections from the division's creation in 1955 until the present.
+Electoral district of Chatsworth | Chatsworth is an electoral district of the Legislative Assembly in the Australian state of Queensland.  The electorate is centred on the south-eastern suburbs of Brisbane and stretches north to Tingalpa, west to Carina Heights, east to Tingalpa Creek and south to Bulimba Creek.
+Jamie Briggs | Jamie Edward Briggs (born 9 June 1977) is a former Australian politician, who represented the House of Representatives seat of Mayo for the Liberal Party of Australia from the 2008 Mayo by-election to the 2 July 2016 federal election.  Briggs was promoted from a shadow parliamentary secretary role to the outer ministry upon the 2013 election of the Abbott Government.  He remained in the outer ministry though with a change in portfolio upon the ascension of the Turnbull Government, however he quit the ministry and moved to the backbench in late 2015 following inappropriate conduct during an official overseas trip.  Briggs lost his seat in the 2016 federal election to Nick Xenophon Team candidate Rebekha Sharkie.
+Division of Scullin | The Division of Scullin is an Australian Electoral Division in the state of Victoria.  It is located in the outer northern suburbs of Melbourne, including Diamond Creek, Epping, Lalor, Mill Park, South Morang, Thomastown and Wattle Glen, as well as the townships of Hurstbridge, Plenty and Yarrambat.
+Division of Kooyong | The Division of Kooyong is an Australian Electoral Division in the state of Victoria.  The Division was proclaimed in 1900, and was one of the original 75 divisions to be contested at the first Federal election.  It covers an area of approximately 52 km2 in the inner-east suburbs of Melbourne.  It is named after the suburb of Kooyong, on which it was originally based.  However, Kooyong has not been in its namesake electorate for some time, being instead in neighbouring Higgins.  Nonetheless, the seat has retained the name of Kooyong, primarily because the Australian Electoral Commission's guidelines on electoral redistributions require it to preserve the names of original electorates where possible.
+Division of Dalley | The Division of Dalley was an Australian Electoral Division in New South Wales.  The division was created in 1900 and was one of the original 75 divisions contested at the first federal election.  It was named for the colonial politician William Dalley and was located in the inner suburbs of Sydney, including Balmain, Glebe and Leichhardt.  It was abolished in 1969.
+Electoral results for the district of Stirling | This is a list of electoral results for the Electoral district of Stirling in Western Australian state elections.
+Division of Namadgi | The Division of Namadgi was an Australian Electoral Division in the Australian Capital Territory.  It was located in the southern suburbs of Canberra, and included all suburbs in the district of Tuggeranong, the southern Woden Valley suburbs of Chifley, Farrer, Isaacs, Mawson, Pearce and Torrens, and the remainder of the ACT south and west of the Murrumbidgee River.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.6 (Solver_Passage_Content_Misreading), anchored near step UNKNOWN: evidence: Summary 1 states: 'Passage [2] explicitly states that locals consider Crafers to be a suburb of the nearby township of Stirling—the opposite of what the claim states.' This is a misreading. The claim states 'The locals consider the township of Stirling a suburb of a town,' which means Stirling is considered a suburb OF ANOTHER TOWN (not that other places are suburbs of Stirling). Passage [2] from 
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: Summary 2 (hop 2) states: 'A passage about Rebekha Carina Che Sharkie - identifying her electoral division, location, and political role. She is not mentioned in any of the provided passages.' However, passage [1] from hop 1 explicitly states: 'Rebekha Carina Che Sharkie (born 1972) is an Australian politician. Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 fede
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query hop 3 is 'Rebekha Carina Che Sharkie Australian politician electoral division Stirling township suburb' which is nearly identical to information already retrieved in hop 1. Hop 1 already contained the Rebekha Sharkie passage showing she represents Division of Mayo, the Crafers/Stirling suburb relationship passage, and Stirling South Australia passage. The hop 3 query does not advance beyond 
+- code A.10 (Multi_Hop_Context_Degradation), anchored near step UNKNOWN: evidence: Summary 2 claims 'The provided passages do not contain any information that would allow verification of the claim' and states Rebekha Sharkie 'is not mentioned in any of the provided passages.' This statement appears after hop 2, yet hop 1 clearly retrieved and presented passages about Rebekha Sharkie (passage [1]), Stirling South Australia (passage [5]), and the Crafers-Stirling relationship (pas
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

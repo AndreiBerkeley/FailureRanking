@@ -1,0 +1,444 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Arthur Hiller Penn was born before the director and producer of "We, the Normal".
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.
+David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.
+The Careless Years | The Careless Years is a 1957 film from United Artists directed by Arthur Hiller and produced by Edward Lewis.  The film was the directorial debut for Hiller.  The film stars Dean Stockwell and Natalie Trundy in an early film appearance.
+Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.
+Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director and producer of "We, the Normal".
+
+[[ ## passages ## ]]
+[1] «Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).»
+[2] «We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love»
+[3] «Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.»
+[4] «David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.»
+[5] «The Careless Years | The Careless Years is a 1957 film from United Artists directed by Arthur Hiller and produced by Edward Lewis.  The film was the directorial debut for Hiller.  The film stars Dean Stockwell and Natalie Trundy in an early film appearance.»
+[6] «Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.»
+[7] «Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze this claim step by step.
+
+The claim states: "Arthur Hiller Penn was born before the director and producer of 'We, the Normal'."
+
+First, I need to identify who "Arthur Hiller Penn" is. Looking at the passages:
+- Passage [1] describes "Arthur Hiller Penn" (September 27, 1922 – September 28, 2010), an American director and producer
+- Passage [6] describes "Arthur Hiller" (November 22, 1923 – August 17, 2016), a Canadian-American television and film director
+
+These are two different people:
+- Arthur Hiller Penn: born September 27, 1922
+- Arthur Hiller: born November 22, 1923
+
+The claim appears to contain a name confusion. "Arthur Hiller Penn" seems to be referring to Arthur Penn (full name: Arthur Hiller Penn based on passage [1]), while "the director and producer of 'We, the Normal'" is a separate entity that needs to be identified.
+
+Regarding "We, the Normal":
+- Passage [2] mentions "We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love" but this is not the same as "We, the Normal"
+- No passage provides information about a film, television show, or other work titled exactly "We, the Normal"
+- No passage identifies who directed and produced "We, the Normal"
+
+The critical missing information is: the identity and birth date of the director and producer of "We, the Normal."
+
+[[ ## summary ## ]]
+
+**Verification Status: NOT VERIFIED**
+
+The claim cannot be verified from the provided passages. Here's what is established and what is missing:
+
+**Established Information:**
+- Arthur Hiller Penn (also known as Arthur Penn) was born on September 27, 1922, and was an American director and producer of film, television, and theater.
+
+**Critical Missing Information:**
+- The identity of the director and producer of the film/work titled "We, the Normal" is not identified in any of the provided passages
+- The birth date of the director and producer of "We, the Normal" cannot be determined from these passages
+- Confirmation that a work titled "We, the Normal" exists and who created it
+
+To verify this claim, a retrieval system would need to:
+1. Search for information about the work "We, the Normal" (exact title)
+2. Identify the director and producer of "We, the Normal"
+3. Obtain the birth date of that director and producer
+4. Compare it with Arthur Hiller Penn's birth date (September 27, 1922)
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director and producer of "We, the Normal".
+
+[[ ## summary_1 ## ]]
+**Verification Status: NOT VERIFIED**
+
+The claim cannot be verified from the provided passages. Here's what is established and what is missing:
+
+**Established Information:**
+- Arthur Hiller Penn (also known as Arthur Penn) was born on September 27, 1922, and was an American director and producer of film, television, and theater.
+
+**Critical Missing Information:**
+- The identity of the director and producer of the film/work titled "We, the Normal" is not identified in any of the provided passages
+- The birth date of the director and producer of "We, the Normal" cannot be determined from these passages
+- Confirmation that a work titled "We, the Normal" exists and who created it
+
+To verify this claim, a retrieval system would need to:
+1. Search for information about the work "We, the Normal" (exact title)
+2. Identify the director and producer of "We, the Normal"
+3. Obtain the birth date of that director and producer
+4. Compare it with Arthur Hiller Penn's birth date (September 27, 1922)
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim requires comparing the birth dates of two individuals: Arthur Hiller Penn and the director/producer of "We, the Normal". While Arthur Penn's birth date (September 27, 1922) is established, the critical missing piece is identifying who directed and produced "We, the Normal" and when they were born. To verify this claim, we need to first locate information about the work "We, the Normal" and its creator(s), then obtain their birth date for comparison.
+
+[[ ## query ## ]]
+Who is the director and producer of "We, the Normal"? What is their birth date?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "
+Mark Kenneth Woods | Mark Kenneth Woods (date of birth unknown) is a Canadian comedy writer, actor, producer, director and TV host.
+What We Are Today | What We Are Today is an album by melodic/alternative rock band Failsafe; based in Preston.  "What We Are Today" is Failsafe's debut album and was released under deckcheese records.  The album was produced by Pete Miles.
+What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).
+We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.
+R. S. Moyes | R S Moyes (dates of birth and death unknown) was a director of Crystal Palace who served also as manager in 1936.
+Muggeridge (Surrey cricketer) | Muggeridge was a noted English cricketer of the mid-18th century who played for the famous Chertsey Cricket Club and for Surrey.  His dates of birth and death and his first name are unknown.  He was principally a bowler but we do not know his pace or type.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director and producer of "We, the Normal".
+
+[[ ## context ## ]]
+**Verification Status: NOT VERIFIED**
+
+The claim cannot be verified from the provided passages. Here's what is established and what is missing:
+
+**Established Information:**
+- Arthur Hiller Penn (also known as Arthur Penn) was born on September 27, 1922, and was an American director and producer of film, television, and theater.
+
+**Critical Missing Information:**
+- The identity of the director and producer of the film/work titled "We, the Normal" is not identified in any of the provided passages
+- The birth date of the director and producer of "We, the Normal" cannot be determined from these passages
+- Confirmation that a work titled "We, the Normal" exists and who created it
+
+To verify this claim, a retrieval system would need to:
+1. Search for information about the work "We, the Normal" (exact title)
+2. Identify the director and producer of "We, the Normal"
+3. Obtain the birth date of that director and producer
+4. Compare it with Arthur Hiller Penn's birth date (September 27, 1922)
+
+[[ ## passages ## ]]
+[1] «William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "»
+[2] «Mark Kenneth Woods | Mark Kenneth Woods (date of birth unknown) is a Canadian comedy writer, actor, producer, director and TV host.»
+[3] «What We Are Today | What We Are Today is an album by melodic/alternative rock band Failsafe; based in Preston.  "What We Are Today" is Failsafe's debut album and was released under deckcheese records.  The album was produced by Pete Miles.»
+[4] «What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).»
+[5] «We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.»
+[6] «R. S. Moyes | R S Moyes (dates of birth and death unknown) was a director of Crystal Palace who served also as manager in 1936.»
+[7] «Muggeridge (Surrey cricketer) | Muggeridge was a noted English cricketer of the mid-18th century who played for the famous Chertsey Cricket Club and for Surrey.  His dates of birth and death and his first name are unknown.  He was principally a bowler but we do not know his pace or type.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim states that "Arthur Hiller Penn was born before the director and producer of 'We, the Normal'."
+
+To evaluate this claim, I need to:
+1. Confirm Arthur Hiller Penn's birth date: September 27, 1922 (established from context)
+2. Identify the director and producer of "We, the Normal"
+3. Obtain their birth date
+4. Compare the two dates
+
+Examining the provided passages:
+- Passage 1: William Arntz directed "What the Bleep Do We Know?" - not "We, the Normal"
+- Passage 2: Mark Kenneth Woods - no work titled "We, the Normal" mentioned
+- Passage 3: "What We Are Today" - an album by Failsafe, produced by Pete Miles - not "We, the Normal"
+- Passage 4: "What We Almost Made" - a mixtape by Example - not "We, the Normal"
+- Passage 5: "We Are What We Are" (2013 film) directed by Jim Mickle - similar title but not "We, the Normal"
+- Passages 6-7: Not relevant to the claim
+
+None of the passages contain information about a work titled "We, the Normal" or its director and producer. While there are several works with titles beginning with "We" or "What We," none match "We, the Normal" exactly.
+
+Without identifying the director/producer of "We, the Normal" and their birth date, it is impossible to compare it with Arthur Hiller Penn's birth date of September 27, 1922.
+
+[[ ## summary ## ]]
+The claim cannot be verified. While Arthur Hiller Penn's birth date (September 27, 1922) is established, the provided passages contain no information about a work titled "We, the Normal," its director, or its producer. Therefore, a birth date comparison cannot be made, and the claim remains unverifiable based on the available sources.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Arthur Hiller Penn was born before the director and producer of "We, the Normal".
+
+[[ ## summary_1 ## ]]
+**Verification Status: NOT VERIFIED**
+
+The claim cannot be verified from the provided passages. Here's what is established and what is missing:
+
+**Established Information:**
+- Arthur Hiller Penn (also known as Arthur Penn) was born on September 27, 1922, and was an American director and producer of film, television, and theater.
+
+**Critical Missing Information:**
+- The identity of the director and producer of the film/work titled "We, the Normal" is not identified in any of the provided passages
+- The birth date of the director and producer of "We, the Normal" cannot be determined from these passages
+- Confirmation that a work titled "We, the Normal" exists and who created it
+
+To verify this claim, a retrieval system would need to:
+1. Search for information about the work "We, the Normal" (exact title)
+2. Identify the director and producer of "We, the Normal"
+3. Obtain the birth date of that director and producer
+4. Compare it with Arthur Hiller Penn's birth date (September 27, 1922)
+
+[[ ## summary_2 ## ]]
+The claim cannot be verified. While Arthur Hiller Penn's birth date (September 27, 1922) is established, the provided passages contain no information about a work titled "We, the Normal," its director, or its producer. Therefore, a birth date comparison cannot be made, and the claim remains unverifiable based on the available sources.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries confirm that while Arthur Hiller Penn's birth date is established (September 27, 1922), the critical missing information is the identity and birth date of the director and producer of "We, the Normal". Without knowing who created "We, the Normal" and when they were born, the claim cannot be verified. To resolve this, we need to search for information about this specific work and its creators.
+
+[[ ## query ## ]]
+Who is the director and producer of "We, the Normal"? What is their birth date?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "
+Mark Kenneth Woods | Mark Kenneth Woods (date of birth unknown) is a Canadian comedy writer, actor, producer, director and TV host.
+What We Are Today | What We Are Today is an album by melodic/alternative rock band Failsafe; based in Preston.  "What We Are Today" is Failsafe's debut album and was released under deckcheese records.  The album was produced by Pete Miles.
+What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).
+We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.
+R. S. Moyes | R S Moyes (dates of birth and death unknown) was a director of Crystal Palace who served also as manager in 1936.
+Muggeridge (Surrey cricketer) | Muggeridge was a noted English cricketer of the mid-18th century who played for the famous Chertsey Cricket Club and for Surrey.  His dates of birth and death and his first name are unknown.  He was principally a bowler but we do not know his pace or type.
+All We Love We Leave Behind | All We Love We Leave Behind is the eighth studio album by American metalcore band Converge.  It was released on October 9, 2012 through Epitaph Records.  It is their most commercially successful album to date, peaking number 70 on the Billboard 200.  The album was produced by guitarist Kurt Ballou, who previously produced many of Converge's album and features artwork created by lead singer Jacob Bannon.  "All We Love We Leave Behind" did not feature any guest collaborators, unlike the band's previous album "Axe to Fall".
+Identity Performance | In everyday interactions, the body serves as a critical site of identity performance.  In conveying who we are to other people, we use our bodies to project information about ourselves.  This is done through movement, clothes, speech, and facial expressions.  What we put forward is our best effort at what we want to say about who we are.  Yet while we intend to convey one impression, our performance is not always interpreted as we might expect.  Through learning to make sense of others’ responses to our behavior, we can assess how well we have conveyed what we intended.  We can then alter our performance accordingly.  This process of performance, interpretation, and adjustment is what Erving Goffman calls impression management.  Impression management is a part of a larger process where people seek to define a situation through their behavior.  People seek to define social situations by using contextual cues from the environment around them.  Social norms emerge from situational definitions, as people learn to read cues from the environment and the people present to understand what is appropriate behavior.
+We, the Normal | We, the Normal is a 1987 video by American video artist George Kuchar.  "We, the Normal" records Kuchar's trip to Boulder, Colorado.  In the video, Kuchar addresses humanity, nature, society.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Arthur Penn | Arthur Hiller Penn (September 27, 1922 – September 28, 2010) was an American director and producer of film, television and theater.  Penn directed critically acclaimed films throughout the 1960s such as the drama "The Chase" (1966), the biographical crime film "Bonnie and Clyde" (1967) and the comedy "Alice's Restaurant" (1969).  He also got attention for his revisionist Western "Little Big Man" (1970).
+We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love | We're All Normal and We Want Our Freedom - A Tribute to Arthur Lee and Love
+Arthur Penn (disambiguation) | Arthur Penn (1922 - 2010) was an American film and theatre director.
+David M. Walsh | David Martin Walsh (born July 23, 1931 in Cumberland, Maryland) is an American cinematographer.  He worked with film directors including Woody Allen, Herbert Ross, and Arthur Hiller.
+The Careless Years | The Careless Years is a 1957 film from United Artists directed by Arthur Hiller and produced by Edward Lewis.  The film was the directorial debut for Hiller.  The film stars Dean Stockwell and Natalie Trundy in an early film appearance.
+Arthur Hiller | Arthur Hiller, OC (November 22, 1923 – August 17, 2016) was a Canadian-American television and film director, having directed over 33 films during his 50-year career.  He began his career directing television in Canada and later in the U.S. By the late 1950s he began directing films, most often comedies.  He also directed dramas and romantic subjects, such as "Love Story" (1970), which was nominated for seven Oscars.
+Marius Hiller | Marius Hiller, also known as Eduardo Hiller (5 August 1892 – 17 October 1964) was a footballer who played international football for both Germany and Argentina.  He was the nephew of fellow German international Arthur Hiller.
+William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "
+Mark Kenneth Woods | Mark Kenneth Woods (date of birth unknown) is a Canadian comedy writer, actor, producer, director and TV host.
+What We Are Today | What We Are Today is an album by melodic/alternative rock band Failsafe; based in Preston.  "What We Are Today" is Failsafe's debut album and was released under deckcheese records.  The album was produced by Pete Miles.
+What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).
+We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.
+R. S. Moyes | R S Moyes (dates of birth and death unknown) was a director of Crystal Palace who served also as manager in 1936.
+Muggeridge (Surrey cricketer) | Muggeridge was a noted English cricketer of the mid-18th century who played for the famous Chertsey Cricket Club and for Surrey.  His dates of birth and death and his first name are unknown.  He was principally a bowler but we do not know his pace or type.
+William Arntz | William Arntz is an American film director and producer, most notable for directing "What the Bleep Do We Know? "
+Mark Kenneth Woods | Mark Kenneth Woods (date of birth unknown) is a Canadian comedy writer, actor, producer, director and TV host.
+What We Are Today | What We Are Today is an album by melodic/alternative rock band Failsafe; based in Preston.  "What We Are Today" is Failsafe's debut album and was released under deckcheese records.  The album was produced by Pete Miles.
+What We Almost Made | What We Almost Made is a 2008 mixtape by London-born entertainer Example.  Similar to his previous full-length releases "We Didn't Invent the Remix" and "What We Made", all of the songs in "What We Almost Made" were mainly written by Example and produced by Rusher.  As the title suggests, "What We Almost Made" was made as a follow-up to "What We Made" and contains unreleased tracks that weren't included in any of his previous releases (five of which feature various artists); three of the songs, although, were originally B-sides taken from the vinyl releases of the singles "I Don't Want To", "So Many Roads" and "Me & Mandy" (tracks 15, 5 and 6, respectively).
+We Are What We Are (2013 film) | We Are What We Are is a 2013 American cannibal horror film directed by Jim Mickle.  It was screened at the 2013 Sundance Film Festival and in the Directors' Fortnight section at the 2013 Cannes Film Festival.  It is a remake of the 2010 Mexican film of the same name.  Both a sequel and prequel have been announced.
+R. S. Moyes | R S Moyes (dates of birth and death unknown) was a director of Crystal Palace who served also as manager in 1936.
+Muggeridge (Surrey cricketer) | Muggeridge was a noted English cricketer of the mid-18th century who played for the famous Chertsey Cricket Club and for Surrey.  His dates of birth and death and his first name are unknown.  He was principally a bowler but we do not know his pace or type.
+All We Love We Leave Behind | All We Love We Leave Behind is the eighth studio album by American metalcore band Converge.  It was released on October 9, 2012 through Epitaph Records.  It is their most commercially successful album to date, peaking number 70 on the Billboard 200.  The album was produced by guitarist Kurt Ballou, who previously produced many of Converge's album and features artwork created by lead singer Jacob Bannon.  "All We Love We Leave Behind" did not feature any guest collaborators, unlike the band's previous album "Axe to Fall".
+Identity Performance | In everyday interactions, the body serves as a critical site of identity performance.  In conveying who we are to other people, we use our bodies to project information about ourselves.  This is done through movement, clothes, speech, and facial expressions.  What we put forward is our best effort at what we want to say about who we are.  Yet while we intend to convey one impression, our performance is not always interpreted as we might expect.  Through learning to make sense of others’ responses to our behavior, we can assess how well we have conveyed what we intended.  We can then alter our performance accordingly.  This process of performance, interpretation, and adjustment is what Erving Goffman calls impression management.  Impression management is a part of a larger process where people seek to define a situation through their behavior.  People seek to define social situations by using contextual cues from the environment around them.  Social norms emerge from situational definitions, as people learn to read cues from the environment and the people present to understand what is appropriate behavior.
+We, the Normal | We, the Normal is a 1987 video by American video artist George Kuchar.  "We, the Normal" records Kuchar's trip to Boulder, Colorado.  In the video, Kuchar addresses humanity, nature, society.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: In hop 3, passage 'We, the Normal | We, the Normal is a 1987 video by American video artist George Kuchar' identifies George Kuchar as the creator. However, summary_2 states 'the provided passages contain no information about a work titled "We, the Normal," its director, or its producer' when this information is present in the final retrieval.
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Both summary_1 and summary_2 identify that the birth date of the director/producer of 'We, the Normal' is missing, but neither summary names the specific entity 'George Kuchar' whose birth date would be needed. Summary_1 states: 'The identity of the director and producer of the film/work titled "We, the Normal" is not identified' and summary_2 repeats this. After hop 3 retrieves George Kuchar's na
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: Both coordinator queries at hop 2 and hop 3 are identical natural-language yes/no questions: 'Who is the director and producer of "We, the Normal"? What is their birth date?' This is a compound multi-part query bundling two separate information needs (identity and birth date) rather than targeted entity retrieval.
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: The queries for hop 2 and hop 3 are identical: 'Who is the director and producer of "We, the Normal"? What is their birth date?' The query does not advance between hops despite summary_2 reaffirming the same missing information.
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary_1 explicitly names the missing evidence: 'The identity of the director and producer of the film/work titled "We, the Normal"...Obtain the birth date of that director and producer.' Summary_2 reiterates this need. Hop 3 returns a passage identifying George Kuchar as the creator of 'We, the Normal' but does not include his birth date. The query 'Who is the director and producer of "We, the N
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

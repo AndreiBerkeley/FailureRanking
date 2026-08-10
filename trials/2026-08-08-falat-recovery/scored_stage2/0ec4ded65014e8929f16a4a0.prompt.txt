@@ -1,0 +1,578 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The song, which features alongside Overture (The Who Song) on the band's fourth studio album of the same name, reached the top 10 on the UK charts and No. 19 on the U.S. "Billboard" Hot 100.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Instant Replay (song) | "Instant Replay" is a song by Dan Hartman from the album of the same name.  All the tracks on Hartman's album topped the US Dance Chart for five weeks.  It reached number 29 on the "Billboard" Hot 100 pop singles chart, while topping out on the R&B chart at number 44.  In the UK, the song peaked at number 8.  The video for the song features Dan alongside future Kiss lead guitarist Vinnie Vincent, Hilly Michaels from the band Sparks on drums, and Hall & Oates veteran guitarist and former Saturday Night Live band leader G.E. Smith on bass.
+Real Real Real | "Real Real Real" is a song from the UK band Jesus Jones' 1991 album "Doubt".  It was released in 1990 as the first single from "Doubt", just prior to the release of the album.  It was succeeded by the "Billboard" Top 10 hit "Right Here, Right Now" (which, in the UK peaked at No. 31).  "Real Real Real" did better, reaching a peak of No. 19 on the UK Singles Chart.  It was also their second Top 10 US hit, peaking at No. 4 on the "Billboard" Hot 100.  The song is featured on the "Happy Daze" compilation.
+Scar Tissue (song) | "Scar Tissue" is the first single from the American rock band Red Hot Chili Peppers' seventh studio album "Californication", released in 1999.  It is one of their most successful songs, spending a then-record 16 consecutive weeks on top of the "Billboard" Hot Modern Rock Tracks chart, as well as 10 weeks at the top of the "Billboard" Mainstream Rock Tracks chart and reached number 8 on "Billboard" Hot 100 Airplay.  It peaked at number 9 on the "Billboard" Hot 100.  In the UK, the song reached number 15 on the UK Singles Chart.  It won a Grammy Award for Best Rock Song in 2000.  The song is notable for its mellow intro guitar riff and for its slide guitar solos throughout. " Guitar World" placed the guitar solo 63rd in its list of the "100 Greatest Guitar Solos".
+Time, Love and Tenderness (song) | "Time, Love and Tenderness" is a song written by the prolific songwriter Diane Warren and performed by Michael Bolton.  Released as a single from his album of the same title, the song reached number 7 on the "Billboard" Hot 100 chart, becoming Bolton's fifth Top 10 single in the United States during the summer of 1991.  It was also the singer's fourth song to top the U.S. Hot Adult Contemporary Tracks chart.  The song reached number 28 on the UK Singles Chart.
+Nothin' at All (Heart song) | "Nothin' at All" is a song written by Mark Mueller (words & music) and recorded by rock band Heart.  A Billboard Hot 100 Top 10 hit peaking at #10, it was released as the fourth single from the band's self-titled 1985 album "Heart", and was the fourth song from the album to hit the U.S. Top 10.  It also was a Top 40 hit in the UK, peaking at #38 in 1988 (after reaching number 76 in the UK Singles Chart two years earlier during its original release).
+I Can't Tell You Why | "I Can't Tell You Why" is a song by the American rock band Eagles which appeared on their 1979 album "The Long Run".  The song was written by band members Timothy B. Schmit, Glenn Frey, and Don Henley.  Recorded in March 1978, it was the first song finished for the album and the first Eagles song to feature Schmit on lead vocals.  The studio version became a "Billboard" Top 10 hit in April 1980, reaching number 8 on the "Billboard" Hot 100 and number 3 on the Adult Contemporary chart.  It is their last Top Ten hit on the Hot 100.  The original key of the song is D major.
+Happy Song (Bring Me the Horizon song) | "Happy Song" is a song by British rock band Bring Me the Horizon.  Produced by keyboardist Jordan Fish and vocalist Oliver Sykes, it was featured on the band's 2015 fifth studio album "That's the Spirit" and released as the second single from the album on 13 July 2015.  The single topped the UK Rock & Metal Singles Chart and reached number 55 on the UK Singles Chart, number 2 on the US "Billboard" Mainstream Rock chart and number 19 on the "Billboard" Hot Rock Songs chart.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+The song, which features alongside Overture (The Who Song) on the band's fourth studio album of the same name, reached the top 10 on the UK charts and No. 19 on the U.S. "Billboard" Hot 100.
+
+[[ ## passages ## ]]
+[1] «Instant Replay (song) | "Instant Replay" is a song by Dan Hartman from the album of the same name.  All the tracks on Hartman's album topped the US Dance Chart for five weeks.  It reached number 29 on the "Billboard" Hot 100 pop singles chart, while topping out on the R&B chart at number 44.  In the UK, the song peaked at number 8.  The video for the song features Dan alongside future Kiss lead guitarist Vinnie Vincent, Hilly Michaels from the band Sparks on drums, and Hall & Oates veteran guitarist and former Saturday Night Live band leader G.E. Smith on bass.»
+[2] «Real Real Real | "Real Real Real" is a song from the UK band Jesus Jones' 1991 album "Doubt".  It was released in 1990 as the first single from "Doubt", just prior to the release of the album.  It was succeeded by the "Billboard" Top 10 hit "Right Here, Right Now" (which, in the UK peaked at No. 31).  "Real Real Real" did better, reaching a peak of No. 19 on the UK Singles Chart.  It was also their second Top 10 US hit, peaking at No. 4 on the "Billboard" Hot 100.  The song is featured on the "Happy Daze" compilation.»
+[3] «Scar Tissue (song) | "Scar Tissue" is the first single from the American rock band Red Hot Chili Peppers' seventh studio album "Californication", released in 1999.  It is one of their most successful songs, spending a then-record 16 consecutive weeks on top of the "Billboard" Hot Modern Rock Tracks chart, as well as 10 weeks at the top of the "Billboard" Mainstream Rock Tracks chart and reached number 8 on "Billboard" Hot 100 Airplay.  It peaked at number 9 on the "Billboard" Hot 100.  In the UK, the song reached number 15 on the UK Singles Chart.  It won a Grammy Award for Best Rock Song in 2000.  The song is notable for its mellow intro guitar riff and for its slide guitar solos throughout. " Guitar World" placed the guitar solo 63rd in its list of the "100 Greatest Guitar Solos".»
+[4] «Time, Love and Tenderness (song) | "Time, Love and Tenderness" is a song written by the prolific songwriter Diane Warren and performed by Michael Bolton.  Released as a single from his album of the same title, the song reached number 7 on the "Billboard" Hot 100 chart, becoming Bolton's fifth Top 10 single in the United States during the summer of 1991.  It was also the singer's fourth song to top the U.S. Hot Adult Contemporary Tracks chart.  The song reached number 28 on the UK Singles Chart.»
+[5] «Nothin' at All (Heart song) | "Nothin' at All" is a song written by Mark Mueller (words & music) and recorded by rock band Heart.  A Billboard Hot 100 Top 10 hit peaking at #10, it was released as the fourth single from the band's self-titled 1985 album "Heart", and was the fourth song from the album to hit the U.S. Top 10.  It also was a Top 40 hit in the UK, peaking at #38 in 1988 (after reaching number 76 in the UK Singles Chart two years earlier during its original release).»
+[6] «I Can't Tell You Why | "I Can't Tell You Why" is a song by the American rock band Eagles which appeared on their 1979 album "The Long Run".  The song was written by band members Timothy B. Schmit, Glenn Frey, and Don Henley.  Recorded in March 1978, it was the first song finished for the album and the first Eagles song to feature Schmit on lead vocals.  The studio version became a "Billboard" Top 10 hit in April 1980, reaching number 8 on the "Billboard" Hot 100 and number 3 on the Adult Contemporary chart.  It is their last Top Ten hit on the Hot 100.  The original key of the song is D major.»
+[7] «Happy Song (Bring Me the Horizon song) | "Happy Song" is a song by British rock band Bring Me the Horizon.  Produced by keyboardist Jordan Fish and vocalist Oliver Sykes, it was featured on the band's 2015 fifth studio album "That's the Spirit" and released as the second single from the album on 13 July 2015.  The single topped the UK Rock & Metal Singles Chart and reached number 55 on the UK Singles Chart, number 2 on the US "Billboard" Mainstream Rock chart and number 19 on the "Billboard" Hot Rock Songs chart.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze the claim systematically:
+
+The claim states: "The song, which features alongside Overture (The Who Song) on the band's fourth studio album of the same name, reached the top 10 on the UK charts and No. 19 on the U.S. "Billboard" Hot 100."
+
+Key components to verify:
+1. A song features alongside "Overture (The Who Song)" - but "Overture (The Who Song)" is not mentioned in any of the provided passages
+2. Both songs appear on a band's fourth studio album - the album has "the same name" as the song being discussed (implying the album title matches the song title)
+3. The unnamed song reached top 10 on UK charts
+4. The unnamed song reached No. 19 on U.S. Billboard Hot 100
+
+Critical issue: The claim does not explicitly name the song being referenced. It only provides contextual clues:
+- It features alongside "Overture (The Who Song)"
+- It's on a fourth studio album with the same name as the song
+- UK chart performance: top 10
+- US Billboard Hot 100: No. 19
+
+Searching through the passages:
+- None mention "Overture (The Who Song)" by The Who
+- None mention a song on a fourth studio album that also features "Overture (The Who Song)"
+- No passage describes a song with both top 10 UK chart performance AND No. 19 Billboard Hot 100 performance simultaneously
+
+The passages discuss various songs with different chart performances, but none match the specific combination of criteria described in the claim, particularly the pairing with "Overture (The Who Song)" on a fourth studio album.
+
+[[ ## summary ## ]]
+
+**Verification Status: NOT VERIFIED**
+
+The claim cannot be verified from the provided passages. Critical information is missing:
+
+1. **The unnamed song**: The claim does not explicitly identify which song is being referenced. It only provides contextual identifiers (features alongside "Overture (The Who Song)", appears on a fourth studio album with the same name as the song).
+
+2. **"Overture (The Who Song)"**: This song is not mentioned in any of the provided passages. To verify the claim, information confirming that this song by The Who exists and its album placement is required.
+
+3. **The band and fourth studio album**: While the claim references "the band's fourth studio album," the band is not explicitly named. The album apparently has the same title as the song in question. Information about which band released a fourth studio album featuring both the unnamed song and "Overture (The Who Song)" is needed.
+
+4. **Chart performance combination**: None of the passages provide information about a song that simultaneously achieved top 10 UK chart performance AND No. 19 on the U.S. Billboard Hot 100 while appearing on a fourth studio album alongside "Overture (The Who Song)".
+
+To fully verify this claim, the retrieval system needs to:
+- Identify the specific song being referenced
+- Confirm the existence and details of "Overture (The Who Song)" by The Who
+- Identify the band and their fourth studio album
+- Verify the exact UK and US chart positions of the unnamed song
+- Confirm that both songs appear together on this fourth studio album
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the field `query`.
+        
+        Your task is to generate a search query that will retrieve all necessary evidence documents to verify the claim. The `summary_1` field contains an analysis of what information is present or missing from already-retrieved passages.
+        
+        **Critical Requirements:**
+        
+        1. **Identify ALL entities in the claim**: Carefully parse the claim to identify every distinct entity (people, places, organizations, species, concepts) that requires verification. Do not overlook any entity, even if it seems secondary or if the summary indicates it has already been verified.
+        
+        2. **Generate queries for unverified AND baseline entities**: Even when the summary states that certain facts are "fully verified" or "directly confirmed," you must still generate queries that would retrieve the foundational documents about those entities. This is essential for the retrieval system to build a complete evidence base.
+        
+        3. **Watch for taxonomic and nomenclatural relationships**: When claims involve scientific names, common names, or derived terminology, ensure your query addresses:
+           - The original entity mentioned in the claim
+           - Any related entities mentioned in the summary (e.g., if a plant's name is "derived from" another plant)
+           - Alternative names or former classifications that might appear in separate documents
+        
+        4. **Address implicit entities**: Some required evidence documents may concern entities that are:
+           - Mentioned only indirectly in the claim (e.g., "the restaurant New Haven-style pizza originates from" requires finding both the style AND the specific restaurant)
+           - Former names or synonyms (e.g., Schenkia was formerly classified under Centaurium - you need to retrieve documents about Centaurium even if only Schenkia is explicitly mentioned)
+           - Parent or related taxonomic groups
+        
+        5. **Query structure**: Formulate your query to be comprehensive and specific enough to retrieve distinct documents for each entity. You may:
+           - Ask multiple questions in one query
+           - List entities explicitly
+           - Include both common and scientific names
+           - Reference related taxonomic or historical information
+        
+        **Example considerations:**
+        - If a claim mentions Schenkia (a plant genus), remember that Schenkia species were formerly classified under Centaurium, so documents about Centaurium are also required
+        - If a claim references "the restaurant where X originates," find both the style/dish AND the specific restaurant name
+        - If comparing two entities (A and B), ensure queries would retrieve separate documents for both A and B
+        
+        Your query should enable a retrieval system to find every document needed for complete claim verification across multiple retrieval hops.
+[STEP 7] (user) [[ ## claim ## ]]
+The song, which features alongside Overture (The Who Song) on the band's fourth studio album of the same name, reached the top 10 on the UK charts and No. 19 on the U.S. "Billboard" Hot 100.
+
+[[ ## summary_1 ## ]]
+**Verification Status: NOT VERIFIED**
+
+The claim cannot be verified from the provided passages. Critical information is missing:
+
+1. **The unnamed song**: The claim does not explicitly identify which song is being referenced. It only provides contextual identifiers (features alongside "Overture (The Who Song)", appears on a fourth studio album with the same name as the song).
+
+2. **"Overture (The Who Song)"**: This song is not mentioned in any of the provided passages. To verify the claim, information confirming that this song by The Who exists and its album placement is required.
+
+3. **The band and fourth studio album**: While the claim references "the band's fourth studio album," the band is not explicitly named. The album apparently has the same title as the song in question. Information about which band released a fourth studio album featuring both the unnamed song and "Overture (The Who Song)" is needed.
+
+4. **Chart performance combination**: None of the passages provide information about a song that simultaneously achieved top 10 UK chart performance AND No. 19 on the U.S. Billboard Hot 100 while appearing on a fourth studio album alongside "Overture (The Who Song)".
+
+To fully verify this claim, the retrieval system needs to:
+- Identify the specific song being referenced
+- Confirm the existence and details of "Overture (The Who Song)" by The Who
+- Identify the band and their fourth studio album
+- Verify the exact UK and US chart positions of the unnamed song
+- Confirm that both songs appear together on this fourth studio album
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim is significantly underspecified and requires careful parsing to identify all entities that need verification. The core issue is that the song itself is unnamed - we only know it:
+1. Features alongside "Overture (The Who Song)" on a fourth studio album
+2. The album has the same name as the song
+3. Reached top 10 UK charts and No. 19 US Billboard Hot 100
+
+The mention of "Overture (The Who Song)" is a critical clue. This suggests The Who may be the band in question, though the phrasing is ambiguous - it could mean the song appears on a Who album, or it could be a different band's album that includes a Who cover/feature.
+
+Key entities requiring verification:
+- The unnamed song (identifiable through its chart positions and album context)
+- "Overture (The Who Song)" and The Who
+- The fourth studio album (with the same name as the song)
+- The band that released this album
+- Chart performance: top 10 UK, No. 19 US Billboard Hot 100
+- The relationship between these songs on the same album
+
+I need to generate queries that will help identify the unnamed song by its chart performance and album context, while also verifying details about "Overture" and The Who.
+[[ ## query ## ]]
+1. What song by The Who is titled "Overture"? What album does it appear on?
+2. What is The Who's fourth studio album? What is its title?
+3. What songs appear on The Who's fourth studio album alongside "Overture"?
+4. What song reached top 10 on UK charts and No. 19 on Billboard Hot 100? What album does it appear on?
+5. What band released a fourth studio album with the same name as one of its songs, featuring both that song and "Overture (The Who Song)"?
+6. The Who discography: fourth album title and track listing
+7. Song reached UK top 10 and US Billboard Hot 100 number 19 simultaneously - what is this song and which album?
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+What's Luv? | "What’s Luv?"  is a single by American rapper Fat Joe, released as the second single from his fourth studio album "Jealous Ones Still Envy (J.O.S.E.)".  The song features additional vocals from singer Ashanti, and also from rapper Ja Rule on the remix and album version on the song.  The single peaked at number 2 on the "Billboard" Hot 100, staying on the chart for twenty weeks.  It was also a success internationally, reaching the top 5 in Australia, the UK and Europe.  It was Ashanti's second top ten single, Fat Joe's first and Ja Rule's seventh.  The single helped make Ashanti the first female artist to simultaneously occupy the top two positions on the Hot 100.  The song also reached number one on the Hot Rap Songs chart.
+What's Your Name, What's Your Number | "What's Your Name, What's Your Number" is a song written by Bobby Woods and Roger Cook and performed by the Andrea True Connection.  The song reached #9 on the U.S. club chart, #34 in the UK, and #56 on the "Billboard" Hot 100 in 1977.  The song appeared on her 1977 album, "White Witch".  The song was produced by Michael Zager.
+What If It's You (song) | "What If It's You" is a song written by Robert Ellis Orrall and Cathy Majeski, and recorded by American country music artist Reba McEntire.  It was released in September 1997 as the fourth single and title track from the album "What If It's You".  The song reached #15 on the "Billboard" Hot Country Singles & Tracks chart.
+What's Your Mama's Name (song) | "What's Your Mama's Name" is a song written by Dallas Frazier and Earl Montgomery, and recorded by American country music artist Tanya Tucker.  It was released in February 1973 as the first single and title track from the album "What's Your Mama's Name".  "What's Your Mama's Name" was Tucker's fourth hit on the country chart and her first number one.  The single stayed at number one for a single week and spent a total of fourteen weeks on the chart.  On the "Billboard" Hot 100 pop chart, it reached number eighty-six.
+What's the Frequency, Kenneth? | "What's the Frequency, Kenneth?"  is a song by the American alternative rock band R.E.M. from their 1994 album "Monster".  It was the first single taken from the album, which was released three weeks later.  It peaked at number 21 on the "Billboard" Hot 100, number 9 on the UK Singles Chart, and was the first song to debut at number one on Billboard Modern Rock Tracks.  The song's title refers to an incident in New York City in 1986, when two then-unknown assailants attacked journalist Dan Rather, while repeating "Kenneth, what is the frequency?" 
+That's What I Like (Bruno Mars song) | "That's What I Like" is a song by American singer and songwriter Bruno Mars from his third studio album "24K Magic" (2016).  The song was released as the album's second single on January 30, 2017.  It is the highest charting single in the United States from Mars' studio album "24K Magic", surpassing the single of the same name by reaching number one on the "Billboard" Hot 100.  The song's also received remixes, featuring artists including Gucci Mane, PARTYNEXTDOOR and Alan Walker.
+Believe What You Say | "Believe What You Say" is a song written by Dorsey Burnette and Johnny Burnette and performed by Ricky Nelson.  The song reached #4 on the "Billboard" Hot 100, #6 on the R&B chart, and #10 on the country chart in 1958.  The song appeared on his 1959 album, "Ricky Sings Again".  The song also appeared on his 1970 album, "In Concert at the Troubadour, 1969".
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        Your task is to generate a summary that evaluates whether the claim can be verified from the provided passages. Your summary will be used to guide a three-hop retrieval system to find all required evidence documents.
+        
+        **Critical Requirement**: Your summary must be structured to ensure that a retrieval system will identify and retrieve ALL required evidence documents across three retrieval hops. The feedback will indicate which required evidence documents were successfully retrieved and which were missed.
+        
+        **Three-Hop Retrieval Strategy**:
+        - **Hop 1**: The retrieval system will extract key entities and concepts from the claim itself to retrieve initial documents
+        - **Hop 2**: The system will analyze the retrieved documents and context to identify additional entities that need verification
+        - **Hop 3**: The system will retrieve final documents based on connections and relationships discovered in previous hops
+        
+        **Guidelines for Writing Your Summary**:
+        
+        1. **Identify ALL entities in the claim**: Your summary should explicitly mention every specific entity (people, events, organizations, films, tournaments, seasons, locations, etc.) that appears in the claim. This helps the retrieval system identify what documents are needed.
+        
+        2. **Highlight missing information gaps**: When information is missing from the passages, clearly state what specific documents or facts would be needed. Use explicit document titles or entity names when possible (e.g., "Information about the film 'Undiscovered' and its ticket sales", "Gene Mayer's birth date", "who coached the Memphis Grizzlies in 2004-05").
+        
+        3. **Name entities from context that need verification**: If the context identifies specific entities (like "Lionel Hollins" or "Maurice Cheeks") that are relevant but not fully covered in passages, explicitly mention these names in your summary so they can be retrieved.
+        
+        4. **State verification requirements explicitly**: Clearly articulate what information would be needed to verify the claim, using specific entity names and document types (e.g., "the 1980 Lorraine Open results", "Serena Williams' birth date", "the 2004-05 Memphis Grizzlies season coaching staff").
+        
+        5. **Connect multi-hop relationships**: For claims requiring multiple pieces of information (e.g., "the actor from movie X that did Y"), explicitly state each step: identify movie X, identify the actor, verify the actor did Y.
+        
+        6. **Distinguish between similar entities**: When there might be confusion between entities (e.g., Golden Calf vs. Golden Globes, different people with coaching roles), be explicit about which specific entity or fact needs to be verified.
+        
+        7. **Format for retrieval**: Structure your summary to make it easy for a retrieval system to extract search queries. Use phrases like "requires information about [specific entity/document]" or "needs verification of [specific fact from specific source]".
+        
+        Your summary should conclude with a clear statement about whether the claim is verified, cannot be verified, or is false based on available passages, while making it obvious what additional documents would complete the verification chain.
+[STEP 11] (user) [[ ## claim ## ]]
+The song, which features alongside Overture (The Who Song) on the band's fourth studio album of the same name, reached the top 10 on the UK charts and No. 19 on the U.S. "Billboard" Hot 100.
+
+[[ ## context ## ]]
+**Verification Status: NOT VERIFIED**
+
+The claim cannot be verified from the provided passages. Critical information is missing:
+
+1. **The unnamed song**: The claim does not explicitly identify which song is being referenced. It only provides contextual identifiers (features alongside "Overture (The Who Song)", appears on a fourth studio album with the same name as the song).
+
+2. **"Overture (The Who Song)"**: This song is not mentioned in any of the provided passages. To verify the claim, information confirming that this song by The Who exists and its album placement is required.
+
+3. **The band and fourth studio album**: While the claim references "the band's fourth studio album," the band is not explicitly named. The album apparently has the same title as the song in question. Information about which band released a fourth studio album featuring both the unnamed song and "Overture (The Who Song)" is needed.
+
+4. **Chart performance combination**: None of the passages provide information about a song that simultaneously achieved top 10 UK chart performance AND No. 19 on the U.S. Billboard Hot 100 while appearing on a fourth studio album alongside "Overture (The Who Song)".
+
+To fully verify this claim, the retrieval system needs to:
+- Identify the specific song being referenced
+- Confirm the existence and details of "Overture (The Who Song)" by The Who
+- Identify the band and their fourth studio album
+- Verify the exact UK and US chart positions of the unnamed song
+- Confirm that both songs appear together on this fourth studio album
+
+[[ ## passages ## ]]
+[1] «What's Luv? | "What’s Luv?"  is a single by American rapper Fat Joe, released as the second single from his fourth studio album "Jealous Ones Still Envy (J.O.S.E.)".  The song features additional vocals from singer Ashanti, and also from rapper Ja Rule on the remix and album version on the song.  The single peaked at number 2 on the "Billboard" Hot 100, staying on the chart for twenty weeks.  It was also a success internationally, reaching the top 5 in Australia, the UK and Europe.  It was Ashanti's second top ten single, Fat Joe's first and Ja Rule's seventh.  The single helped make Ashanti the first female artist to simultaneously occupy the top two positions on the Hot 100.  The song also reached number one on the Hot Rap Songs chart.»
+[2] «What's Your Name, What's Your Number | "What's Your Name, What's Your Number" is a song written by Bobby Woods and Roger Cook and performed by the Andrea True Connection.  The song reached #9 on the U.S. club chart, #34 in the UK, and #56 on the "Billboard" Hot 100 in 1977.  The song appeared on her 1977 album, "White Witch".  The song was produced by Michael Zager.»
+[3] «What If It's You (song) | "What If It's You" is a song written by Robert Ellis Orrall and Cathy Majeski, and recorded by American country music artist Reba McEntire.  It was released in September 1997 as the fourth single and title track from the album "What If It's You".  The song reached #15 on the "Billboard" Hot Country Singles & Tracks chart.»
+[4] «What's Your Mama's Name (song) | "What's Your Mama's Name" is a song written by Dallas Frazier and Earl Montgomery, and recorded by American country music artist Tanya Tucker.  It was released in February 1973 as the first single and title track from the album "What's Your Mama's Name".  "What's Your Mama's Name" was Tucker's fourth hit on the country chart and her first number one.  The single stayed at number one for a single week and spent a total of fourteen weeks on the chart.  On the "Billboard" Hot 100 pop chart, it reached number eighty-six.»
+[5] «What's the Frequency, Kenneth? | "What's the Frequency, Kenneth?"  is a song by the American alternative rock band R.E.M. from their 1994 album "Monster".  It was the first single taken from the album, which was released three weeks later.  It peaked at number 21 on the "Billboard" Hot 100, number 9 on the UK Singles Chart, and was the first song to debut at number one on Billboard Modern Rock Tracks.  The song's title refers to an incident in New York City in 1986, when two then-unknown assailants attacked journalist Dan Rather, while repeating "Kenneth, what is the frequency?" »
+[6] «That's What I Like (Bruno Mars song) | "That's What I Like" is a song by American singer and songwriter Bruno Mars from his third studio album "24K Magic" (2016).  The song was released as the album's second single on January 30, 2017.  It is the highest charting single in the United States from Mars' studio album "24K Magic", surpassing the single of the same name by reaching number one on the "Billboard" Hot 100.  The song's also received remixes, featuring artists including Gucci Mane, PARTYNEXTDOOR and Alan Walker.»
+[7] «Believe What You Say | "Believe What You Say" is a song written by Dorsey Burnette and Johnny Burnette and performed by Ricky Nelson.  The song reached #4 on the "Billboard" Hot 100, #6 on the R&B chart, and #10 on the country chart in 1958.  The song appeared on his 1959 album, "Ricky Sings Again".  The song also appeared on his 1970 album, "In Concert at the Troubadour, 1969".»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim references a song that:
+1. Features alongside "Overture (The Who Song)" on a fourth studio album
+2. The album shares the same name as the song
+3. Reached top 10 on UK charts
+4. Reached No. 19 on US Billboard Hot 100
+
+The provided passages contain information about various songs with their chart performances, but none match the specific criteria outlined in the claim. The passages include:
+- "What's Luv?" by Fat Joe (peaked at #2 on Billboard Hot 100, top 5 in UK)
+- "What's Your Name, What's Your Number" by Andrea True Connection (#34 UK, #56 Billboard)
+- "What If It's You" by Reba McEntire (#15 on country chart, not matching criteria)
+- "What's Your Mama's Name" by Tanya Tucker (#1 country, #86 Billboard)
+- "What's the Frequency, Kenneth?" by R.E.M. (#21 Billboard, #9 UK)
+- "That's What I Like" by Bruno Mars (#1 Billboard)
+- "Believe What You Say" by Ricky Nelson (#4 Billboard, #10 country)
+
+None of these songs:
+- Feature alongside "Overture (The Who Song)"
+- Appear on a fourth studio album of the same name as the song
+- Match the specific chart combination of top 10 UK AND #19 US Billboard Hot 100
+
+The critical missing information includes identification of the unnamed song, confirmation of "Overture (The Who Song)" by The Who, identification of the band and their fourth studio album, and verification of the exact chart positions.
+[[ ## summary ## ]]
+**Verification Status: CANNOT BE VERIFIED - Critical Information Missing**
+
+The claim references an unnamed song with very specific identifying characteristics, but the passages provided do not contain information about this song or the required contextual elements.
+
+**Required for Hop 1 Retrieval (Initial Song Identification):**
+- The specific name and artist of the song being referenced (the claim only provides contextual identifiers: it features "Overture (The Who Song)" and appears on a fourth studio album)
+- Confirmation that "Overture (The Who Song)" by The Who exists as a recorded track
+- Documentation that this song appears on a specific fourth studio album by The Who (or another band)
+
+**Required for Hop 2 Retrieval (Album and Band Verification):**
+- Identification of the band's fourth studio album that contains both the unnamed song AND "Overture (The Who Song)"
+- Confirmation that the fourth studio album shares the same title as the unnamed song being referenced
+- Album release information and complete track listing showing both songs together
+
+**Required for Hop 3 Retrieval (Chart Performance Verification):**
+- Chart performance data confirming the unnamed song reached the top 10 on UK charts
+- Chart performance data confirming the same song reached No. 19 on the U.S. Billboard Hot 100
+- Cross-verification that these chart positions are specifically for the song appearing on the fourth studio album mentioned
+
+**Information Gap Analysis:**
+None of the passages provided contain any reference to "Overture (The Who Song)", and no song in the passages matches the criteria of simultaneously reaching top 10 UK AND No. 19 Billboard Hot 100 while appearing on a fourth studio album alongside this Overture track. The retrieval system must find: (1) the identity of the unnamed song, (2) information about The Who's album containing "Overture", (3) the fourth studio album in question, and (4) verified chart positions matching both UK top 10 and US #19 specifications.
+
+Without these four pieces of interconnected information, the claim cannot be verified.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The song, which features alongside Overture (The Who Song) on the band's fourth studio album of the same name, reached the top 10 on the UK charts and No. 19 on the U.S. "Billboard" Hot 100.
+
+[[ ## summary_1 ## ]]
+**Verification Status: NOT VERIFIED**
+
+The claim cannot be verified from the provided passages. Critical information is missing:
+
+1. **The unnamed song**: The claim does not explicitly identify which song is being referenced. It only provides contextual identifiers (features alongside "Overture (The Who Song)", appears on a fourth studio album with the same name as the song).
+
+2. **"Overture (The Who Song)"**: This song is not mentioned in any of the provided passages. To verify the claim, information confirming that this song by The Who exists and its album placement is required.
+
+3. **The band and fourth studio album**: While the claim references "the band's fourth studio album," the band is not explicitly named. The album apparently has the same title as the song in question. Information about which band released a fourth studio album featuring both the unnamed song and "Overture (The Who Song)" is needed.
+
+4. **Chart performance combination**: None of the passages provide information about a song that simultaneously achieved top 10 UK chart performance AND No. 19 on the U.S. Billboard Hot 100 while appearing on a fourth studio album alongside "Overture (The Who Song)".
+
+To fully verify this claim, the retrieval system needs to:
+- Identify the specific song being referenced
+- Confirm the existence and details of "Overture (The Who Song)" by The Who
+- Identify the band and their fourth studio album
+- Verify the exact UK and US chart positions of the unnamed song
+- Confirm that both songs appear together on this fourth studio album
+
+[[ ## summary_2 ## ]]
+**Verification Status: CANNOT BE VERIFIED - Critical Information Missing**
+
+The claim references an unnamed song with very specific identifying characteristics, but the passages provided do not contain information about this song or the required contextual elements.
+
+**Required for Hop 1 Retrieval (Initial Song Identification):**
+- The specific name and artist of the song being referenced (the claim only provides contextual identifiers: it features "Overture (The Who Song)" and appears on a fourth studio album)
+- Confirmation that "Overture (The Who Song)" by The Who exists as a recorded track
+- Documentation that this song appears on a specific fourth studio album by The Who (or another band)
+
+**Required for Hop 2 Retrieval (Album and Band Verification):**
+- Identification of the band's fourth studio album that contains both the unnamed song AND "Overture (The Who Song)"
+- Confirmation that the fourth studio album shares the same title as the unnamed song being referenced
+- Album release information and complete track listing showing both songs together
+
+**Required for Hop 3 Retrieval (Chart Performance Verification):**
+- Chart performance data confirming the unnamed song reached the top 10 on UK charts
+- Chart performance data confirming the same song reached No. 19 on the U.S. Billboard Hot 100
+- Cross-verification that these chart positions are specifically for the song appearing on the fourth studio album mentioned
+
+**Information Gap Analysis:**
+None of the passages provided contain any reference to "Overture (The Who Song)", and no song in the passages matches the criteria of simultaneously reaching top 10 UK AND No. 19 Billboard Hot 100 while appearing on a fourth studio album alongside this Overture track. The retrieval system must find: (1) the identity of the unnamed song, (2) information about The Who's album containing "Overture", (3) the fourth studio album in question, and (4) verified chart positions matching both UK top 10 and US #19 specifications.
+
+Without these four pieces of interconnected information, the claim cannot be verified.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries indicate that the claim cannot be verified due to critical missing information. The primary issue is that the song being referenced is never explicitly named in the claim—it's only identified indirectly through its association with "Overture (The Who Song)" and a fourth studio album. Additionally, "Overture (The Who Song)" itself is not mentioned in any provided passages, making it impossible to verify the basic facts of the claim. To verify this claim, we need to:
+
+1. Identify which song is being discussed (the claim only provides contextual clues)
+2. Confirm that "Overture (The Who Song)" exists and belongs to The Who
+3. Verify that both songs appear together on a fourth studio album
+4. Validate the specific chart positions (UK top 10 AND US #19 Billboard Hot 100)
+
+The most efficient retrieval strategy is to start by searching for "Overture" by The Who, as this is the only explicitly named entity that can serve as an anchor point for identifying the unnamed song and the album in question.
+
+[[ ## query ## ]]
+What is "Overture" by The Who, and which song appears alongside it on The Who's fourth studio album, and what were that song's UK and US chart positions?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Given Up | "Given Up" is a song by American rock band Linkin Park.  The song was released as the fourth single from their third studio album "Minutes to Midnight".  It was released on February 17, 2008 in the UK as a digital download.  The song was not as much of a success as what was expected in the US, although it did manage to chart high on the Alternative Songs music chart.
+Mountain at My Gates | "Mountain at My Gates" is a song by English rock band Foals.  It was released as the second single from their fourth studio album, "What Went Down", on 21 July 2015.  The song peaked at number 1 on the US "Billboard" Alternative Songs chart, number 35 on the Belgian Flanders Tip singles chart, number 87 on the UK Singles Chart, and number 192 on the French Singles Chart.  The song was also featured in the soundtrack for the video game "FIFA 16".
+What I Do the Best | What I Do the Best is the fourth studio album by American country music artist John Michael Montgomery.  The tracks "Ain't Got Nothin' on Us", "Friends", "How Was I to Know" and "I Miss You a Little" were all released as singles, peaking at #15, #2, #2 and #6, respectively on the Hot Country Songs charts, making this the first album of his career not to produce a #1 hit.  The album was certified platinum by the RIAA for one million shipments in the US.
+What They Want (Schoolboy Q song) | "What They Want" is a song by American hip hop recording artist Schoolboy Q, taken from his third studio album "Oxymoron" (2014).  The song, produced by Mike Will Made It, features a guest appearance by rapper 2 Chainz.  "What They Want" was met with generally positive reviews from music critics.  The song has since peaked on the US "Billboard" Bubbling Under R&B/Hip-Hop Singles at number four.
+Just Want You to Know | "Just Want You to Know" is a song performed by the Backstreet Boys.  It was released on October 4, 2005 as the second single from the group's fifth studio album "Never Gone".  The single performed moderately well hitting the top ten in the UK and Spain, and reaching the top twenty in Italy, Germany and Ireland, and charting inside the top 40 in most other charts.  This song was featured on the 2005 US compilation album "Now That's What I Call Music!  20" which was their last official appearance on a Now!  CD.
+What a Catch, Donnie | "What a Catch, Donnie" is Fall Out Boy's second digital download single and third radio single from their fourth studio album "Folie à Deux" (2008).  It was first released as part of the buildup to the new album on iTunes on October 14, 2008 and charted on the US and Canadian singles charts.  The track features numerous musicians performing cameo appearances in the song, singing lines from past Fall Out Boy songs.  Bassist/lyricist Pete Wentz has said that he wrote the song to remind himself of vocalist/guitarist Patrick Stump.  Musically it is one of the band's very few ballads.  Fall Out Boy played the song live on "Late Night with Jimmy Fallon".
+What About Us (The Coasters song) | "What About Us" is a song written by Jerry Leiber and Mike Stoller and performed by The Coasters.  The song reached #17 on the R&B chart and #47 on the "Billboard" Hot 100 in 1959.  The song appeared on their 1962 album, "Coast Along".
+What's Luv? | "What’s Luv?"  is a single by American rapper Fat Joe, released as the second single from his fourth studio album "Jealous Ones Still Envy (J.O.S.E.)".  The song features additional vocals from singer Ashanti, and also from rapper Ja Rule on the remix and album version on the song.  The single peaked at number 2 on the "Billboard" Hot 100, staying on the chart for twenty weeks.  It was also a success internationally, reaching the top 5 in Australia, the UK and Europe.  It was Ashanti's second top ten single, Fat Joe's first and Ja Rule's seventh.  The single helped make Ashanti the first female artist to simultaneously occupy the top two positions on the Hot 100.  The song also reached number one on the Hot Rap Songs chart.
+What Comes Around (Ill Niño song) | "What Comes Around" is a song by American heavy metal band Ill Niño.  The song was released as the second single from the group's debut studio album "Revolution Revolución".  The track is the band's most successful single, peaking on charts in both the US and UK.  A Spanish version was recorded and released on the special edition of Revolution Revolución.
+What Comes Naturally | What Comes Naturally is singer-songwriter Sheena Easton's tenth studio album, released in 1991 on MCA Records.  The album includes her final US Top 40 hit to date, "What Comes Naturally" (US #19, UK #83, Australia #3) which remained on the pop chart for 10 weeks.  Other singles released were "You Can Swing It" and "To Anyone" both which failed to chart.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Instant Replay (song) | "Instant Replay" is a song by Dan Hartman from the album of the same name.  All the tracks on Hartman's album topped the US Dance Chart for five weeks.  It reached number 29 on the "Billboard" Hot 100 pop singles chart, while topping out on the R&B chart at number 44.  In the UK, the song peaked at number 8.  The video for the song features Dan alongside future Kiss lead guitarist Vinnie Vincent, Hilly Michaels from the band Sparks on drums, and Hall & Oates veteran guitarist and former Saturday Night Live band leader G.E. Smith on bass.
+Real Real Real | "Real Real Real" is a song from the UK band Jesus Jones' 1991 album "Doubt".  It was released in 1990 as the first single from "Doubt", just prior to the release of the album.  It was succeeded by the "Billboard" Top 10 hit "Right Here, Right Now" (which, in the UK peaked at No. 31).  "Real Real Real" did better, reaching a peak of No. 19 on the UK Singles Chart.  It was also their second Top 10 US hit, peaking at No. 4 on the "Billboard" Hot 100.  The song is featured on the "Happy Daze" compilation.
+Scar Tissue (song) | "Scar Tissue" is the first single from the American rock band Red Hot Chili Peppers' seventh studio album "Californication", released in 1999.  It is one of their most successful songs, spending a then-record 16 consecutive weeks on top of the "Billboard" Hot Modern Rock Tracks chart, as well as 10 weeks at the top of the "Billboard" Mainstream Rock Tracks chart and reached number 8 on "Billboard" Hot 100 Airplay.  It peaked at number 9 on the "Billboard" Hot 100.  In the UK, the song reached number 15 on the UK Singles Chart.  It won a Grammy Award for Best Rock Song in 2000.  The song is notable for its mellow intro guitar riff and for its slide guitar solos throughout. " Guitar World" placed the guitar solo 63rd in its list of the "100 Greatest Guitar Solos".
+Time, Love and Tenderness (song) | "Time, Love and Tenderness" is a song written by the prolific songwriter Diane Warren and performed by Michael Bolton.  Released as a single from his album of the same title, the song reached number 7 on the "Billboard" Hot 100 chart, becoming Bolton's fifth Top 10 single in the United States during the summer of 1991.  It was also the singer's fourth song to top the U.S. Hot Adult Contemporary Tracks chart.  The song reached number 28 on the UK Singles Chart.
+Nothin' at All (Heart song) | "Nothin' at All" is a song written by Mark Mueller (words & music) and recorded by rock band Heart.  A Billboard Hot 100 Top 10 hit peaking at #10, it was released as the fourth single from the band's self-titled 1985 album "Heart", and was the fourth song from the album to hit the U.S. Top 10.  It also was a Top 40 hit in the UK, peaking at #38 in 1988 (after reaching number 76 in the UK Singles Chart two years earlier during its original release).
+I Can't Tell You Why | "I Can't Tell You Why" is a song by the American rock band Eagles which appeared on their 1979 album "The Long Run".  The song was written by band members Timothy B. Schmit, Glenn Frey, and Don Henley.  Recorded in March 1978, it was the first song finished for the album and the first Eagles song to feature Schmit on lead vocals.  The studio version became a "Billboard" Top 10 hit in April 1980, reaching number 8 on the "Billboard" Hot 100 and number 3 on the Adult Contemporary chart.  It is their last Top Ten hit on the Hot 100.  The original key of the song is D major.
+Happy Song (Bring Me the Horizon song) | "Happy Song" is a song by British rock band Bring Me the Horizon.  Produced by keyboardist Jordan Fish and vocalist Oliver Sykes, it was featured on the band's 2015 fifth studio album "That's the Spirit" and released as the second single from the album on 13 July 2015.  The single topped the UK Rock & Metal Singles Chart and reached number 55 on the UK Singles Chart, number 2 on the US "Billboard" Mainstream Rock chart and number 19 on the "Billboard" Hot Rock Songs chart.
+What's Luv? | "What’s Luv?"  is a single by American rapper Fat Joe, released as the second single from his fourth studio album "Jealous Ones Still Envy (J.O.S.E.)".  The song features additional vocals from singer Ashanti, and also from rapper Ja Rule on the remix and album version on the song.  The single peaked at number 2 on the "Billboard" Hot 100, staying on the chart for twenty weeks.  It was also a success internationally, reaching the top 5 in Australia, the UK and Europe.  It was Ashanti's second top ten single, Fat Joe's first and Ja Rule's seventh.  The single helped make Ashanti the first female artist to simultaneously occupy the top two positions on the Hot 100.  The song also reached number one on the Hot Rap Songs chart.
+What's Your Name, What's Your Number | "What's Your Name, What's Your Number" is a song written by Bobby Woods and Roger Cook and performed by the Andrea True Connection.  The song reached #9 on the U.S. club chart, #34 in the UK, and #56 on the "Billboard" Hot 100 in 1977.  The song appeared on her 1977 album, "White Witch".  The song was produced by Michael Zager.
+What If It's You (song) | "What If It's You" is a song written by Robert Ellis Orrall and Cathy Majeski, and recorded by American country music artist Reba McEntire.  It was released in September 1997 as the fourth single and title track from the album "What If It's You".  The song reached #15 on the "Billboard" Hot Country Singles & Tracks chart.
+What's Your Mama's Name (song) | "What's Your Mama's Name" is a song written by Dallas Frazier and Earl Montgomery, and recorded by American country music artist Tanya Tucker.  It was released in February 1973 as the first single and title track from the album "What's Your Mama's Name".  "What's Your Mama's Name" was Tucker's fourth hit on the country chart and her first number one.  The single stayed at number one for a single week and spent a total of fourteen weeks on the chart.  On the "Billboard" Hot 100 pop chart, it reached number eighty-six.
+What's the Frequency, Kenneth? | "What's the Frequency, Kenneth?"  is a song by the American alternative rock band R.E.M. from their 1994 album "Monster".  It was the first single taken from the album, which was released three weeks later.  It peaked at number 21 on the "Billboard" Hot 100, number 9 on the UK Singles Chart, and was the first song to debut at number one on Billboard Modern Rock Tracks.  The song's title refers to an incident in New York City in 1986, when two then-unknown assailants attacked journalist Dan Rather, while repeating "Kenneth, what is the frequency?" 
+That's What I Like (Bruno Mars song) | "That's What I Like" is a song by American singer and songwriter Bruno Mars from his third studio album "24K Magic" (2016).  The song was released as the album's second single on January 30, 2017.  It is the highest charting single in the United States from Mars' studio album "24K Magic", surpassing the single of the same name by reaching number one on the "Billboard" Hot 100.  The song's also received remixes, featuring artists including Gucci Mane, PARTYNEXTDOOR and Alan Walker.
+Believe What You Say | "Believe What You Say" is a song written by Dorsey Burnette and Johnny Burnette and performed by Ricky Nelson.  The song reached #4 on the "Billboard" Hot 100, #6 on the R&B chart, and #10 on the country chart in 1958.  The song appeared on his 1959 album, "Ricky Sings Again".  The song also appeared on his 1970 album, "In Concert at the Troubadour, 1969".
+Given Up | "Given Up" is a song by American rock band Linkin Park.  The song was released as the fourth single from their third studio album "Minutes to Midnight".  It was released on February 17, 2008 in the UK as a digital download.  The song was not as much of a success as what was expected in the US, although it did manage to chart high on the Alternative Songs music chart.
+Mountain at My Gates | "Mountain at My Gates" is a song by English rock band Foals.  It was released as the second single from their fourth studio album, "What Went Down", on 21 July 2015.  The song peaked at number 1 on the US "Billboard" Alternative Songs chart, number 35 on the Belgian Flanders Tip singles chart, number 87 on the UK Singles Chart, and number 192 on the French Singles Chart.  The song was also featured in the soundtrack for the video game "FIFA 16".
+What I Do the Best | What I Do the Best is the fourth studio album by American country music artist John Michael Montgomery.  The tracks "Ain't Got Nothin' on Us", "Friends", "How Was I to Know" and "I Miss You a Little" were all released as singles, peaking at #15, #2, #2 and #6, respectively on the Hot Country Songs charts, making this the first album of his career not to produce a #1 hit.  The album was certified platinum by the RIAA for one million shipments in the US.
+What They Want (Schoolboy Q song) | "What They Want" is a song by American hip hop recording artist Schoolboy Q, taken from his third studio album "Oxymoron" (2014).  The song, produced by Mike Will Made It, features a guest appearance by rapper 2 Chainz.  "What They Want" was met with generally positive reviews from music critics.  The song has since peaked on the US "Billboard" Bubbling Under R&B/Hip-Hop Singles at number four.
+Just Want You to Know | "Just Want You to Know" is a song performed by the Backstreet Boys.  It was released on October 4, 2005 as the second single from the group's fifth studio album "Never Gone".  The single performed moderately well hitting the top ten in the UK and Spain, and reaching the top twenty in Italy, Germany and Ireland, and charting inside the top 40 in most other charts.  This song was featured on the 2005 US compilation album "Now That's What I Call Music!  20" which was their last official appearance on a Now!  CD.
+What a Catch, Donnie | "What a Catch, Donnie" is Fall Out Boy's second digital download single and third radio single from their fourth studio album "Folie à Deux" (2008).  It was first released as part of the buildup to the new album on iTunes on October 14, 2008 and charted on the US and Canadian singles charts.  The track features numerous musicians performing cameo appearances in the song, singing lines from past Fall Out Boy songs.  Bassist/lyricist Pete Wentz has said that he wrote the song to remind himself of vocalist/guitarist Patrick Stump.  Musically it is one of the band's very few ballads.  Fall Out Boy played the song live on "Late Night with Jimmy Fallon".
+What About Us (The Coasters song) | "What About Us" is a song written by Jerry Leiber and Mike Stoller and performed by The Coasters.  The song reached #17 on the R&B chart and #47 on the "Billboard" Hot 100 in 1959.  The song appeared on their 1962 album, "Coast Along".
+What's Luv? | "What’s Luv?"  is a single by American rapper Fat Joe, released as the second single from his fourth studio album "Jealous Ones Still Envy (J.O.S.E.)".  The song features additional vocals from singer Ashanti, and also from rapper Ja Rule on the remix and album version on the song.  The single peaked at number 2 on the "Billboard" Hot 100, staying on the chart for twenty weeks.  It was also a success internationally, reaching the top 5 in Australia, the UK and Europe.  It was Ashanti's second top ten single, Fat Joe's first and Ja Rule's seventh.  The single helped make Ashanti the first female artist to simultaneously occupy the top two positions on the Hot 100.  The song also reached number one on the Hot Rap Songs chart.
+What Comes Around (Ill Niño song) | "What Comes Around" is a song by American heavy metal band Ill Niño.  The song was released as the second single from the group's debut studio album "Revolution Revolución".  The track is the band's most successful single, peaking on charts in both the US and UK.  A Spanish version was recorded and released on the special edition of Revolution Revolución.
+What Comes Naturally | What Comes Naturally is singer-songwriter Sheena Easton's tenth studio album, released in 1991 on MCA Records.  The album includes her final US Top 40 hit to date, "What Comes Naturally" (US #19, UK #83, Australia #3) which remained on the pop chart for 10 weeks.  Other singles released were "You Can Swing It" and "To Anyone" both which failed to chart.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: Both solver summaries state 'The claim does not explicitly identify which song is being referenced' and 'The unnamed song' and '**The unnamed song**: The claim does not explicitly identify which song is being referenced.' However, neither summary names the specific missing entity that would allow retrieval to proceed. The summaries do not specify that the needed information is 'which song by The W
+- code B.13 (Query_Form_Mismatch), anchored near step UNKNOWN: evidence: The hop 3 query reads: 'What is "Overture" by The Who, and which song appears alongside it on The Who's fourth studio album, and what were that song's UK and US chart positions?' This is a natural-language compound question bundling multiple targets (what is Overture, which song appears with it, what album, what chart positions) into a single yes/no question format that retrievers cannot parse int
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Hop 2 query (paraphrased from reasoning): 'What is "Overture" by The Who, and which song appears alongside it on The Who's fourth studio album, and what were that song's UK and US chart positions?' Hop 3 query: identical wording. The query did not advance between hop 2 and hop 3; both ask the same compound question about Overture, the unnamed song, the album, and chart positions without incorporat
+- code A.12 (Insufficient_Retrieved_Evidence), anchored near step UNKNOWN: evidence: Summary_2 explicitly states: 'None of the passages provided contain any reference to "Overture (The Who Song)"' and 'The retrieval system must find: (1) the identity of the unnamed song, (2) information about The Who's album containing "Overture"'. The hop 3 query asks 'What is "Overture" by The Who, and which song appears alongside it on The Who's fourth studio album' but the returned documents c
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

@@ -1,0 +1,518 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The locals consider the township of Stirling a suburb of a town. That town is represented by  Rebekha Carina Che Sharkie, an Australian politician.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Rebekha Sharkie | Rebekha Carina Che Sharkie (born 1972) is an Australian politician.  Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election, she is the first Nick Xenophon Team member to be elected to the Australian House of Representatives.
+Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.
+Jamie Briggs | Jamie Edward Briggs (born 9 June 1977) is a former Australian politician, who represented the House of Representatives seat of Mayo for the Liberal Party of Australia from the 2008 Mayo by-election to the 2 July 2016 federal election.  Briggs was promoted from a shadow parliamentary secretary role to the outer ministry upon the 2013 election of the Abbott Government.  He remained in the outer ministry though with a change in portfolio upon the ascension of the Turnbull Government, however he quit the ministry and moved to the backbench in late 2015 following inappropriate conduct during an official overseas trip.  Briggs lost his seat in the 2016 federal election to Nick Xenophon Team candidate Rebekha Sharkie.
+Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.
+Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.
+Thiruvilandur | Thiruvilandur is a town situated to the north of the town of Mayiladuthurai in Tamil Nadu, India.  The area is also called Indalur.  It is considered to be a suburb of Mayiladuthurai.  The township is famous for Parimala_Ranganatha_Perumal_Temple of lord Vishnu which is one of the 108 divyadesams of Mahavishnu.
+City of Stirling | The City of Stirling is a local government area in the northern suburbs of the Western Australian capital city of Perth about 10 km north of Perth's central business district.  The City covers an area of 105.2 km2 and had a population of 205,960 in 2011, making it the largest local government area by population in Western Australia.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to verify a claim using the provided passages. However, you must also identify when the passages are insufficient to fully verify the claim, specifically when they lack critical evidence documents that would be needed for complete verification.
+        
+        Instructions:
+        1. Analyze the claim carefully to identify all entities, relationships, and facts that need verification
+        2. Check the provided passages against each component of the claim
+        3. Determine if the passages contain sufficient information to fully verify or refute the claim
+        4. Identify any missing evidence documents that would be necessary for complete verification
+        5. **CRITICAL: For every distinct entity mentioned in the claim (whether explicitly named or referenced indirectly), ensure that passages about that specific entity are available. If passages are missing for any entity in the claim, identify those missing evidence documents.**
+        
+        Important domain-specific considerations:
+        - When a claim references "the composer of [work]" or similar indirect references, you must identify the specific person being referenced and verify information about them, not just about derivative or related works
+        - If passages mention that a work by person A was "previously used" or based on work by person B, person B is likely the original creator and the one being referenced in the claim
+        - For geographic claims (e.g., "seventh-most populated city"), you need passages that explicitly identify which city is being referenced
+        - For biographical claims about individuals, you need passages with direct information about that specific person, not just about groups or organizations they belong to
+        - When claims involve multi-hop reasoning (e.g., "the county that person X ruled" which then needs to be connected to events in 1805), you need passages for each hop in the chain
+        
+        **Critical requirement for identifying missing evidence documents**:
+        - **If a claim mentions multiple distinct entities (e.g., "Entity A is X. Entity B is not X."), you must have passages about EACH entity mentioned**
+        - **Even if the claim can be partially verified, if any entity in the claim lacks corresponding passages, you must identify that entity's evidence document as missing**
+        - **For comparison claims (e.g., "A is perennial. B is not perennial"), you need passages about both A and B, even if one can be verified**
+        - **When a claim mentions an entity only to negate something about it (e.g., "Duranta is not a perennial"), that entity still requires evidence documents**
+        - **The fact that you can verify part of a claim does not mean you should ignore entities that lack passages - explicitly identify all entities that need but lack evidence documents**
+        
+        When producing the summary:
+        - If passages are insufficient, explicitly state what information is missing
+        - Identify which specific evidence documents (by their likely titles or subjects) would be needed to complete the verification
+        - **List ALL entities from the claim that lack corresponding passages, even if other parts of the claim are verifiable**
+        - Do not make assumptions or use external knowledge to fill gaps in the provided passages
+        - If the passages contain contradictory timeframes or facts (e.g., "13 years" vs "40 years"), point out these discrepancies
+        - For claims with indirect references (like "the composer of Parisina"), make sure you identify the correct person being referenced (in the Parisina example, Gaetano Donizetti composed the original opera "Parisina", while Tomás Giribaldi composed "La Parisina" using Donizetti's libretto - the claim likely refers to Donizetti)
+        - **When identifying missing evidence documents, use the entity name or subject matter that would be the title/topic of the needed passage (e.g., if the claim mentions "Duranta" but no passages discuss it, identify "duranta" as a missing evidence document)**
+[STEP 4] (user) [[ ## claim ## ]]
+The locals consider the township of Stirling a suburb of a town. That town is represented by  Rebekha Carina Che Sharkie, an Australian politician.
+
+[[ ## passages ## ]]
+[1] «Rebekha Sharkie | Rebekha Carina Che Sharkie (born 1972) is an Australian politician.  Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election, she is the first Nick Xenophon Team member to be elected to the Australian House of Representatives.»
+[2] «Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.»
+[3] «Jamie Briggs | Jamie Edward Briggs (born 9 June 1977) is a former Australian politician, who represented the House of Representatives seat of Mayo for the Liberal Party of Australia from the 2008 Mayo by-election to the 2 July 2016 federal election.  Briggs was promoted from a shadow parliamentary secretary role to the outer ministry upon the 2013 election of the Abbott Government.  He remained in the outer ministry though with a change in portfolio upon the ascension of the Turnbull Government, however he quit the ministry and moved to the backbench in late 2015 following inappropriate conduct during an official overseas trip.  Briggs lost his seat in the 2016 federal election to Nick Xenophon Team candidate Rebekha Sharkie.»
+[4] «Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.»
+[5] «Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.»
+[6] «Thiruvilandur | Thiruvilandur is a town situated to the north of the town of Mayiladuthurai in Tamil Nadu, India.  The area is also called Indalur.  It is considered to be a suburb of Mayiladuthurai.  The township is famous for Parimala_Ranganatha_Perumal_Temple of lord Vishnu which is one of the 108 divyadesams of Mahavishnu.»
+[7] «City of Stirling | The City of Stirling is a local government area in the northern suburbs of the Western Australian capital city of Perth about 10 km north of Perth's central business district.  The City covers an area of 105.2 km2 and had a population of 205,960 in 2011, making it the largest local government area by population in Western Australia.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+Let me analyze this claim step by step:
+
+The claim states: "The locals consider the township of Stirling a suburb of a town. That town is represented by Rebekha Carina Che Sharkie, an Australian politician."
+
+Breaking down what needs to be verified:
+1. Locals consider Stirling a suburb of a town - this is asking about a relationship between Stirling and another town
+2. That "other town" is represented by Rebekha Carina Che Sharkie
+3. Rebekha Carina Che Sharkie is an Australian politician
+
+From the passages:
+
+From passage [1]: Rebekha Carina Che Sharkie is confirmed to be an Australian politician representing the Division of Mayo since 2016.
+
+From passage [2]: This mentions Crafers, where "locals consider Crafers to be more a suburb of the nearby township of Stirling" - so Stirling is considered a township by others, not the other way around.
+
+From passage [5]: Stirling, South Australia is described as "a town in the Adelaide Hills, South Australia" - this is about Stirling itself.
+
+However, the claim has a logical issue. It states that "locals consider the township of Stirling a suburb of a town" and that town is represented by Rebekha Sharkie. But from passage [1], Rebekha Sharkie represents the Division of Mayo. The passages don't explicitly state which town/locality the Division of Mayo encompasses or which town in South Australia would be represented by her.
+
+The missing connection is: What is the geographical relationship between Stirling, South Australia and the Division of Mayo? The Division of Mayo appears to be in South Australia (based on context), but the passages don't explicitly state that the Division of Mayo covers or is centered on any specific town that would be considered the parent town of which Stirling is a suburb.
+
+Additionally, passage [4] mentions a "Division of Stirling" in Perth, Western Australia - which is a different Stirling entirely (in Western Australia, not South Australia).
+
+The critical missing information is: Which town in South Australia is represented by the Division of Mayo that Rebekha Sharkie represents, and is Stirling actually considered a suburb of that town?
+
+[[ ## summary ## ]]
+The claim cannot be fully verified with the provided passages. While the passages confirm that Rebekha Carina Che Sharkie is an Australian politician representing the Division of Mayo, the passages do not establish the critical connection between:
+
+1. The Division of Mayo and a specific town in South Australia
+2. Whether Stirling, South Australia is considered a suburb of that town
+
+Additionally, passage [2] indicates that Crafers is considered "a suburb of the nearby township of Stirling" (not the reverse), which contradicts the claim's assertion that Stirling is considered a suburb of another town.
+
+**Missing evidence documents needed:**
+- Information about the Division of Mayo's geographical coverage and which town(s) it represents in South Australia
+- Clarification of the administrative relationship between Stirling and other towns in the Adelaide Hills region
+- Evidence about whether Stirling is actually considered a suburb of another town (the available evidence suggests the opposite - that nearby townships like Crafers are suburbs of Stirling)
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+The locals consider the township of Stirling a suburb of a town. That town is represented by  Rebekha Carina Che Sharkie, an Australian politician.
+
+[[ ## summary_1 ## ]]
+The claim cannot be fully verified with the provided passages. While the passages confirm that Rebekha Carina Che Sharkie is an Australian politician representing the Division of Mayo, the passages do not establish the critical connection between:
+
+1. The Division of Mayo and a specific town in South Australia
+2. Whether Stirling, South Australia is considered a suburb of that town
+
+Additionally, passage [2] indicates that Crafers is considered "a suburb of the nearby township of Stirling" (not the reverse), which contradicts the claim's assertion that Stirling is considered a suburb of another town.
+
+**Missing evidence documents needed:**
+- Information about the Division of Mayo's geographical coverage and which town(s) it represents in South Australia
+- Clarification of the administrative relationship between Stirling and other towns in the Adelaide Hills region
+- Evidence about whether Stirling is actually considered a suburb of another town (the available evidence suggests the opposite - that nearby townships like Crafers are suburbs of Stirling)
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The claim makes two assertions: (1) that Stirling is a suburb of a town, and (2) that this town is represented by Rebekha Carina Che Sharkie. While Sharkie is confirmed as an Australian politician representing the Division of Mayo, the passages do not establish which specific town in South Australia the Division of Mayo represents, nor do they confirm that Stirling is a suburb of that town. In fact, the available evidence suggests the opposite—that Crafers is a suburb of Stirling, not the other way around. To verify the claim, we need information connecting the Division of Mayo to a specific town and confirming Stirling's administrative relationship to that town.
+
+[[ ## query ## ]]
+Which town in South Australia does the Division of Mayo represent, and is Stirling considered a suburb of that town, or is it an independent township in the Adelaide Hills region?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.
+Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.
+Division of Mayo | The Division of Mayo is an Australian electoral division located to the east, south, south-east and south-west of Adelaide, South Australia.  Established in the South Australian redistribution of 3 September 1984, the division is named after Helen Mayo, a social activist and the first woman elected to an Australian University Council.  The 9,315 km² seat covers an area from Springton in the North to Goolwa in the South.  It takes in the Adelaide Hills, Fleurieu Peninsula and Kangaroo Island, including the towns of Bridgewater, Crafers, Echunga, Gumeracha, Hahndorf, Kingscote, Langhorne Creek, Lobethal, Macclesfield, Mount Barker, Myponga, Oakbank, Stirling, Strathalbyn, Victor Harbor, Woodside, Yankalilla, and part of Birdwood.
+Callington, South Australia | Callington is a small town on the eastern slopes of the Adelaide Hills, in South Australia.  Callington is situated on the Bremer River, and is adjacent to the South Eastern Freeway and the Adelaide-Wolseley railway line, however no trains have stopped at the station for many years.  Callington is located within the state electoral district of Kavel and the federal division of Mayo.
+Piccadilly Valley wine sub-region | Piccadilly Valley wine sub-region is a wine sub-region in South Australia located between the town of Summertown in the north and the towns of Stirling and Aldgate to its south in the Mount Lofty Ranges to the east of the Adelaide city centre.  The sub-region received appellation as an Australian Geographical Indication (AGI) on 14 April 2000.  The sub-region is part of the Adelaide Hills wine region and the Mount Lofty Ranges zone.
+List of Adelaide suburbs | This is a list of the suburbs of Adelaide, the capital city of South Australia, with their postcodes and local government areas (LGAs).  This article does not include suburbs and localities within the Adelaide Hills region.
+Marble Hill, South Australia | Marble Hill was the Vice-Regal summer residence for the Governor of South Australia for seventy-five years, from 1880 to 1955.  It is also the name of a ward of the Adelaide Hills Council, and a suburb, both named after the residence and in which the residence is located.  It is about 20 km east of Adelaide between the towns of Ashton and Cherryville, and has expansive views of the Adelaide Hills to the North and East, and the Adelaide Plains to the West.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+        
+        ## Task Description
+        
+        You are evaluating claims that require multi-hop reasoning across multiple pieces of evidence. Your task is to:
+        
+        1. **Analyze the claim** to identify all entities, concepts, and relationships that need verification
+        2. **Examine the provided passages** to determine what information is present and what is missing
+        3. **Produce a summary** that clearly states whether the claim can be verified with the provided passages
+        
+        ## Critical Requirements
+        
+        Your summary must focus on **what passages are needed** to verify the claim, not just whether verification is possible. Specifically:
+        
+        - **Identify all key entities** mentioned in the claim (people, places, organizations, legal cases, events, etc.)
+        - **Determine which entities are directly addressed** in the provided passages
+        - **Identify which entities are missing** from the passages entirely
+        - **Note when passages mention an entity but lack critical details** needed for verification (e.g., formation location, launch date, specific rights addressed in a legal case)
+        
+        ## Domain-Specific Guidance
+        
+        ### Legal Cases
+        - When a claim involves legal cases, you need passages that explicitly describe what rights, issues, or subjects each case addressed
+        - A passage mentioning a person worked on a case is insufficient; you need a passage about the case itself
+        - Example: If a claim mentions "Korematsu v. United States," you need a passage specifically about that case, not just about Eric Yamamoto who worked on it
+        
+        ### Geographic Comparisons
+        - Claims comparing locations require passages about BOTH locations
+        - You need explicit information about the geographic details being compared (latitude, region, formation location, etc.)
+        - A passage about one entity without the comparison entity is insufficient
+        
+        ### Media/Broadcasting Claims
+        - Claims about TV shows, networks, or programming require passages about the specific show AND the specific network mentioned
+        - Time slots, launch dates, and network names must all be verifiable from passages
+        - Related but different entities (e.g., YTV vs. Teletoon, or Cartoon Network vs. Cartoon Network Too) are not interchangeable
+        
+        ### Band/Music Claims
+        - Claims about bands require passages identifying the band by name
+        - If a claim mentions "the band fronted by [person]," you need a passage that names the specific band, not just passages about the person
+        - Formation locations must be explicitly stated in passages
+        
+        ## Output Format
+        
+        Your summary should:
+        1. **State the verification conclusion** (can be verified, cannot be verified, or is contradicted)
+        2. **Explain what information is present** in the passages
+        3. **Explicitly identify what is missing** by naming the specific entities/documents that would be needed
+        4. **Use precise language** about what passages exist vs. what passages are needed
+        
+        Focus on being specific about missing evidence documents rather than general statements about "insufficient information."
+[STEP 11] (user) [[ ## claim ## ]]
+The locals consider the township of Stirling a suburb of a town. That town is represented by  Rebekha Carina Che Sharkie, an Australian politician.
+
+[[ ## context ## ]]
+The claim cannot be fully verified with the provided passages. While the passages confirm that Rebekha Carina Che Sharkie is an Australian politician representing the Division of Mayo, the passages do not establish the critical connection between:
+
+1. The Division of Mayo and a specific town in South Australia
+2. Whether Stirling, South Australia is considered a suburb of that town
+
+Additionally, passage [2] indicates that Crafers is considered "a suburb of the nearby township of Stirling" (not the reverse), which contradicts the claim's assertion that Stirling is considered a suburb of another town.
+
+**Missing evidence documents needed:**
+- Information about the Division of Mayo's geographical coverage and which town(s) it represents in South Australia
+- Clarification of the administrative relationship between Stirling and other towns in the Adelaide Hills region
+- Evidence about whether Stirling is actually considered a suburb of another town (the available evidence suggests the opposite - that nearby townships like Crafers are suburbs of Stirling)
+
+[[ ## passages ## ]]
+[1] «Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.»
+[2] «Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.»
+[3] «Division of Mayo | The Division of Mayo is an Australian electoral division located to the east, south, south-east and south-west of Adelaide, South Australia.  Established in the South Australian redistribution of 3 September 1984, the division is named after Helen Mayo, a social activist and the first woman elected to an Australian University Council.  The 9,315 km² seat covers an area from Springton in the North to Goolwa in the South.  It takes in the Adelaide Hills, Fleurieu Peninsula and Kangaroo Island, including the towns of Bridgewater, Crafers, Echunga, Gumeracha, Hahndorf, Kingscote, Langhorne Creek, Lobethal, Macclesfield, Mount Barker, Myponga, Oakbank, Stirling, Strathalbyn, Victor Harbor, Woodside, Yankalilla, and part of Birdwood.»
+[4] «Callington, South Australia | Callington is a small town on the eastern slopes of the Adelaide Hills, in South Australia.  Callington is situated on the Bremer River, and is adjacent to the South Eastern Freeway and the Adelaide-Wolseley railway line, however no trains have stopped at the station for many years.  Callington is located within the state electoral district of Kavel and the federal division of Mayo.»
+[5] «Piccadilly Valley wine sub-region | Piccadilly Valley wine sub-region is a wine sub-region in South Australia located between the town of Summertown in the north and the towns of Stirling and Aldgate to its south in the Mount Lofty Ranges to the east of the Adelaide city centre.  The sub-region received appellation as an Australian Geographical Indication (AGI) on 14 April 2000.  The sub-region is part of the Adelaide Hills wine region and the Mount Lofty Ranges zone.»
+[6] «List of Adelaide suburbs | This is a list of the suburbs of Adelaide, the capital city of South Australia, with their postcodes and local government areas (LGAs).  This article does not include suburbs and localities within the Adelaide Hills region.»
+[7] «Marble Hill, South Australia | Marble Hill was the Vice-Regal summer residence for the Governor of South Australia for seventy-five years, from 1880 to 1955.  It is also the name of a ward of the Adelaide Hills Council, and a suburb, both named after the residence and in which the residence is located.  It is about 20 km east of Adelaide between the towns of Ashton and Cherryville, and has expansive views of the Adelaide Hills to the North and East, and the Adelaide Plains to the West.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze what the claim requires and what the passages provide:
+
+**Claim Requirements:**
+1. Stirling is considered a suburb of a town
+2. That town is represented by Rebekha Carina Che Sharkie
+3. Rebekha Carina Che Sharkie is an Australian politician
+
+**What the passages establish:**
+- Passage [3] confirms that the Division of Mayo is an electoral division and lists Stirling as one of the towns it covers
+- Passage [1] indicates that locals consider Crafers (a nearby township) to be "a suburb of the nearby township of Stirling" - this is the OPPOSITE of what the claim states
+- Passage [2] provides details about Stirling itself but does not identify it as a suburb of another town
+- The passages do NOT mention Rebekha Carina Che Sharkie at all
+
+**Critical Missing Information:**
+1. The passages never identify Rebekha Carina Che Sharkie or confirm she represents the Division of Mayo or any area containing Stirling
+2. The passages do not establish that Stirling is considered a suburb of any town - in fact, the evidence suggests the reverse relationship (Crafers is a suburb of Stirling)
+3. Even if we had confirmation of who represents the Division of Mayo, we would still need clarification about whether Stirling itself is actually a suburb of another town, as the current evidence contradicts this
+
+The context provided already notes this contradiction and identifies the missing evidence well. The passages demonstrate that Stirling is more likely a town (not a suburb) that has suburbs around it like Crafers.
+
+[[ ## summary ## ]]
+
+**Verification Status:** Cannot be verified; claim appears contradicted by available passages
+
+**What is present in the passages:**
+- Passage [3] identifies the Division of Mayo as an electoral division covering the Adelaide Hills region
+- Passage [3] explicitly lists Stirling as one of the towns within the Division of Mayo
+- Passage [1] indicates that Crafers is considered "a suburb of the nearby township of Stirling"
+- Passage [2] describes Stirling as a town with commercial infrastructure and neighboring townships
+
+**What is missing and contradicted:**
+1. **Identity of representative:** The passages do not mention Rebekha Carina Che Sharkie at all. A passage confirming she represents the Division of Mayo (or any division containing Stirling) is required.
+2. **Suburb relationship contradiction:** The claim states "Stirling is a suburb of a town," but passage [1] explicitly indicates the opposite - that Crafers is considered "a suburb of the nearby township of Stirling." Passage [2] refers to Stirling as "a town in the Adelaide Hills," not as a suburb of another town.
+3. **Missing evidence document:** A passage specifically identifying which politician currently represents the Division of Mayo would be needed to verify the connection between Stirling and Rebekha Carina Che Sharkie.
+
+The available evidence suggests Stirling functions as a town (not a suburb), making the core claim's premise factually incorrect based on the provided passages.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+The locals consider the township of Stirling a suburb of a town. That town is represented by  Rebekha Carina Che Sharkie, an Australian politician.
+
+[[ ## summary_1 ## ]]
+The claim cannot be fully verified with the provided passages. While the passages confirm that Rebekha Carina Che Sharkie is an Australian politician representing the Division of Mayo, the passages do not establish the critical connection between:
+
+1. The Division of Mayo and a specific town in South Australia
+2. Whether Stirling, South Australia is considered a suburb of that town
+
+Additionally, passage [2] indicates that Crafers is considered "a suburb of the nearby township of Stirling" (not the reverse), which contradicts the claim's assertion that Stirling is considered a suburb of another town.
+
+**Missing evidence documents needed:**
+- Information about the Division of Mayo's geographical coverage and which town(s) it represents in South Australia
+- Clarification of the administrative relationship between Stirling and other towns in the Adelaide Hills region
+- Evidence about whether Stirling is actually considered a suburb of another town (the available evidence suggests the opposite - that nearby townships like Crafers are suburbs of Stirling)
+
+[[ ## summary_2 ## ]]
+**Verification Status:** Cannot be verified; claim appears contradicted by available passages
+
+**What is present in the passages:**
+- Passage [3] identifies the Division of Mayo as an electoral division covering the Adelaide Hills region
+- Passage [3] explicitly lists Stirling as one of the towns within the Division of Mayo
+- Passage [1] indicates that Crafers is considered "a suburb of the nearby township of Stirling"
+- Passage [2] describes Stirling as a town with commercial infrastructure and neighboring townships
+
+**What is missing and contradicted:**
+1. **Identity of representative:** The passages do not mention Rebekha Carina Che Sharkie at all. A passage confirming she represents the Division of Mayo (or any division containing Stirling) is required.
+2. **Suburb relationship contradiction:** The claim states "Stirling is a suburb of a town," but passage [1] explicitly indicates the opposite - that Crafers is considered "a suburb of the nearby township of Stirling." Passage [2] refers to Stirling as "a town in the Adelaide Hills," not as a suburb of another town.
+3. **Missing evidence document:** A passage specifically identifying which politician currently represents the Division of Mayo would be needed to verify the connection between Stirling and Rebekha Carina Che Sharkie.
+
+The available evidence suggests Stirling functions as a town (not a suburb), making the core claim's premise factually incorrect based on the provided passages.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+Both summaries identify critical gaps and contradictions in verifying the claim. The key issues are:
+
+1. The claim states Stirling is a suburb of a town, but the passages indicate Stirling itself is a town, with other townships (like Crafers) being suburbs of Stirling - the relationship is reversed.
+
+2. While Rebekha Carina Che Sharkie is confirmed as an Australian politician, there is no connection established in the passages between her and the Division of Mayo or Stirling.
+
+3. To verify the claim, we need to establish: (a) that Rebekha Carina Che Sharkie represents the Division of Mayo, and (b) clarify the administrative/geographical relationship between Stirling and surrounding towns to determine if Stirling is actually considered a suburb of another town or if it is itself a town.
+
+The most direct approach is to query information that would either confirm or definitively refute the suburb relationship claimed.
+
+[[ ## query ## ]]
+Is Stirling, South Australia a suburb of Adelaide or another town, and does Rebekha Carina Che Sharkie represent the electoral division that includes Stirling?
+
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Rebekha Sharkie | Rebekha Carina Che Sharkie (born 1972) is an Australian politician.  Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election, she is the first Nick Xenophon Team member to be elected to the Australian House of Representatives.
+Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.
+Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.
+Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.
+Electoral district of Heysen | Heysen is an electoral district of the House of Assembly in the Australian state of South Australia.  It is named after Sir Hans Heysen, a prominent South Australian landscape artist.  It is a 1,102 km² electoral district that takes in some of the outer southern suburbs of Adelaide before fanning south-east to include most of the Adelaide Hills, as well as farming areas some distance from the capital.  It includes the areas of Aldgate, Bridgewater, Echunga, Hahndorf, Macclesfield, Meadows, Stirling and Strathalbyn, as well as part of Mount Barker.  Although geographically it is a hybrid urban-rural seat, it is counted as a metropolitan seat.
+Division of Mayo | The Division of Mayo is an Australian electoral division located to the east, south, south-east and south-west of Adelaide, South Australia.  Established in the South Australian redistribution of 3 September 1984, the division is named after Helen Mayo, a social activist and the first woman elected to an Australian University Council.  The 9,315 km² seat covers an area from Springton in the North to Goolwa in the South.  It takes in the Adelaide Hills, Fleurieu Peninsula and Kangaroo Island, including the towns of Bridgewater, Crafers, Echunga, Gumeracha, Hahndorf, Kingscote, Langhorne Creek, Lobethal, Macclesfield, Mount Barker, Myponga, Oakbank, Stirling, Strathalbyn, Victor Harbor, Woodside, Yankalilla, and part of Birdwood.
+Electoral district of Stirling (South Australia) | Stirling was an electoral district of the House of Assembly in the Australian state of South Australia from 1938 to 1970.
+Stirling North, South Australia | Stirling North is a suburb located 7 km east of Port Augusta in South Australia.  It acts primarily as a satellite town to Port Augusta with the town's railway station lying at a major rail junction linking the Port Augusta power station and the main east-west rail link to the coal rail link to Leigh Creek.  It also lies on the junction of the Augusta Highway and the Flinders Ranges Way.  At the 2006 census , Stirling North had a population of 1,698.
+Division of Wakefield | The Division of Wakefield is an Australian electoral division in the state of South Australia.  The rural 6,407 km² seat is really a hybrid rural-urban electorate that stretches from Salisbury in the outer northern suburbs of Adelaide at the south of the seat right through to the Clare Valley at the north of the seat, 135 km from Adelaide.  It includes the suburbs of Elizabeth, Craigmore, Munno Para, and part of Salisbury, and the towns of Balaklava, Clare, Freeling, Gawler, Kapunda, Mallala, Riverton, Tarlee, Virginia, Williamstown, and part of Port Wakefield.
+Division of Adelaide | The Division of Adelaide is an Australian electoral division in South Australia and is named for the city of Adelaide, South Australia's capital.  The 76 km² seat is centred on the Adelaide city centre and spans from Grand Junction Road in the north to Cross Road in the south and from Portrush Road in the east to South Road in the west, taking in suburbs including Ashford, Clarence Park, Enfield, Goodwood, Kent Town, Keswick, Kilburn, Maylands, Northgate, Norwood, Parkside, Prospect, Rose Park, St Peters, Toorak Gardens, Unley and Walkerville.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Rebekha Sharkie | Rebekha Carina Che Sharkie (born 1972) is an Australian politician.  Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election, she is the first Nick Xenophon Team member to be elected to the Australian House of Representatives.
+Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.
+Jamie Briggs | Jamie Edward Briggs (born 9 June 1977) is a former Australian politician, who represented the House of Representatives seat of Mayo for the Liberal Party of Australia from the 2008 Mayo by-election to the 2 July 2016 federal election.  Briggs was promoted from a shadow parliamentary secretary role to the outer ministry upon the 2013 election of the Abbott Government.  He remained in the outer ministry though with a change in portfolio upon the ascension of the Turnbull Government, however he quit the ministry and moved to the backbench in late 2015 following inappropriate conduct during an official overseas trip.  Briggs lost his seat in the 2016 federal election to Nick Xenophon Team candidate Rebekha Sharkie.
+Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.
+Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.
+Thiruvilandur | Thiruvilandur is a town situated to the north of the town of Mayiladuthurai in Tamil Nadu, India.  The area is also called Indalur.  It is considered to be a suburb of Mayiladuthurai.  The township is famous for Parimala_Ranganatha_Perumal_Temple of lord Vishnu which is one of the 108 divyadesams of Mahavishnu.
+City of Stirling | The City of Stirling is a local government area in the northern suburbs of the Western Australian capital city of Perth about 10 km north of Perth's central business district.  The City covers an area of 105.2 km2 and had a population of 205,960 in 2011, making it the largest local government area by population in Western Australia.
+Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.
+Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.
+Division of Mayo | The Division of Mayo is an Australian electoral division located to the east, south, south-east and south-west of Adelaide, South Australia.  Established in the South Australian redistribution of 3 September 1984, the division is named after Helen Mayo, a social activist and the first woman elected to an Australian University Council.  The 9,315 km² seat covers an area from Springton in the North to Goolwa in the South.  It takes in the Adelaide Hills, Fleurieu Peninsula and Kangaroo Island, including the towns of Bridgewater, Crafers, Echunga, Gumeracha, Hahndorf, Kingscote, Langhorne Creek, Lobethal, Macclesfield, Mount Barker, Myponga, Oakbank, Stirling, Strathalbyn, Victor Harbor, Woodside, Yankalilla, and part of Birdwood.
+Callington, South Australia | Callington is a small town on the eastern slopes of the Adelaide Hills, in South Australia.  Callington is situated on the Bremer River, and is adjacent to the South Eastern Freeway and the Adelaide-Wolseley railway line, however no trains have stopped at the station for many years.  Callington is located within the state electoral district of Kavel and the federal division of Mayo.
+Piccadilly Valley wine sub-region | Piccadilly Valley wine sub-region is a wine sub-region in South Australia located between the town of Summertown in the north and the towns of Stirling and Aldgate to its south in the Mount Lofty Ranges to the east of the Adelaide city centre.  The sub-region received appellation as an Australian Geographical Indication (AGI) on 14 April 2000.  The sub-region is part of the Adelaide Hills wine region and the Mount Lofty Ranges zone.
+List of Adelaide suburbs | This is a list of the suburbs of Adelaide, the capital city of South Australia, with their postcodes and local government areas (LGAs).  This article does not include suburbs and localities within the Adelaide Hills region.
+Marble Hill, South Australia | Marble Hill was the Vice-Regal summer residence for the Governor of South Australia for seventy-five years, from 1880 to 1955.  It is also the name of a ward of the Adelaide Hills Council, and a suburb, both named after the residence and in which the residence is located.  It is about 20 km east of Adelaide between the towns of Ashton and Cherryville, and has expansive views of the Adelaide Hills to the North and East, and the Adelaide Plains to the West.
+Rebekha Sharkie | Rebekha Carina Che Sharkie (born 1972) is an Australian politician.  Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election, she is the first Nick Xenophon Team member to be elected to the Australian House of Representatives.
+Division of Stirling | The Division of Stirling is an Australian electoral division in the inner northern and beachside suburbs of Perth, Western Australia, and includes a large portion of the local government area of the City of Stirling.
+Stirling, South Australia | Stirling is a town in the Adelaide Hills, South Australia, approximately 16 km from the Adelaide city centre.  The area in the east of Stirling Stirling East.  It is administered by the Adelaide Hills Council.  Its population is about 2500, though the town has largely merged with neighbouring townships such as Crafers and Aldgate.  Other nearby towns are Heathfield and Bridgewater.  Of those five, Stirling has by far the largest commercial strip, with the greatest number and widest variety of shops, the only police station, the only banks and the only ATMs.
+Crafers, South Australia | The town of Crafers is in the Adelaide Hills to the south-east of Adelaide, South Australia.  Although technically considered to be an outer suburb of Adelaide, with many residents commuting to the city to work, locals consider Crafers to be more a suburb of the nearby township of Stirling.
+Electoral district of Heysen | Heysen is an electoral district of the House of Assembly in the Australian state of South Australia.  It is named after Sir Hans Heysen, a prominent South Australian landscape artist.  It is a 1,102 km² electoral district that takes in some of the outer southern suburbs of Adelaide before fanning south-east to include most of the Adelaide Hills, as well as farming areas some distance from the capital.  It includes the areas of Aldgate, Bridgewater, Echunga, Hahndorf, Macclesfield, Meadows, Stirling and Strathalbyn, as well as part of Mount Barker.  Although geographically it is a hybrid urban-rural seat, it is counted as a metropolitan seat.
+Division of Mayo | The Division of Mayo is an Australian electoral division located to the east, south, south-east and south-west of Adelaide, South Australia.  Established in the South Australian redistribution of 3 September 1984, the division is named after Helen Mayo, a social activist and the first woman elected to an Australian University Council.  The 9,315 km² seat covers an area from Springton in the North to Goolwa in the South.  It takes in the Adelaide Hills, Fleurieu Peninsula and Kangaroo Island, including the towns of Bridgewater, Crafers, Echunga, Gumeracha, Hahndorf, Kingscote, Langhorne Creek, Lobethal, Macclesfield, Mount Barker, Myponga, Oakbank, Stirling, Strathalbyn, Victor Harbor, Woodside, Yankalilla, and part of Birdwood.
+Electoral district of Stirling (South Australia) | Stirling was an electoral district of the House of Assembly in the Australian state of South Australia from 1938 to 1970.
+Stirling North, South Australia | Stirling North is a suburb located 7 km east of Port Augusta in South Australia.  It acts primarily as a satellite town to Port Augusta with the town's railway station lying at a major rail junction linking the Port Augusta power station and the main east-west rail link to the coal rail link to Leigh Creek.  It also lies on the junction of the Augusta Highway and the Flinders Ranges Way.  At the 2006 census , Stirling North had a population of 1,698.
+Division of Wakefield | The Division of Wakefield is an Australian electoral division in the state of South Australia.  The rural 6,407 km² seat is really a hybrid rural-urban electorate that stretches from Salisbury in the outer northern suburbs of Adelaide at the south of the seat right through to the Clare Valley at the north of the seat, 135 km from Adelaide.  It includes the suburbs of Elizabeth, Craigmore, Munno Para, and part of Salisbury, and the towns of Balaklava, Clare, Freeling, Gawler, Kapunda, Mallala, Riverton, Tarlee, Virginia, Williamstown, and part of Port Wakefield.
+Division of Adelaide | The Division of Adelaide is an Australian electoral division in South Australia and is named for the city of Adelaide, South Australia's capital.  The 76 km² seat is centred on the Adelaide city centre and spans from Grand Junction Road in the north to Cross Road in the south and from Portrush Road in the east to South Road in the west, taking in suburbs including Ashford, Clarence Park, Enfield, Goodwood, Kent Town, Keswick, Kilburn, Maylands, Northgate, Norwood, Parkside, Prospect, Rose Park, St Peters, Toorak Gardens, Unley and Walkerville.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.6 (Solver_Passage_Content_Misreading), anchored near step 7: evidence: After hop 1, the solver states: 'passage [2] indicates that Crafers is considered "a suburb of the nearby township of Stirling" (not the reverse), which contradicts the claim's assertion that Stirling is considered a suburb of another town.' The solver misreads the claim's structure. The claim states 'The locals consider the township of Stirling a suburb of a town' - meaning some OTHER town/entity
+- code B.10 (Evidence_Present_But_Missed), anchored near step UNKNOWN: evidence: After hop 2, the solver states: 'The passages do not mention Rebekha Carina Che Sharkie at all.' However, passage [1] from hop 1 explicitly states: 'Rebekha Carina Che Sharkie (born 1972) is an Australian politician. Representing the Division of Mayo since defeating Liberal Jamie Briggs at the 2016 federal election.' This passage was available in the hop 1 retrieval and confirms both her identity 
+- code B.11 (Missing_Evidence_Not_Specified), anchored near step UNKNOWN: evidence: After hop 1, the solver summary states: 'Which town in South Australia is represented by the Division of Mayo that Rebekha Sharkie represents, and is Stirling actually considered a suburb of that town?' This identifies a gap but does not name a specific missing entity or document title. After hop 2, the solver identifies 'Missing evidence document: A passage specifically identifying which politici
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query hop 2: 'Division of Mayo geographical coverage towns suburbs Adelaide Hills South Australia' vs Query hop 3: 'Is Stirling, South Australia a suburb of Adelaide or another town, and does Rebekha Carina Che Sharkie represent the electoral division that includes Stirling?' Both queries seek to establish the relationship between Stirling, Division of Mayo, and Adelaide/surrounding geography. The
+- code C.1 (Broken_Multi_Hop_Chain), anchored near step UNKNOWN: evidence: The claim requires a two-hop chain: (1) identify the town that locals consider Stirling a suburb of, (2) verify that town is represented by Rebekha Sharkie. The solver's summaries fail to maintain this chain. After hop 1, solver has passages showing Stirling is in Division of Mayo (passage about Division of Mayo coverage would come later) and that Sharkie represents Mayo, but never connects these.
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}

@@ -1,0 +1,414 @@
+You are performing dependency analysis on one execution trace of a fixed
+three-hop retrieval program. You will (a) enumerate every distinct
+occurrence of each identified failure, then (b) type the dependencies
+between those occurrences. You assert only LOCAL, trace-checkable
+claims; you never decide whether anything "recovered" — that is computed
+from your edges downstream.
+
+PROGRAM EXPECTATION (spec-only prior)
+-------------------------------------
+```json
+{
+  "expected_flow": [
+    "Receive the claim to verify as input to the pipeline",
+    "Hop-1: Retriever performs BM25 search over Wikipedia abstracts using a keyword-style query derived from the claim",
+    "Hop-1: Retriever returns a set of Wikipedia abstract documents",
+    "Solver receives hop-1 retrieved documents and the claim, then produces summary 1 describing what the passages establish about the claim and what information is still missing",
+    "Coordinator receives solver summary 1 and transforms it into a keyword-style query for hop-2 retrieval",
+    "Hop-2: Retriever performs BM25 search using the coordinator's query",
+    "Hop-2: Retriever returns a second set of Wikipedia abstract documents",
+    "Solver receives hop-2 retrieved documents (and possibly accumulated context) and the claim, then produces summary 2 describing what is now established and what remains missing",
+    "Coordinator receives solver summary 2 and transforms it into a keyword-style query for hop-3 retrieval",
+    "Hop-3: Retriever performs BM25 search using the coordinator's query",
+    "Hop-3: Retriever returns a third set of Wikipedia abstract documents",
+    "Final output is produced by concatenating all documents retrieved across the three hops, without any verdict or additional analysis"
+  ],
+  "role_boundaries": {
+    "retriever": "Should only perform BM25 keyword search over Wikipedia abstracts and return matching documents; should not interpret the claim, summarize content, generate natural language explanations, or make verification decisions; must accept keyword-style queries as input",
+    "solver": "Should only analyze retrieved passages in relation to the claim and produce summaries identifying what has been established and what information is missing; should not perform retrieval, generate retrieval queries directly, or produce final verification verdicts; must output summaries suitable for the coordinator to process",
+    "coordinator": "Should only transform solver summaries into keyword-style retrieval queries appropriate for BM25 search; should not perform retrieval itself, analyze document content, summarize findings, or make verification decisions; must output queries consumable by the retriever"
+  },
+  "risk_patterns": [
+    "Solver may produce verbose natural language summaries that the coordinator cannot effectively convert into keyword-style queries.",
+    "Coordinator may generate overly broad or overly narrow queries that fail to retrieve relevant information for subsequent hops.",
+    "Retriever may return no documents or irrelevant documents at any hop, causing downstream components to work with incomplete information.",
+    "Solver may fail to correctly identify what information is missing, causing coordinator to generate redundant queries that retrieve similar documents.",
+    "Pipeline may lose focus on the original claim across hops as queries drift based on intermediate retrieved content.",
+    "Coordinator may produce queries that are too similar across hops, failing to explore different aspects of the claim.",
+    "Solver may attempt to make verification judgments instead of only summarizing evidence and gaps.",
+    "Coordinator may generate non-keyword queries (e.g., full questions or sentences) incompatible with BM25 retrieval.",
+    "The fixed three-hop structure may be insufficient or excessive for claims requiring different numbers of retrieval steps.",
+    "Concatenation of all retrieved documents may include substantial redundancy if hops retrieve overlapping content."
+  ]
+}
+```
+
+TRACE (numbered steps)
+----------------------
+[STEP 1] (user) Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Horror movie R-Point, set in 1972 Kenya, was filmed partially in a location about 3 miles south-west of Povokvil Waterfalls.
+[STEP 2] (user) RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Povokvil Waterfalls | Povokvil Waterfalls is a waterfall in Kampot Province, Cambodia.  It is located about 3 mi north-east of Bokor Hill Station.  It is a two-tiered fall, with a shallow pool in between.
+Bokor Hill Station | Bokor Hill Station (in Khmer: កស្ថានីយភ្នំបូកគោ "Kosthany Phnom Bokor") refers to a collection of French colonial buildings (hotel & casino, church, royal residence etc. ), constructed as a temperate mountain luxury resort and retreat for colonial residents in the early 1920s atop Bokor Mountain in Preah Monivong National Park, about 37 km west of Kampot in southern Cambodia.  Abandoned for long periods of time, modern infrastructure has made the location easily accessible as re-development is taking place.  It was used as the location for the final showdown of the movie "City of Ghosts" (2002) and the 2004 film "R-Point".  To the north-east are the Povokvil Waterfalls.
+R-Point | R-Point () is a 2004 Korean horror film written and directed by Kong Su-chang.  Set in 1972 Vietnam, during the Vietnam War, it stars Kam Woo-sung and Son Byong-ho as members of the South Korean military in Vietnam.  Most of the movie was shot in Cambodia.  Bokor Hill Station plays a prominent part of the movie, in this case doubling as a colonial French plantation.
+Brontë Waterfall | The Brontë Waterfall is a small waterfall located about a mile south west of Stanbury, near Haworth, West Yorkshire, England.  The area surrounding the waterfall is mainly moorland and farmland but is part of Brontë Country.  It is an area of outstanding beauty and famous for its association with the Brontë sisters.  Below the falls can be found an old stone bridge named "Brontë Bridge" across South Dean Beck.  The bridge was destroyed in a flash flood in May 1989 and rebuilt in 1990.
+List of films set in Puerto Rico | this is a partial list of films set in Puerto Rico; either the movie's plot includes that island, the movie has been filmed there, or both.  Certain movies that are supposed to be set in Cuba are filmed in Puerto Rico because of the U.S. embargo and similarities between both islands.  To learn more about the films of Puerto Rico, see Cinema of Puerto Rico.
+Hobbiton Movie Set | The Hobbiton Movie Set was a significant location used for "The Lord of the Rings" film trilogy and "The Hobbit" film series.  It is situated on a family run farm about 8 km west of Hinuera and 10 km southwest of Matamata, in Waikato, New Zealand, and is now a Tolkien tourism destination, offering guided tours of the set.
+High Point, Missouri | High Point is an unincorporated community in southern Moniteau County, Missouri, United States.  It is located ten miles south of California about one mile west of Route 87.
+[STEP 3] (system) Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `passages`, produce the fields `summary`.
+        
+        Your task is to analyze whether the claim can be verified from the provided passages. Your summary will be used by a retrieval system to find additional evidence documents through a three-hop retrieval process, so it must explicitly identify ALL entities, topics, and concepts that require verification.
+        
+        Instructions:
+        
+        1. Carefully parse the claim to identify ALL entities, relationships, and factual assertions being made.
+        
+        2. Cross-reference each component of the claim against the provided passages.
+        
+        3. For each entity or concept mentioned in your analysis, explicitly state what additional information would be needed to fully verify the claim. This is critical for the retrieval system.
+        
+        4. In your summary, you must:
+           - Clearly state whether the claim can be fully verified, partially verified, or not verified
+           - Identify by full name and context ANY entities mentioned in the passages that are central to the claim but lack sufficient detail (e.g., if "Ellis Ferreira" is mentioned as a partner, explicitly note that information about Ellis Ferreira's career achievements/awards would be needed)
+           - When locations are mentioned vaguely (e.g., "serves students in a census-designated place"), explicitly identify what specific location information is missing (e.g., "the specific census-designated place where H. Frank Carey Junior-Senior High School is located")
+           - When comparisons are made between works/series (e.g., "Brazilian series has been compared to"), explicitly name both works in full with their complete titles and note that information about the comparison and the full details of each series is needed (e.g., "Sítio do Picapau Amarelo novel series" as a complete series requiring verification)
+           - Use full, formal names for all entities (e.g., "Sítio do Picapau Amarelo novel series" not just "Brazilian series")
+        
+        5. Structure your summary to enable multi-hop retrieval by making explicit what information about each identified entity would resolve the claim.
+        
+        The goal is to write a summary that allows a retrieval system to identify and fetch every document needed to fully verify or refute the claim.
+[STEP 4] (user) [[ ## claim ## ]]
+Horror movie R-Point, set in 1972 Kenya, was filmed partially in a location about 3 miles south-west of Povokvil Waterfalls.
+
+[[ ## passages ## ]]
+[1] «Povokvil Waterfalls | Povokvil Waterfalls is a waterfall in Kampot Province, Cambodia.  It is located about 3 mi north-east of Bokor Hill Station.  It is a two-tiered fall, with a shallow pool in between.»
+[2] «Bokor Hill Station | Bokor Hill Station (in Khmer: កស្ថានីយភ្នំបូកគោ "Kosthany Phnom Bokor") refers to a collection of French colonial buildings (hotel & casino, church, royal residence etc. ), constructed as a temperate mountain luxury resort and retreat for colonial residents in the early 1920s atop Bokor Mountain in Preah Monivong National Park, about 37 km west of Kampot in southern Cambodia.  Abandoned for long periods of time, modern infrastructure has made the location easily accessible as re-development is taking place.  It was used as the location for the final showdown of the movie "City of Ghosts" (2002) and the 2004 film "R-Point".  To the north-east are the Povokvil Waterfalls.»
+[3] «R-Point | R-Point () is a 2004 Korean horror film written and directed by Kong Su-chang.  Set in 1972 Vietnam, during the Vietnam War, it stars Kam Woo-sung and Son Byong-ho as members of the South Korean military in Vietnam.  Most of the movie was shot in Cambodia.  Bokor Hill Station plays a prominent part of the movie, in this case doubling as a colonial French plantation.»
+[4] «Brontë Waterfall | The Brontë Waterfall is a small waterfall located about a mile south west of Stanbury, near Haworth, West Yorkshire, England.  The area surrounding the waterfall is mainly moorland and farmland but is part of Brontë Country.  It is an area of outstanding beauty and famous for its association with the Brontë sisters.  Below the falls can be found an old stone bridge named "Brontë Bridge" across South Dean Beck.  The bridge was destroyed in a flash flood in May 1989 and rebuilt in 1990.»
+[5] «List of films set in Puerto Rico | this is a partial list of films set in Puerto Rico; either the movie's plot includes that island, the movie has been filmed there, or both.  Certain movies that are supposed to be set in Cuba are filmed in Puerto Rico because of the U.S. embargo and similarities between both islands.  To learn more about the films of Puerto Rico, see Cinema of Puerto Rico.»
+[6] «Hobbiton Movie Set | The Hobbiton Movie Set was a significant location used for "The Lord of the Rings" film trilogy and "The Hobbit" film series.  It is situated on a family run farm about 8 km west of Hinuera and 10 km southwest of Matamata, in Waikato, New Zealand, and is now a Tolkien tourism destination, offering guided tours of the set.»
+[7] «High Point, Missouri | High Point is an unincorporated community in southern Moniteau County, Missouri, United States.  It is located ten miles south of California about one mile west of Route 87.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 5] (assistant) [[ ## reasoning ## ]]
+
+Let me analyze the claim against the provided passages:
+
+The claim states: "Horror movie R-Point, set in 1972 Kenya, was filmed partially in a location about 3 miles south-west of Povokvil Waterfalls."
+
+Breaking down the claim's components:
+1. R-Point is a horror movie - VERIFIED (Passage 3)
+2. Set in 1972 - PARTIALLY VERIFIED but with a critical discrepancy (Passage 3 states it is "Set in 1972 Vietnam, during the Vietnam War," NOT Kenya)
+3. Kenya setting - NOT VERIFIED (contradicted by Passage 3 which states Vietnam)
+4. Filmed partially about 3 miles south-west of Povokvil Waterfalls - CONTRADICTED
+
+From Passage 3: R-Point was shot in Cambodia and used Bokor Hill Station as a filming location.
+
+From Passage 2: Bokor Hill Station is located about 37 km west of Kampot in southern Cambodia, and "To the north-east are the Povokvil Waterfalls."
+
+From Passage 1: Povokvil Waterfalls is located about 3 miles north-east of Bokor Hill Station.
+
+The directional relationship is clear: Bokor Hill Station is about 3 miles SOUTH-WEST of Povokvil Waterfalls (inverse of the north-east relationship stated). However, the claim's setting location (Kenya) directly contradicts the verified information that R-Point is set in Vietnam and was filmed in Cambodia.
+
+[[ ## summary ## ]]
+
+**Verification Status: CLAIM IS LARGELY CONTRADICTED**
+
+The claim contains a critical factual error regarding the setting of R-Point. According to the passages, R-Point is set in 1972 Vietnam during the Vietnam War, NOT in Kenya. This is a fundamental misidentification of the film's narrative setting.
+
+However, regarding the filming location claim: The passages confirm that R-Point was partially filmed in Cambodia at Bokor Hill Station, which is indeed located approximately 3 miles south-west of Povokvil Waterfalls (as Povokvil Waterfalls is stated to be north-east of Bokor Hill Station). This geographical detail about the filming location appears accurate.
+
+**Entities and concepts requiring verification:**
+1. **R-Point (2004 Korean horror film)** - Confirmed as a horror film; however, the narrative setting is confirmed as 1972 Vietnam (not Kenya)
+2. **Bokor Hill Station** - Confirmed as a filming location for R-Point; confirmed to be approximately 3 miles south-west of Povokvil Waterfalls
+3. **Povokvil Waterfalls** - Confirmed location in Kampot Province, Cambodia, positioned north-east of Bokor Hill Station
+4. **Kenya** - The claim's assertion that R-Point is set in Kenya appears to be entirely incorrect based on available information
+
+**Missing information needed:** Clarification on why the claim identifies the setting as Kenya when all available evidence indicates the film is set in Vietnam. Whether there is any secondary or alternate setting in Kenya not mentioned in the passages would require additional sources beyond those provided.
+
+[[ ## completed ## ]]
+[STEP 6] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, produce the fields `query`.
+[STEP 7] (user) [[ ## claim ## ]]
+Horror movie R-Point, set in 1972 Kenya, was filmed partially in a location about 3 miles south-west of Povokvil Waterfalls.
+
+[[ ## summary_1 ## ]]
+**Verification Status: CLAIM IS LARGELY CONTRADICTED**
+
+The claim contains a critical factual error regarding the setting of R-Point. According to the passages, R-Point is set in 1972 Vietnam during the Vietnam War, NOT in Kenya. This is a fundamental misidentification of the film's narrative setting.
+
+However, regarding the filming location claim: The passages confirm that R-Point was partially filmed in Cambodia at Bokor Hill Station, which is indeed located approximately 3 miles south-west of Povokvil Waterfalls (as Povokvil Waterfalls is stated to be north-east of Bokor Hill Station). This geographical detail about the filming location appears accurate.
+
+**Entities and concepts requiring verification:**
+1. **R-Point (2004 Korean horror film)** - Confirmed as a horror film; however, the narrative setting is confirmed as 1972 Vietnam (not Kenya)
+2. **Bokor Hill Station** - Confirmed as a filming location for R-Point; confirmed to be approximately 3 miles south-west of Povokvil Waterfalls
+3. **Povokvil Waterfalls** - Confirmed location in Kampot Province, Cambodia, positioned north-east of Bokor Hill Station
+4. **Kenya** - The claim's assertion that R-Point is set in Kenya appears to be entirely incorrect based on available information
+
+**Missing information needed:** Clarification on why the claim identifies the setting as Kenya when all available evidence indicates the film is set in Vietnam. Whether there is any secondary or alternate setting in Kenya not mentioned in the passages would require additional sources beyond those provided.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 8] (assistant) [[ ## reasoning ## ]]
+The summary indicates that the claim contains a critical factual error regarding the film's setting. The claim states R-Point is "set in 1972 Kenya," but the verification confirms the film is actually set in 1972 Vietnam during the Vietnam War. However, the filming location detail (approximately 3 miles south-west of Povokvil Waterfalls in Cambodia) is verified as accurate. To properly assess this claim, we need to determine whether there is any connection between R-Point and Kenya, or if this is simply a complete misidentification of the film's setting.
+
+[[ ## query ## ]]
+Is the horror film R-Point (2004) set in Kenya or Vietnam? Does R-Point have any scenes or narrative elements set in Kenya, or is the film's entire setting exclusively in Vietnam during the Vietnam War?
+
+[[ ## completed ## ]]
+[STEP 9] (user) RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+R-Point | R-Point () is a 2004 Korean horror film written and directed by Kong Su-chang.  Set in 1972 Vietnam, during the Vietnam War, it stars Kam Woo-sung and Son Byong-ho as members of the South Korean military in Vietnam.  Most of the movie was shot in Cambodia.  Bokor Hill Station plays a prominent part of the movie, in this case doubling as a colonial French plantation.
+Missing in Action (film) | Missing in Action is a 1984 American action film directed by Joseph Zito and starring Chuck Norris.  It is set in the context of the Vietnam War POW/MIA issue.  Colonel Braddock, who escaped a Vietnamese prisoner of war camp 10 years earlier, returns to Vietnam to find American soldiers listed as missing in action during the Vietnam War.  The film was followed by a prequel, "" (1985), and a sequel, "" (1988).
+Weird Wars | Weird Wars is a series of horror role-playing games set during past and future wars and published by Pinnacle Entertainment Group.  The original release, "Weird War II: Blood on the Rhine" was set during World War II, and utilized the D20 System.  The second release, "Tour of Darkness" was set during the Vietnam War and employed the "Savage Worlds" rules set.
+Men of War: Vietnam | Men of War: Vietnam (Russian: Диверсанты:Вьетнам , or "Saboteurs: Vietnam") is a real-time tactics and strategy developed and published by 1C Company.  "Men of War: Vietnam" is the fourth game in the "Men of War" series.  The game was released on September 9, 2011, for Microsoft Windows.  The game is set during the Vietnam War.
+Vietnam War Crimes Working Group | The Vietnam War Crimes Working Group (VWCWG) was a Pentagon task force set up in the wake of the My Lai Massacre and its media disclosure, to attempt to ascertain the veracity of emerging claims of war crimes by U.S. armed forces in Vietnam, during the Vietnam War period.
+Dogfight (film) | Dogfight is a 1991 film set in San Francisco, California, during the Vietnam War (1963 – 1966).  It stars River Phoenix and Lili Taylor, and was directed by Nancy Savoca.
+Strike Fighters 2: Vietnam | Strike Fighters 2 : Vietnam is a PC game (Combat / Flight Simulator) based on Wings Over Vietnam set during the Vietnam War over South East Asia, and covers the time period between 1964 and 1973.
+[STEP 10] (system) Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `context`, `passages`, produce the fields `summary`.
+[STEP 11] (user) [[ ## claim ## ]]
+Horror movie R-Point, set in 1972 Kenya, was filmed partially in a location about 3 miles south-west of Povokvil Waterfalls.
+
+[[ ## context ## ]]
+**Verification Status: CLAIM IS LARGELY CONTRADICTED**
+
+The claim contains a critical factual error regarding the setting of R-Point. According to the passages, R-Point is set in 1972 Vietnam during the Vietnam War, NOT in Kenya. This is a fundamental misidentification of the film's narrative setting.
+
+However, regarding the filming location claim: The passages confirm that R-Point was partially filmed in Cambodia at Bokor Hill Station, which is indeed located approximately 3 miles south-west of Povokvil Waterfalls (as Povokvil Waterfalls is stated to be north-east of Bokor Hill Station). This geographical detail about the filming location appears accurate.
+
+**Entities and concepts requiring verification:**
+1. **R-Point (2004 Korean horror film)** - Confirmed as a horror film; however, the narrative setting is confirmed as 1972 Vietnam (not Kenya)
+2. **Bokor Hill Station** - Confirmed as a filming location for R-Point; confirmed to be approximately 3 miles south-west of Povokvil Waterfalls
+3. **Povokvil Waterfalls** - Confirmed location in Kampot Province, Cambodia, positioned north-east of Bokor Hill Station
+4. **Kenya** - The claim's assertion that R-Point is set in Kenya appears to be entirely incorrect based on available information
+
+**Missing information needed:** Clarification on why the claim identifies the setting as Kenya when all available evidence indicates the film is set in Vietnam. Whether there is any secondary or alternate setting in Kenya not mentioned in the passages would require additional sources beyond those provided.
+
+[[ ## passages ## ]]
+[1] «R-Point | R-Point () is a 2004 Korean horror film written and directed by Kong Su-chang.  Set in 1972 Vietnam, during the Vietnam War, it stars Kam Woo-sung and Son Byong-ho as members of the South Korean military in Vietnam.  Most of the movie was shot in Cambodia.  Bokor Hill Station plays a prominent part of the movie, in this case doubling as a colonial French plantation.»
+[2] «Missing in Action (film) | Missing in Action is a 1984 American action film directed by Joseph Zito and starring Chuck Norris.  It is set in the context of the Vietnam War POW/MIA issue.  Colonel Braddock, who escaped a Vietnamese prisoner of war camp 10 years earlier, returns to Vietnam to find American soldiers listed as missing in action during the Vietnam War.  The film was followed by a prequel, "" (1985), and a sequel, "" (1988).»
+[3] «Weird Wars | Weird Wars is a series of horror role-playing games set during past and future wars and published by Pinnacle Entertainment Group.  The original release, "Weird War II: Blood on the Rhine" was set during World War II, and utilized the D20 System.  The second release, "Tour of Darkness" was set during the Vietnam War and employed the "Savage Worlds" rules set.»
+[4] «Men of War: Vietnam | Men of War: Vietnam (Russian: Диверсанты:Вьетнам , or "Saboteurs: Vietnam") is a real-time tactics and strategy developed and published by 1C Company.  "Men of War: Vietnam" is the fourth game in the "Men of War" series.  The game was released on September 9, 2011, for Microsoft Windows.  The game is set during the Vietnam War.»
+[5] «Vietnam War Crimes Working Group | The Vietnam War Crimes Working Group (VWCWG) was a Pentagon task force set up in the wake of the My Lai Massacre and its media disclosure, to attempt to ascertain the veracity of emerging claims of war crimes by U.S. armed forces in Vietnam, during the Vietnam War period.»
+[6] «Dogfight (film) | Dogfight is a 1991 film set in San Francisco, California, during the Vietnam War (1963 – 1966).  It stars River Phoenix and Lili Taylor, and was directed by Nancy Savoca.»
+[7] «Strike Fighters 2: Vietnam | Strike Fighters 2 : Vietnam is a PC game (Combat / Flight Simulator) based on Wings Over Vietnam set during the Vietnam War over South East Asia, and covers the time period between 1964 and 1973.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 12] (assistant) [[ ## reasoning ## ]]
+The claim makes two specific assertions about the horror film R-Point:
+1. That it is set in 1972 Kenya
+2. That it was filmed partially about 3 miles south-west of Povokvil Waterfalls
+
+Examining the evidence from the passages:
+
+**Setting Location:** Passage [1] explicitly states "Set in 1972 Vietnam, during the Vietnam War" - this directly contradicts the claim's assertion that R-Point is set in Kenya. The year 1972 is correct, but the geographical setting is Vietnam, not Kenya.
+
+**Filming Location:** Passage [1] confirms that "Most of the movie was shot in Cambodia" and specifically mentions "Bokor Hill Station plays a prominent part of the movie." The context provided notes that Bokor Hill Station is located approximately 3 miles south-west of Povokvil Waterfalls (with Povokvil Waterfalls being north-east of Bokor Hill Station). This geographical detail is verifiable and accurate.
+
+**Conclusion:** The claim contains a critical factual error regarding the primary narrative setting (Kenya vs. Vietnam) but appears accurate regarding the specific filming location relative to Povokvil Waterfalls. The claim is fundamentally contradicted on the most important detail - the film's setting - despite being correct about the filming location specifics.
+
+[[ ## summary ## ]]
+The claim is largely contradicted. While R-Point was indeed filmed partially in Cambodia approximately 3 miles south-west of Povokvil Waterfalls (which is accurate), the film is set in 1972 Vietnam during the Vietnam War, not in Kenya. The setting is a critical component of the claim, and this fundamental error significantly undermines the overall accuracy of the statement. Only the filming location detail can be verified as correct from available sources.
+
+[[ ## completed ## ]]
+[STEP 13] (system) Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `query`.
+[STEP 14] (user) [[ ## claim ## ]]
+Horror movie R-Point, set in 1972 Kenya, was filmed partially in a location about 3 miles south-west of Povokvil Waterfalls.
+
+[[ ## summary_1 ## ]]
+**Verification Status: CLAIM IS LARGELY CONTRADICTED**
+
+The claim contains a critical factual error regarding the setting of R-Point. According to the passages, R-Point is set in 1972 Vietnam during the Vietnam War, NOT in Kenya. This is a fundamental misidentification of the film's narrative setting.
+
+However, regarding the filming location claim: The passages confirm that R-Point was partially filmed in Cambodia at Bokor Hill Station, which is indeed located approximately 3 miles south-west of Povokvil Waterfalls (as Povokvil Waterfalls is stated to be north-east of Bokor Hill Station). This geographical detail about the filming location appears accurate.
+
+**Entities and concepts requiring verification:**
+1. **R-Point (2004 Korean horror film)** - Confirmed as a horror film; however, the narrative setting is confirmed as 1972 Vietnam (not Kenya)
+2. **Bokor Hill Station** - Confirmed as a filming location for R-Point; confirmed to be approximately 3 miles south-west of Povokvil Waterfalls
+3. **Povokvil Waterfalls** - Confirmed location in Kampot Province, Cambodia, positioned north-east of Bokor Hill Station
+4. **Kenya** - The claim's assertion that R-Point is set in Kenya appears to be entirely incorrect based on available information
+
+**Missing information needed:** Clarification on why the claim identifies the setting as Kenya when all available evidence indicates the film is set in Vietnam. Whether there is any secondary or alternate setting in Kenya not mentioned in the passages would require additional sources beyond those provided.
+
+[[ ## summary_2 ## ]]
+The claim is largely contradicted. While R-Point was indeed filmed partially in Cambodia approximately 3 miles south-west of Povokvil Waterfalls (which is accurate), the film is set in 1972 Vietnam during the Vietnam War, not in Kenya. The setting is a critical component of the claim, and this fundamental error significantly undermines the overall accuracy of the statement. Only the filming location detail can be verified as correct from available sources.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+[STEP 15] (assistant) [[ ## reasoning ## ]]
+The claim makes two distinct assertions: (1) R-Point is set in 1972 Kenya, and (2) it was filmed partially in a location about 3 miles south-west of Povokvil Waterfalls. The summaries confirm that the filming location detail is accurate—R-Point was indeed partially filmed in Cambodia at Bokor Hill Station, which is approximately 3 miles south-west of Povokvil Waterfalls. However, both summaries identify a critical factual error: R-Point is set in 1972 Vietnam during the Vietnam War, not in Kenya. This is a fundamental misidentification of the film's narrative setting that contradicts the primary claim. The geographic/filming location aspect of the claim appears to be correct, but the setting claim is substantially wrong. To fully assess this claim's accuracy, a query should focus on clarifying whether there is any connection between R-Point and Kenya, or whether the claim confuses R-Point with another film set in Kenya.
+[[ ## query ## ]]
+Is R-Point (2004 Korean horror film) set in Kenya or Vietnam? Was R-Point ever filmed in Kenya, or is it exclusively set and/or filmed in Vietnam and Cambodia? Could the claim be confusing R-Point with a different horror film set in Kenya?
+[[ ## completed ## ]]
+[STEP 16] (user) RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+R-Point | R-Point () is a 2004 Korean horror film written and directed by Kong Su-chang.  Set in 1972 Vietnam, during the Vietnam War, it stars Kam Woo-sung and Son Byong-ho as members of the South Korean military in Vietnam.  Most of the movie was shot in Cambodia.  Bokor Hill Station plays a prominent part of the movie, in this case doubling as a colonial French plantation.
+Cinema of Kenya | The cinema of Kenya refers to the film industry of Kenya.  Although a very small industry in western comparison, Kenya has produced or been a location for film since the early 1950s when "Men Against the Sun" was filmed in 1952.  Although, in the United States, jungle epics that were set in the country were shot in Hollywood as early as the 1940s.
+Dead Friend | Dead Friend (; lit.  "The Ghost") is a 2004 South Korean horror film.  It is one of a number of South Korean horror films set in high school; the trend began with 1998's "Whispering Corridors".
+A Blood Pledge | A Blood Pledge (Hangul: 여고괴담 5: 동반자살 ; RR: "Yeogogoedam 5: dongbandjasal " ; also known as Whispering Corridors 5: A Blood Pledge and Suicide Pact) is a K-Horror film, and the fifth installment of the "Whispering Corridors" series of South Korean horror films set in girls' high schools that began with 1998's film of the same name.  Aside from the setting and overall themes, it is unrelated to the other films in the series.
+Slasher film | Slasher films are a subgenre of horror films, typically involving a violent psychopath stalking and murdering several people, usually with bladed tools.  Although the term "slasher" is sometimes used informally as a generic term for any horror movie involving murder, analysts of the genre cite an established set of characteristics which set these films apart from other horror subgenres, such as splatter films and psychological horror films.
+Epitaph (2007 film) | Epitaph () is a 2007 South Korean film directed by brothers Jung Sik and Jung Bum-shik.  The film is a horror film set primarily in 1942, while South Korea was under the colonial rule of Japan.  It is framed by scenes set in 1979.
+Whispering Corridors (film series) | Whispering Corridors (; also known as Ghost School and Ghost School Horror) is a South Korean horror film series.  The series uses an all-girls high school as the backdrop for each of its films and doesn't share a continuing plot.  Every "Whispering Corridors" film features a different plot, characters and settings.  The series is notable for helping generate the explosion of the New Korean Wave cinematic movement, and dealing with taboo topics such as authoritarianism in the harsh South Korean education system, gay relationships and teen suicide, following the liberalization of censorship.
+List of horror films set in academic institutions | This is a list of a horror films set primarily within or around academic institutions, including high schools, boarding schools, colleges, and university campuses.  Film scholars have noted the prominence of educational institutions in the development of horror cinema, particularly in the subgenre of the slasher film.  Critics such as Andrew Grunzke have cited the themes of bullying, sexuality, social acceptance, parent-child relationships, academic performance, and the development of morality during teenage and early adult life as primary reasons that many horror films have historically used the backdrop of high schools and colleges.  Additionally, the universalization of education during the twentieth century, which coincided with the development of the horror film, helped foster a public audience for films set amongst students.
+Murder-Set-Pieces | Murder-Set-Pieces is a 2004 American horror film written, produced, and directed by Nick Palumbo.  The film stars Sven Garrett and features cameos from horror icons Gunnar Hansen ("The Texas Chain Saw Massacre"), Cerina Vincent ("Cabin Fever"), and Tony Todd ("Candyman").
+In the Shadow of Kilimanjaro | In the Shadow of Kilimanjaro is a 1986 horror film based in Kenya.  The film was directed by Raju Patel.
+[STEP 17] (assistant) FINAL OUTPUT — concatenation of all retrieved documents:
+Povokvil Waterfalls | Povokvil Waterfalls is a waterfall in Kampot Province, Cambodia.  It is located about 3 mi north-east of Bokor Hill Station.  It is a two-tiered fall, with a shallow pool in between.
+Bokor Hill Station | Bokor Hill Station (in Khmer: កស្ថានីយភ្នំបូកគោ "Kosthany Phnom Bokor") refers to a collection of French colonial buildings (hotel & casino, church, royal residence etc. ), constructed as a temperate mountain luxury resort and retreat for colonial residents in the early 1920s atop Bokor Mountain in Preah Monivong National Park, about 37 km west of Kampot in southern Cambodia.  Abandoned for long periods of time, modern infrastructure has made the location easily accessible as re-development is taking place.  It was used as the location for the final showdown of the movie "City of Ghosts" (2002) and the 2004 film "R-Point".  To the north-east are the Povokvil Waterfalls.
+R-Point | R-Point () is a 2004 Korean horror film written and directed by Kong Su-chang.  Set in 1972 Vietnam, during the Vietnam War, it stars Kam Woo-sung and Son Byong-ho as members of the South Korean military in Vietnam.  Most of the movie was shot in Cambodia.  Bokor Hill Station plays a prominent part of the movie, in this case doubling as a colonial French plantation.
+Brontë Waterfall | The Brontë Waterfall is a small waterfall located about a mile south west of Stanbury, near Haworth, West Yorkshire, England.  The area surrounding the waterfall is mainly moorland and farmland but is part of Brontë Country.  It is an area of outstanding beauty and famous for its association with the Brontë sisters.  Below the falls can be found an old stone bridge named "Brontë Bridge" across South Dean Beck.  The bridge was destroyed in a flash flood in May 1989 and rebuilt in 1990.
+List of films set in Puerto Rico | this is a partial list of films set in Puerto Rico; either the movie's plot includes that island, the movie has been filmed there, or both.  Certain movies that are supposed to be set in Cuba are filmed in Puerto Rico because of the U.S. embargo and similarities between both islands.  To learn more about the films of Puerto Rico, see Cinema of Puerto Rico.
+Hobbiton Movie Set | The Hobbiton Movie Set was a significant location used for "The Lord of the Rings" film trilogy and "The Hobbit" film series.  It is situated on a family run farm about 8 km west of Hinuera and 10 km southwest of Matamata, in Waikato, New Zealand, and is now a Tolkien tourism destination, offering guided tours of the set.
+High Point, Missouri | High Point is an unincorporated community in southern Moniteau County, Missouri, United States.  It is located ten miles south of California about one mile west of Route 87.
+R-Point | R-Point () is a 2004 Korean horror film written and directed by Kong Su-chang.  Set in 1972 Vietnam, during the Vietnam War, it stars Kam Woo-sung and Son Byong-ho as members of the South Korean military in Vietnam.  Most of the movie was shot in Cambodia.  Bokor Hill Station plays a prominent part of the movie, in this case doubling as a colonial French plantation.
+Missing in Action (film) | Missing in Action is a 1984 American action film directed by Joseph Zito and starring Chuck Norris.  It is set in the context of the Vietnam War POW/MIA issue.  Colonel Braddock, who escaped a Vietnamese prisoner of war camp 10 years earlier, returns to Vietnam to find American soldiers listed as missing in action during the Vietnam War.  The film was followed by a prequel, "" (1985), and a sequel, "" (1988).
+Weird Wars | Weird Wars is a series of horror role-playing games set during past and future wars and published by Pinnacle Entertainment Group.  The original release, "Weird War II: Blood on the Rhine" was set during World War II, and utilized the D20 System.  The second release, "Tour of Darkness" was set during the Vietnam War and employed the "Savage Worlds" rules set.
+Men of War: Vietnam | Men of War: Vietnam (Russian: Диверсанты:Вьетнам , or "Saboteurs: Vietnam") is a real-time tactics and strategy developed and published by 1C Company.  "Men of War: Vietnam" is the fourth game in the "Men of War" series.  The game was released on September 9, 2011, for Microsoft Windows.  The game is set during the Vietnam War.
+Vietnam War Crimes Working Group | The Vietnam War Crimes Working Group (VWCWG) was a Pentagon task force set up in the wake of the My Lai Massacre and its media disclosure, to attempt to ascertain the veracity of emerging claims of war crimes by U.S. armed forces in Vietnam, during the Vietnam War period.
+Dogfight (film) | Dogfight is a 1991 film set in San Francisco, California, during the Vietnam War (1963 – 1966).  It stars River Phoenix and Lili Taylor, and was directed by Nancy Savoca.
+Strike Fighters 2: Vietnam | Strike Fighters 2 : Vietnam is a PC game (Combat / Flight Simulator) based on Wings Over Vietnam set during the Vietnam War over South East Asia, and covers the time period between 1964 and 1973.
+R-Point | R-Point () is a 2004 Korean horror film written and directed by Kong Su-chang.  Set in 1972 Vietnam, during the Vietnam War, it stars Kam Woo-sung and Son Byong-ho as members of the South Korean military in Vietnam.  Most of the movie was shot in Cambodia.  Bokor Hill Station plays a prominent part of the movie, in this case doubling as a colonial French plantation.
+Cinema of Kenya | The cinema of Kenya refers to the film industry of Kenya.  Although a very small industry in western comparison, Kenya has produced or been a location for film since the early 1950s when "Men Against the Sun" was filmed in 1952.  Although, in the United States, jungle epics that were set in the country were shot in Hollywood as early as the 1940s.
+Dead Friend | Dead Friend (; lit.  "The Ghost") is a 2004 South Korean horror film.  It is one of a number of South Korean horror films set in high school; the trend began with 1998's "Whispering Corridors".
+A Blood Pledge | A Blood Pledge (Hangul: 여고괴담 5: 동반자살 ; RR: "Yeogogoedam 5: dongbandjasal " ; also known as Whispering Corridors 5: A Blood Pledge and Suicide Pact) is a K-Horror film, and the fifth installment of the "Whispering Corridors" series of South Korean horror films set in girls' high schools that began with 1998's film of the same name.  Aside from the setting and overall themes, it is unrelated to the other films in the series.
+Slasher film | Slasher films are a subgenre of horror films, typically involving a violent psychopath stalking and murdering several people, usually with bladed tools.  Although the term "slasher" is sometimes used informally as a generic term for any horror movie involving murder, analysts of the genre cite an established set of characteristics which set these films apart from other horror subgenres, such as splatter films and psychological horror films.
+Epitaph (2007 film) | Epitaph () is a 2007 South Korean film directed by brothers Jung Sik and Jung Bum-shik.  The film is a horror film set primarily in 1942, while South Korea was under the colonial rule of Japan.  It is framed by scenes set in 1979.
+Whispering Corridors (film series) | Whispering Corridors (; also known as Ghost School and Ghost School Horror) is a South Korean horror film series.  The series uses an all-girls high school as the backdrop for each of its films and doesn't share a continuing plot.  Every "Whispering Corridors" film features a different plot, characters and settings.  The series is notable for helping generate the explosion of the New Korean Wave cinematic movement, and dealing with taboo topics such as authoritarianism in the harsh South Korean education system, gay relationships and teen suicide, following the liberalization of censorship.
+List of horror films set in academic institutions | This is a list of a horror films set primarily within or around academic institutions, including high schools, boarding schools, colleges, and university campuses.  Film scholars have noted the prominence of educational institutions in the development of horror cinema, particularly in the subgenre of the slasher film.  Critics such as Andrew Grunzke have cited the themes of bullying, sexuality, social acceptance, parent-child relationships, academic performance, and the development of morality during teenage and early adult life as primary reasons that many horror films have historically used the backdrop of high schools and colleges.  Additionally, the universalization of education during the twentieth century, which coincided with the development of the horror film, helped foster a public audience for films set amongst students.
+Murder-Set-Pieces | Murder-Set-Pieces is a 2004 American horror film written, produced, and directed by Nick Palumbo.  The film stars Sven Garrett and features cameos from horror icons Gunnar Hansen ("The Texas Chain Saw Massacre"), Cerina Vincent ("Cabin Fever"), and Tony Todd ("Candyman").
+In the Shadow of Kilimanjaro | In the Shadow of Kilimanjaro is a 1986 horror film based in Kenya.  The film was directed by Raju Patel.
+
+STAGE-1 FINDINGS (failure modes identified by an upstream judge)
+----------------------------------------------------------------
+- code B.13 (Query_Form_Mismatch), anchored near step 8: evidence: Hop 2 query: 'Is the horror film R-Point (2004) set in Kenya or Vietnam? Does R-Point have any scenes or narrative elements set in Kenya, or is the film's entire setting exclusively in Vietnam during the Vietnam War?' and Hop 3 query: 'Is R-Point (2004 Korean horror film) set in Kenya or Vietnam? Was R-Point ever filmed in Kenya, or is it exclusively set and/or filmed in Vietnam and Cambodia? Coul
+- code B.14 (Query_Stagnation), anchored near step UNKNOWN: evidence: Query hop 2: 'Is the horror film R-Point (2004) set in Kenya or Vietnam? Does R-Point have any scenes or narrative elements set in Kenya...' Query hop 3: 'Is R-Point (2004 Korean horror film) set in Kenya or Vietnam? Was R-Point ever filmed in Kenya...' Both queries ask essentially the same question about whether R-Point is set in Kenya vs. Vietnam, with near-identical wording and no substantive a
+- code B.8 (Solver_Irrelevant_Passage_Overprocessing), anchored near step UNKNOWN: evidence: Summary_2 reasoning section analyzes: 'Passage [1] explicitly states "Set in 1972 Vietnam, during the Vietnam War" - this directly contradicts the claim's assertion that R-Point is set in Kenya... **Conclusion:** The claim contains a critical factual error regarding the primary narrative setting (Kenya vs. Vietnam)' — the solver extensively re-analyzes the same R-Point passage already processed in
+- code B.12 (Verdict_Despite_Insufficiency), anchored near step UNKNOWN: evidence: Summary_1 states: 'Missing information needed: Clarification on why the claim identifies the setting as Kenya when all available evidence indicates the film is set in Vietnam. Whether there is any secondary or alternate setting in Kenya not mentioned in the passages would require additional sources beyond those provided.' Yet immediately before this, summary_1 declares 'Verification Status: CLAIM 
+
+INSTRUCTIONS
+------------
+(a) OCCURRENCES: for each finding, list EVERY distinct occurrence of
+that failure in the trace — one entry per occurrence, even if the same
+mode occurs many times. Each occurrence needs: a fresh id ("O1",
+"O2", ...), the finding's code, the step number where it occurs, and a
+VERBATIM quote from that step proving it (copy exactly; quotes are
+machine-verified).
+
+(b) EDGES: for ordered pairs of occurrences (earlier -> later) and for
+(occurrence -> "OUT") where OUT is the final output, assert at most one
+label each, only where the trace shows it:
+- follow_up:    the later step consumed/built on the earlier occurrence's
+                output (corrupted influence carried forward)
+- error_shift:  the later occurrence transforms the earlier problem into
+                a different deviation
+- correction:   a later step fixes or invalidates the earlier
+                occurrence's deviation (give the fixing step number)
+- redundancy:   the later step repeats the earlier one without new
+                information
+- dead_end:     the earlier occurrence's output is never used downstream
+- no_influence: demonstrably independent
+Each edge needs: src occurrence id, dst ("OUT" or occurrence id), label,
+consume_step (the step where dst consumed src's output; for correction,
+the step where the fix landed), and a short verbatim evidence quote.
+
+CLOSURE REQUIREMENT: every occurrence MUST end in at least one of:
+an influence path (follow_up/error_shift chain) reaching OUT, or an
+explicit correction, dead_end, or no_influence edge. Do not leave any
+occurrence unaccounted for.
+
+Respond in this exact JSON format:
+{
+ "occurrences": [{"id": "O1", "code": "<taxonomy code>", "step": <int>, "quote": "<verbatim>"}],
+ "edges": [{"src": "O1", "dst": "O2" | "OUT", "label": "<label>", "consume_step": <int>, "evidence": "<verbatim>"}]
+}
