@@ -42,10 +42,12 @@ at an identical evidence budget.
 | `experiments/` | one script that regenerates every number reported here, and the results |
 | `traces/` | the 600 judged execution traces, for inspection |
 | `METHOD.md` | how ranking quality is measured, and what these numbers can and cannot support |
+| `IDEA.md` | the research framing: objective, what must be measured, and the boundaries of the claim |
 
 Start with `setup/SETUP.md` for the experimental design, `pipeline/MODULES.md`
 for what the scoring pipeline is made of, and `experiments/RESULTS.md` for the
-results with explanations.
+results with explanations. `IDEA.md` gives the research framing behind all of
+it: what this is trying to measure and why.
 
 ## Running it
 
