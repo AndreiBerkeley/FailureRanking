@@ -35,6 +35,18 @@ def sh(cmd, dry):
     if not dry: subprocess.run([str(c) for c in cmd], check=True, cwd=str(REPO))
 
 
+def judged_or_die(judge_dir: Path, what: str):
+    """A judge run in which every call failed (no credits, bad route, dead key) must stop the
+    pipeline, not feed an empty evidence base to the refiner or a kappa of None to the gate."""
+    sm = json.loads((judge_dir / "summary.json").read_text()) if (judge_dir / "summary.json").exists() else {}
+    n = (sm.get("counts") or {}).get("judged")
+    if not isinstance(n, int): n = len([f for f in (judge_dir / "traces").glob("*.json") if json.loads(f.read_text()).get("status") == "judged"])
+    if not n:
+        raise SystemExit(f"{what}: the judge read 0 traces (every call failed; see {judge_dir}/summary.json and the [!] lines above). "
+                         f"Fix the cause (credits, key, route), remove {judge_dir.parent} and rerun the same command.")
+    return n
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--benchmark", required=True); ap.add_argument("--pool", type=Path, required=True, help="directory of judge-view traces (see export_pool.py)")
@@ -94,7 +106,9 @@ def main():
     # 2. baseline gate
     if not a.no_baseline_gate:
         log("step 2: baseline gate on the draft")
-        state["baseline_gate"] = {k: v for k, v in G.run(draft, dirs["gate"], a.structure, out / "baseline_gate", a.model, a.gate_readers, a.kappa_target, a.coverage_floor, a.open_model).items() if k != "kappa_per_code"}; save()
+        g0 = G.run(draft, dirs["gate"], a.structure, out / "baseline_gate", a.model, a.gate_readers, a.kappa_target, a.coverage_floor, a.open_model)
+        judged_or_die(out / "baseline_gate" / "judge", "baseline gate")
+        state["baseline_gate"] = {k: v for k, v in g0.items() if k != "kappa_per_code"}; save()
 
     # 3. rounds
     state.setdefault("rounds", [])
@@ -104,8 +118,10 @@ def main():
         if not (jd / "summary.json").exists():
             sh([PY_, "-m", "new_pipeline.judge.run", "--taxonomy", current, "--traces", dirs["refinement"], "--out", jd, "--structure", a.structure, "--model", a.model,
                 "--annotators", "2", "--threshold", "2", "--traces-per-call", "5", "--thinking", "HIGH"] + (["--open-model", a.open_model] if a.open_model else []), False)
+        judged_or_die(jd, f"round {r} judge")
         refined = R.run(current, jd, dirs["refinement"], a.structure, rd / "refine", a.model, a.refine_panel, a.panel_temperature, r)
         g = G.run(refined, dirs["gate"], a.structure, rd / "gate", a.model, a.gate_readers, a.kappa_target, a.coverage_floor, a.open_model)
+        judged_or_die(rd / "gate" / "judge", f"round {r} gate")
         rr = json.loads((rd / "refine" / "refine_report.json").read_text())
         state["rounds"] = [x for x in state["rounds"] if x.get("round") != r] + [{"round": r, "refine": rr, "gate": {k: v for k, v in g.items() if k != "kappa_per_code"}}]
         current = refined; save()
