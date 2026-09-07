@@ -25,7 +25,7 @@ def main():
     a = ap.parse_args()
     D = REPO / "data" / a.benchmark; tasks = set(json.loads((D / "splits" / a.split / "split.json").read_text())["portions"][a.portion])
     caps = a.captures.split(",") if a.captures else sorted(p.name for p in (D / "traces").glob("cap-*"))
-    a.out.mkdir(parents=True, exist_ok=True); scores, cands, written, skipped, offending = {}, {}, 0, 0, 0
+    a.out.mkdir(parents=True, exist_ok=True); scores, cands, written, skipped, offending, failed, dup, seen = {}, {}, 0, 0, 0, 0, 0, {}
     for cap in caps:
         man = json.loads((D / "traces" / cap / "manifest.json").read_text())
         for cid in man["candidate_ids"]: cands.setdefault(cid, len(cands))
@@ -36,6 +36,10 @@ def main():
                 for line in fh:
                     b = json.loads(line)
                     if b["task_id"] not in tasks: continue
+                    if b.get("status") == "capture_failed": failed += 1; continue   # the provider returned nothing: no trace to read
+                    if b["trace_id"] in seen:   # ifbench/hotpotqa ids are sha(bench|candidate|task|repeat): a task re-run in a later capture repeats the id
+                        dup += 1; continue      # first capture in sorted order wins; the manifest records how many were skipped
+                    seen[b["trace_id"]] = cap
                     jv = b.get("judge_view")
                     if not jv or not jv.get("messages"): skipped += 1; continue
                     rec = {"trace_id": b["trace_id"], "messages": jv["messages"],
@@ -46,8 +50,8 @@ def main():
     if offending: raise SystemExit(f"{offending} traces carried an outcome-bearing key and were not written")
     (a.out / "outcomes.json").write_text(json.dumps({"scores": {t: s for t, s in scores.items() if (a.out / f"{t}.json").exists()}, "note": "stratification only; never rendered into a prompt"}))
     (a.out / "pool_manifest.json").write_text(json.dumps({"benchmark": a.benchmark, "split": a.split, "portion": a.portion, "captures": caps, "tasks_in_portion": len(tasks),
-                                                          "traces_written": written, "traces_without_judge_view": skipped, "candidate_index": cands}, indent=1))
-    print(f"{a.benchmark} {a.split}/{a.portion}: {written} traces written to {a.out} from {caps}; {skipped} skipped (no judge view)")
+                                                          "traces_written": written, "traces_without_judge_view": skipped, "traces_capture_failed": failed, "traces_duplicate_id_skipped": dup, "candidate_index": cands}, indent=1))
+    print(f"{a.benchmark} {a.split}/{a.portion}: {written} traces written to {a.out} from {caps}; {skipped} skipped (no judge view); {failed} capture failures left out; {dup} duplicate trace ids skipped")
 
 
 if __name__ == "__main__":

@@ -6,9 +6,10 @@ follow-up checks. One pool of traces in, one certified taxonomy out.
         [--n-generation 100] [--rounds 1] [--model gemini-3.6-flash] [--dry-run]
 
 Steps, each resumable (a finished artifact is not redone):
-  0  split the pool into three task-disjoint corpora: generation (N traces),
-     refinement (about N/2), gate (60 over at least 30 tasks); plus the fresh
-     remainder for the gap test
+  0  split the pool into four task-disjoint corpora: generation (N traces),
+     refinement (about N/2), gate (60 over at least 30 tasks), and the gap
+     test's corpus (--gap-tasks tasks, --gap-per-task traces each, failing
+     first). Failure-bearing tasks are shared among the four (corpora.py).
   1  generation, stages 1-6 (GENERATION_v2.md)              -> draft taxonomy
   2  baseline gate: measure the draft before refinement touches it (diagnostic)
   3  for each round (default 1): judge the refinement corpus, refine (stage 7),
@@ -45,7 +46,7 @@ def main():
     ap.add_argument("--rounds", type=int, default=1); ap.add_argument("--refine-panel", type=int, default=4); ap.add_argument("--panel-temperature", type=float, default=0.0)
     ap.add_argument("--gate-readers", type=int, default=4); ap.add_argument("--kappa-target", type=float, default=0.75); ap.add_argument("--coverage-floor", type=float, default=0.70)
     ap.add_argument("--no-baseline-gate", action="store_true"); ap.add_argument("--skip-followups", action="store_true")
-    ap.add_argument("--gap-tasks", type=int, default=40); ap.add_argument("--dry-run", action="store_true", help="split the corpora and dry-run generation; print every later command")
+    ap.add_argument("--gap-tasks", type=int, default=40); ap.add_argument("--gap-per-task", type=int, default=1, help="traces per gap task, failing first"); ap.add_argument("--dry-run", action="store_true", help="split the corpora and dry-run generation; print every later command")
     a = ap.parse_args(); out = a.out; out.mkdir(parents=True, exist_ok=True); t0 = time.time()
     state_f = out / "state.json"; state = json.loads(state_f.read_text()) if state_f.exists() else {}
     state.update({"benchmark": a.benchmark, "settings": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(a).items()}, "status": "running"})
@@ -54,20 +55,23 @@ def main():
     # 0. corpora
     log(f"new_pipeline: {a.benchmark}, N={a.n_generation}, rounds={a.rounds}, model={a.model}")
     outcomes = a.outcomes or ((a.pool / "outcomes.json") if (a.pool / "outcomes.json").exists() else None)
-    split = corpora.plan(a.pool, a.n_generation, seed=a.seed, outcomes=outcomes)
+    split = corpora.plan(a.pool, a.n_generation, seed=a.seed, outcomes=outcomes, n_gap_tasks=a.gap_tasks)
     dirs = corpora.materialise(split, out)
-    used = set().union(*(set(split.manifest["task_ids"][k]) for k in ("generation", "refinement", "gate")))
+    # The gap corpus: the dealt gap tasks, --gap-per-task traces each, failing
+    # traces first (outcomes for stratification only, never shown). The gap test
+    # reads it blind, so what is in it decides what it can find.
     fresh = out / "corpus_fresh"; fresh.mkdir(exist_ok=True)
-    nf = 0
-    for p in sorted(a.pool.glob("*.json")):
-        if p.name in ("outcomes.json", "pool_manifest.json"): continue
-        md = json.loads(p.read_text()).get("metadata") or {}
-        if md.get("task_source_id") and md["task_source_id"] not in used:
+    by_task = corpora._index(a.pool, corpora.load_outcomes(outcomes))
+    nf = nff = 0
+    for t in split.manifest["task_ids"]["gap"]:
+        picks = (by_task[t]["fail"] + by_task[t]["pass"])[:a.gap_per_task]
+        nff += min(len(by_task[t]["fail"]), a.gap_per_task)
+        for p in picks:
             dst = fresh / p.name
             if not dst.exists(): goldfree.strip_file(p, dst)
             nf += 1
-    state["corpora"] = {k: len(v) for k, v in split.manifest["task_ids"].items()} | {"fresh_traces": nf}
-    log(f"  corpora: " + ", ".join(f"{k} {len(getattr(split, k))} traces / {len(split.manifest['task_ids'][k])} tasks" for k in ("generation", "refinement", "gate")) + f"; fresh remainder {nf} traces"); save()
+    state["corpora"] = {k: len(v) for k, v in split.manifest["task_ids"].items()} | {"fresh_traces": nf, "fresh_failing": nff, "spare_tasks": split.manifest["spare_tasks"]}
+    log(f"  corpora: " + ", ".join(f"{k} {len(getattr(split, k))} traces / {len(split.manifest['task_ids'][k])} tasks ({split.manifest[k]['failing']} failing)" for k in ("generation", "refinement", "gate")) + f"; gap {nf} traces / {len(split.manifest['task_ids']['gap'])} tasks ({nff} failing); {split.manifest['spare_tasks']} tasks unused"); save()
 
     # 1. generation
     gen = out / "generation"; gen.mkdir(exist_ok=True)
@@ -116,7 +120,7 @@ def main():
     log("step 4: follow-up checks on fresh traces")
     gaps = out / "gaps"
     if not (gaps / "gaps.json").exists():
-        sh([PY_, "-m", "new_pipeline.generation.gaps", "--benchmark", a.benchmark, "--taxonomy", current, "--corpus", fresh, "--structure", a.structure, "--exclude", gen, "--out", gaps, "--model", a.model, "--tasks", str(a.gap_tasks)], False)
+        sh([PY_, "-m", "new_pipeline.generation.gaps", "--benchmark", a.benchmark, "--taxonomy", current, "--corpus", fresh, "--structure", a.structure, "--exclude", gen, "--out", gaps, "--model", a.model, "--tasks", str(a.gap_tasks), "--per-task", str(a.gap_per_task)], False)
     gran = out / "granularity"
     if not (gran / "granularity.json").exists():
         sh([PY_, "-m", "new_pipeline.generation.granularity", "--taxonomy", current, "--records", gaps / "gaps.json", "--out", gran, "--model", a.model], False)

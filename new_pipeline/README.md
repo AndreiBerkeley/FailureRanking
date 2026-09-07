@@ -49,7 +49,11 @@ command.
    generation, stage 7 the refinement round, stage 8 the gate. `generation/prompts.py`
    parses that document at import, so the document is the prompt source.
 3. `run.py`: the orchestration above, with the state file it keeps.
-4. `corpora.py`: the task-disjoint split and why it is by task.
+4. `corpora.py`: the task-disjoint split and why it is by task. Failure-bearing
+   tasks are dealt in seeded random order across generation, refinement, gate
+   and the gap corpus so each gets the same share of them; on ifbench only 85
+   of 299 tasks carry a failing trace, and a plain random cut starved the gate
+   and the gap test.
 5. `generation/run.py`, `generation/contracts.py`, `generation/render.py`: stages 1–6.
 6. `refine.py`: the evidence it gathers from the judge's records, the three calls,
    the derived verdicts, and how operations are applied and ids reissued.

@@ -89,7 +89,7 @@ def _index(pool: Path, scores: dict | None = None):
 
 
 def plan(pool: Path, n_generation: int, seed: int = 0,
-         outcomes: Path | None = None) -> Split:
+         outcomes: Path | None = None, n_gap_tasks: int = 40) -> Split:
     scores = load_outcomes(outcomes)
     by_task = _index(pool, scores)
     tasks = sorted(by_task)
@@ -115,10 +115,30 @@ def plan(pool: Path, n_generation: int, seed: int = 0,
             f"{GATE_MIN_TASKS} gate) so no task is shared between corpora. "
             f"Capture more tasks, or lower --n-generation.")
 
-    gen_t = tasks[:gen_tasks_needed]
-    ref_t = tasks[gen_tasks_needed:gen_tasks_needed + ref_tasks_needed]
-    gate_t = tasks[gen_tasks_needed + ref_tasks_needed:
-                   gen_tasks_needed + ref_tasks_needed + GATE_MIN_TASKS]
+    # Four corpora consume failures: generation, refinement, the gate, and the
+    # gap test's corpus. Failure-bearing tasks are scarce on some benchmarks
+    # (ifbench: 85 of 299 tasks, 9% of traces), so they are dealt out first, in
+    # the seeded random order, each to the consumer furthest behind its quota;
+    # tasks with no failing trace then fill the remaining quota the same way,
+    # and whatever is left over is unused. Every consumer thus gets the same
+    # share of failure-bearing tasks, and a representative mix of them: dealing
+    # the MOST-failing tasks first was tried and concentrated the tasks every
+    # candidate fails (often the environment's doing) into generation, whose
+    # corpus became 100% failing. A plain random cut gave ifbench's generation
+    # corpus 30 failing traces out of 120 and its gap test almost none.
+    # Outcomes are used here for stratification only.
+    quota = {"generation": gen_tasks_needed, "refinement": ref_tasks_needed,
+             "gate": GATE_MIN_TASKS, "gap": min(n_gap_tasks, max(0, len(tasks) - need))}
+    dealt = {k: [] for k in quota}; spare = []
+    bearing = [t for t in tasks if by_task[t]["fail"]]
+    free = [t for t in tasks if not by_task[t]["fail"]]
+    for t in bearing + free:
+        open_ = [k for k, q in quota.items() if len(dealt[k]) < q]
+        if not open_:
+            spare.append(t); continue
+        k = min(open_, key=lambda k: (len(dealt[k]) / quota[k], k))
+        dealt[k].append(t)
+    gen_t, ref_t, gate_t, gap_t = dealt["generation"], dealt["refinement"], dealt["gate"], dealt["gap"]
 
     s = Split()
     # generation: GEN_PER_TASK per task, failures first so the corpus carries
@@ -174,7 +194,10 @@ def plan(pool: Path, n_generation: int, seed: int = 0,
                        "failing": failing(s.refinement)},
         "gate": {"tasks": len(gate_t), "traces": len(s.gate),
                  "failing": failing(s.gate)},
-        "task_ids": {"generation": gen_t, "refinement": ref_t, "gate": gate_t},
+        "task_assignment": "failure-bearing tasks dealt first, in seeded random order, to whichever of generation / refinement / gate / gap is furthest behind its quota; failure-free tasks fill the rest; leftovers unused",
+        "gap": {"tasks": len(gap_t), "failure_bearing": sum(1 for t in gap_t if by_task[t]["fail"])},
+        "spare_tasks": len(spare),
+        "task_ids": {"generation": gen_t, "refinement": ref_t, "gate": gate_t, "gap": gap_t},
     }
     return s
 
