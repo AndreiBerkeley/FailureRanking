@@ -283,7 +283,8 @@ def main():
     tax_text = judge.render_taxonomy(taxonomy)
     valid_ids = {c["id"] for c in taxonomy["codes"]}
 
-    files = sorted(a.traces.glob("*.json"))
+    files = sorted(p for p in a.traces.glob("*.json")
+                   if p.name not in ("outcomes.json", "pool_manifest.json"))   # export_pool sidecars, not traces
 
     if a.tasks:
         doc = json.loads(a.tasks.read_text())
@@ -306,7 +307,7 @@ def main():
             raise SystemExit(f"--tasks selected no task ids from {a.tasks}")
         kept, seen = [], set()
         for f in files:
-            tid = json.loads(f.read_text())["metadata"]["task_source_id"]
+            tid = (json.loads(f.read_text()).get("metadata") or {}).get("task_source_id")
             if tid in want:
                 kept.append(f); seen.add(tid)
         missing = want - seen
