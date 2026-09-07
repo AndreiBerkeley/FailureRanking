@@ -611,7 +611,7 @@ def main():
 
     final = {"benchmark": a.benchmark, "framework": "v2",
              "produced_by": "new_pipeline.generation.run (generation, stages 1-6)",
-             "contracts": [c["agent"] for c in cs],
+             "contracts": [c["agent"] for c in next(iter(by_cand.values()), [])],
              "observations": {"findings": n_find, "traces_covered": covered,
                               "work": n_work, "conformance": n_find - n_work},
              "modes_before_consolidation": len(ms),
