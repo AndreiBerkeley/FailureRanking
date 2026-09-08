@@ -459,6 +459,15 @@ one, even when the agent has the same name in another trace. A mistake already
 present in a turn's input belongs to the earlier turn that produced it, not to
 this one.
 
+The instructions section declares the agent's input and output fields and its
+task. Producing a declared output field (a `reasoning` field listed under "Your
+output fields") is required, not a deviation, even where a later sentence names
+only some of the fields. The `[[ ## name ## ]]` markers that open each output
+field are the harness's own output format, declared in that same section and
+needed to parse the output; using them, rather than a plainer layout described
+elsewhere in the instructions (`reasoning: ...`, `**query**: ...`), is required
+and is never a failure.
+
 ## TRACES
 {trace excerpts, outcome-blind}
 
@@ -567,6 +576,15 @@ section, and nothing else. Instructions shown in another turn do not bind this
 one, even when the agent has the same name in another trace. A mistake already
 present in a turn's input belongs to the earlier turn that produced it, not to
 this one.
+
+The instructions section declares the agent's input and output fields and its
+task. Producing a declared output field (a `reasoning` field listed under "Your
+output fields") is required, not a deviation, even where a later sentence names
+only some of the fields. The `[[ ## name ## ]]` markers that open each output
+field are the harness's own output format, declared in that same section and
+needed to parse the output; using them, rather than a plainer layout described
+elsewhere in the instructions (`reasoning: ...`, `**query**: ...`), is required
+and is never a failure.
 
 ## TRACES
 {trace excerpts, outcome-blind}
@@ -678,6 +696,15 @@ section, and nothing else. Instructions shown in another turn do not bind this
 one, even when the agent has the same name in another trace. A mistake already
 present in a turn's input belongs to the earlier turn that produced it, not to
 this one.
+
+The instructions section declares the agent's input and output fields and its
+task. Producing a declared output field (a `reasoning` field listed under "Your
+output fields") is required, not a deviation, even where a later sentence names
+only some of the fields. The `[[ ## name ## ]]` markers that open each output
+field are the harness's own output format, declared in that same section and
+needed to parse the output; using them, rather than a plainer layout described
+elsewhere in the instructions (`reasoning: ...`, `**query**: ...`), is required
+and is never a failure.
 
 ## WHAT EACH AGENT WAS ASKED TO DO
 {contracts}

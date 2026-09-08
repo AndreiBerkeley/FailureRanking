@@ -146,7 +146,11 @@ its own input; a mistake already present in a turn's input belongs to the
 earlier turn that produced it. The instructions section declares the agent's
 input and output fields as well as its task; producing a declared output field
 (such as a `reasoning` field listed under "Your output fields") is required,
-not a deviation, even when a later sentence names only some of the fields."""
+not a deviation, even when a later sentence names only some of the fields. The `[[ ## name ## ]]` markers that open each output field are likewise the
+harness's own output format, declared in the same instructions section and
+needed to parse the output; using them, rather than a plainer layout described
+elsewhere in the instructions (`reasoning: ...`, `**query**: ...`), is required,
+not a deviation, and is never a failure."""
 
 ANNOTATE_TURNS_PROMPT = """You are annotating one execution trace of a candidate program.
 

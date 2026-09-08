@@ -1,31 +1,25 @@
-# tax-1 — 7 failure modes for the hotpotqa program
+# tax-2 — tax-1 with 6 hand amendments to code text (3 codes)
 
-Generated on 2026-09-07 by `new_pipeline` from the `pools-1` taxonomy pool: 3 general
-and 4 domain codes. The draft came from stages 1–6 of `GENERATION_v2.md` on
-120 traces over 30 tasks; one refinement round
-rewrote it against the judge's reading of 60 traces on 30 other tasks;
-the interannotation gate measured draft and result on 60 traces of 30 further tasks
-with four readers and the open reader; the gap test read 40 fresh traces. No outcome
-was in view at any stage; outcomes were used only to compose the corpora.
+Same 7 codes, ids and columns as `tax-1`; only the wording of the codes below changed.
+Made 2026-09-07. Review of the 26 open-reader problems map-1 could not map, and of what the format code absorbed: 9 unmapped problems had a matching code whose wording excluded them, and about half of the format code's firings were the harness's own field markers read against the instruction text. Genuine gaps (question relation misread, input state misjudged, misdirected query) are left for the next generation round.
 
-Refinement verdicts: {"edit": 1, "keep": 5}. Granularity: {"examined": 1, "left_alone": {"False Factual Assertion in Reasoning": 3, "Ungrounded External Knowledge Import": 5}}.
-Gap test: 14 findings, verdicts {"covered": 14}, fitness {"median": 95, "min": 80, "max": 100, "below_good": 0, "below_loose": 0}.
+| code | field | before | after | reason |
+|---|---|---|---|---|
+| `SP_01` | definition | An agent emits an output that fails to follow required structural, markup, or formatting specifications at the edge of execution, such as using invalid section headers, omitting mandatory syntax, or using non-conforming delimiters. | An agent emits an output that fails to follow required structural, markup or formatting specifications at the edge of execution: invalid or invented section headers, including placeholder or fabricated document titles ([N/A], [Missing Information], a name that is not a retrieved document's title) and summary entries that state absence instead of summarising, omitted mandatory syntax, or non-conforming delimiters. | the draft definition named 'inventing invalid pseudo-document headers'; the refinement edit generalised it away and 6 fabricated-title cases in map-1 were left unmapped |
+| `SP_01` | when_to_use | Use when an agent's output formatting fails specified structural or template constraints, such as malformed section headers or missing required brackets. | Use when the output's structure or template is wrong: malformed or invented headers, titles that are not retrieved documents, missing required brackets, or placeholder entries where the template calls for facts. | same |
+| `SP_02` | when_to_use | Use when an agent contracted to produce a specific functional payload type (such as a search query) produces a conversational statement, refusal, or declarative answer instead. | Use when an agent contracted to produce a specific kind of output produces another kind: a conversational statement, refusal or declarative answer where a search query was due, or a description where the question asks for a number, date or name. | 1 answer-of-the-wrong-kind ('Multiple communities' to a population question) was left unmapped |
+| `SP_07` | definition | An agent generates a search query targeting facts, attributes, or entities that were already explicitly present in the input summary or context, failing to recognize that the required information was already established. | An agent generates a search query targeting facts, attributes or entities that were already explicitly present in the input summary or context, whether or not its own reasoning acknowledged that the information was already established. | 'failing to recognize' excluded 2 map-1 cases where the agent said no query was needed and issued one anyway; same mechanism |
+| `SP_07` | when_to_use | Use when an agent formulates a search query asking for specific facts or entity attributes that are already explicitly stated in the provided input summary or context. | Use when the query asks for facts or attributes the input already states, including when the reasoning itself notes that nothing further is needed. | same |
+| `SP_01` | when_not_to_use | Do not use when the output contains ungrounded factual assertions but complies with structural formatting rules, or when the agent emits an entirely wrong functional payload type. | Do not use when the output contains ungrounded factual assertions but complies with structural formatting rules, or when the agent emits an entirely wrong functional payload type. The `[[ ## field ## ]]` markers around output fields and a `reasoning` field are the execution harness's own output format, declared in the instructions section and needed to parse the output; using them instead of a plainer layout described in the instruction text is not a failure of any kind. | 298 of the 722 open-reader problems mapped to this code in map-1, and about half of the panel's 395 firings, were the harness's `[[ ## field ## ]]` markers judged against an 'Output Format' paragraph in the optimizer-written instructions; they are not candidate failures |
 
-| gate | codes | pooled kappa | coverage | traces judged | result |
-|---|---:|---:|---:|---:|---|
-| baseline | 6 | 0.784 | 0.697 | 55 | fail |
-| round_1 | 7 | 0.863 | 0.795 | 60 | pass |
-
-The full run record, with every prompt, raw model output, judge record and gate file, is in
-`../runs/new_pipeline-run-1/`. Ids are the `SP_` namespace assigned when the granularity splits were applied,
-with the refinement round's `R1_` ids and the draft's ids recorded in `taxonomy.json` provenance.
+## The taxonomy
 
 | id | column | name | definition |
 |---|---|---|---|
-| `SP_01` | general | Output Format Non-Conformance | An agent emits an output that fails to follow required structural, markup, or formatting specifications at the edge of execution, such as using invalid section headers, omitting mandatory syntax, or using non-conforming  |
+| `SP_01` | general | Output Format Non-Conformance | An agent emits an output that fails to follow required structural, markup or formatting specifications at the edge of execution: invalid or invented section headers, including placeholder or fabricated document titles ([N/A], [Missing Information], a name that is not a retrieved document's title) and summary entries that state absence instead of summarising, omitted mandatory syntax, or non-conforming delimiters. |
 | `SP_02` | general | Output Payload Type Mismatch | An agent emits a conversational comment, declarative explanation, or full answer statement at output emission instead of the contracted output payload type (such as a targeted search query). |
 | `SP_03` | general | Irrelevant Passage Intake Inclusion | An agent fails to filter out distractor or irrelevant documents during input intake and includes facts about unrelated subjects in its output summary. |
 | `SP_04` | domain | Ungrounded External Knowledge Import | During task execution, an agent imports ungrounded external domain knowledge to supply missing facts rather than strictly grounding its work on the provided input evidence. |
 | `SP_05` | domain | Entity Selection Contradicting Explicit Constraints | An agent selects a target entity as the final answer despite explicitly identifying in its own intermediate reasoning that the candidate entity violates one or more query constraints. |
 | `SP_06` | domain | False Factual Assertion in Reasoning | An agent asserts incorrect biographical, historical, or organizational facts during intermediate reasoning, or fabricates non-existent relationships to reconcile conflicting prompt constraints. |
-| `SP_07` | domain | Redundant Query Generation for Existing Facts | An agent generates a search query targeting facts, attributes, or entities that were already explicitly present in the input summary or context, failing to recognize that the required information was already established. |
+| `SP_07` | domain | Redundant Query Generation for Existing Facts | An agent generates a search query targeting facts, attributes or entities that were already explicitly present in the input summary or context, whether or not its own reasoning acknowledged that the information was already established. |
