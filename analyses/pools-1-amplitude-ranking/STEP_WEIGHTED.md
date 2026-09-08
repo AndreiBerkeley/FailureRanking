@@ -60,3 +60,51 @@ earlier in the session, so this is not a clean pre-registration.
 The honest test is `map-6`: tax-10 judged on the second, disjoint 50-task block, currently running.
 The weighting is now fixed and the block is untouched. Gold on that block predicts the target at
 +0.35, so the comparison to make there is the queries-only score against +0.35, not against +0.78.
+
+
+## Correction: 'placed' versus 'any' is mostly about the open reader, not reader disagreement
+
+`votes_by_turn` is built from the **panel only**. The open reader describes problems in its own
+words and its mapped codes are folded into the trace-level `codes` with `max`, carrying no turn.
+Of HoVer's 1,571 agreed firings under tax-10:
+
+| | firings |
+|---|---:|
+| open reader only, never placed on a turn | 700 |
+| open reader only, one-sided placement | 188 |
+| panel, both readers agree on a turn | 677 |
+| panel, readers place it on different turns | 6 |
+
+So the panel agrees on placement for **677 of 683** of its firings, 99%. My earlier note that
+"readers agree on presence far more than on place" was wrong: it was the open reader's contribution,
+which has no place by construction, not panel disagreement.
+
+## Where the signal actually comes from
+
+| evidence used | tau vs generalization gold |
+|---|---:|
+| all firings, panel + open reader (base amplitude) | +0.06 |
+| panel firings only, no step weighting | **+0.40** |
+| panel firings placed on a turn, all steps equal | +0.50 |
+| panel firings placed, query steps only | **+0.71** |
+
+Two separate effects, of similar size. Dropping the open reader takes +0.06 to +0.40: its codes are
+57% of all firings and they destroy the ranking. Weighting by step then takes +0.50 to +0.71. The
+step-weighted numbers reported above are therefore panel-only by construction, and part of their
+advantage over base amplitude is the branch, not the steps.
+
+## The same weighting on the other two benchmarks
+
+| | ceiling | all steps equal | output-touching only | ×1.5 | 1/(1+interposed) |
+|---|---:|---:|---:|---:|---:|
+| hover, output = 2 query steps | +0.78 | +0.50 / +0.45 | **+0.71 / +0.87** | +0.60 / +0.61 | +0.48 / +0.58 |
+| hotpotqa, output = `final_answer` | +0.36 | −0.03 / +0.12 | +0.15 / **+0.32** | −0.05 / +0.09 | +0.03 / +0.20 |
+| ifbench, output = module 2 | 0.00 | +0.05 / +0.19 | 0.00 / +0.07 | 0.00 / +0.19 | +0.10 / +0.19 |
+
+(placed / any; nothing on HotpotQA or IFBench is significant.)
+
+The weighting helps HotpotQA in the same direction, +0.12 to +0.32 under the any rule, reaching
+roughly its ceiling of +0.36, but from a base so low that nothing separates it from zero. IFBench
+has no ceiling and moves nowhere. So the rule "weight by whether the step's output reaches the
+system output" is consistent in sign on the two benchmarks that have a target, and only HoVer has
+enough candidate spread to show it.
