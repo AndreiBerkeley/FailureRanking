@@ -7,12 +7,13 @@ copies of the artifacts in `data/<benchmark>/taxonomies/`, where the ids and has
 
 | benchmark | artifact | codes | general | domain | how it was made |
 |---|---|---:|---:|---:|---|
-| [`hover`](hover/README.md) | `tax-19` | 18 | 7 | 11 | tax-18 (v2 generation + granularity splits) with the format codes' boundaries amended by hand on 2026-09-07 after review of what the judge could not map |
+| [`hover`](hover/README.md) | `tax-20` | 10 | 4 | 6 | tax-19 re-levelled by hand on 2026-09-07: 10 of tax-18's 18 codes could only fire where a candidate's own instructions defined the artifact breached, so every code now names a mechanism any candidate could exhibit, with the specifics moved into per-code evidence |
 | [`ifbench`](ifbench/README.md) | `tax-2` | 13 | 6 | 7 | tax-1 (new_pipeline: generation, one refinement round, gate, gap test, splits) with 11 hand amendments to 4 codes' wording after review of map-1 |
 | [`hotpotqa`](hotpotqa/README.md) | `tax-2` | 7 | 3 | 4 | tax-1 (new_pipeline, same steps) with 6 hand amendments to 3 codes' wording after review of map-1 |
 
 The amendments change wording only: the code sets, ids and columns are those of the generated
-versions (`hover/tax-18`, `ifbench/tax-1`, `hotpotqa/tax-1`). The most consequential one, on
+versions (`ifbench/tax-1`, `hotpotqa/tax-1`); HoVer's also changes the code set, from 18 to 10.
+The most consequential wording change, on
 every benchmark, states that the `[[ ## field ## ]]` markers and the `reasoning` field are the
 execution harness's own output format and never a failure; the judge and the generator now say
 the same in their trace-layout notes.
