@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pools-1-rank-agreement" / "scripts"))
 from rank_agreement import REPO, load, means, tau_b, perm_p, ranks  # noqa: E402
 
-CONFIGS = [("hover", "map-5", "tax-10"), ("hover", "map-3", "tax-18"), ("hotpotqa", "map-1", "tax-1")]
+CONFIGS = [("hover", "map-5", "tax-10"), ("hover", "map-3", "tax-18"), ("ifbench", "map-1", "tax-1"), ("hotpotqa", "map-1", "tax-1")]
 TAU = 3
 
 

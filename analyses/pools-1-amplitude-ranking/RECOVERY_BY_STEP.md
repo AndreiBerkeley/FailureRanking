@@ -59,3 +59,26 @@ per (code, step), with no gold anywhere, reach +0.50. It carries almost nothing 
 recovery adds is both the rise from +0.50 to +0.76 and the partial of +0.36, and the table above says exactly which units it acts on. A
 trace-read recovery signal, whether the downstream steps corrected or ignored what happened at
 summarize2, would have to reproduce that to earn the difference outcome-free.
+
+## All benchmarks
+
+Kendall tau-b against the generalization gold; "placed amp" is the outcome-free count of (code, step)
+units per task; the recovery scores read gold for the recovery share; "partial" removes gold-50.
+
+| config | rule | units | ceiling | placed amp, no gold | mode-sum γ=1 | partial | mode-sum γ=2 | partial | task-max γ=1 | partial |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| hover/tax-10 | both | 27 | +0.78 | **+0.50** (p=.03) | **+0.76** (p<.01) | +0.36 | **+0.73** (p<.01) | +0.39 | +0.64 | +0.03 |
+| hover/tax-10 | any | 32 | +0.78 | +0.45 (p=.05) | +0.61 | +0.09 | +0.64 | +0.18 | +0.67 | +0.21 |
+| hover/tax-18 | both | 33 | +0.78 | +0.41 (p=.08) | +0.52 | 0.00 | +0.45 | −0.06 | +0.61 | +0.15 |
+| hover/tax-18 | any | 38 | +0.78 | +0.47 (p=.04) | +0.61 | +0.09 | +0.58 | +0.06 | **+0.76** (p<.01) | +0.39 |
+| ifbench/tax-1 | both | 9 | 0.00 | +0.05 | 0.00 | −0.12 | +0.09 | 0.00 | +0.13 | +0.12 |
+| ifbench/tax-1 | any | 12 | 0.00 | +0.19 | +0.09 | +0.09 | +0.16 | +0.15 | +0.19 | +0.18 |
+| hotpotqa/tax-1 | both | 13 | +0.36 | −0.03 | +0.20 | +0.06 | +0.26 | +0.06 | +0.23 | +0.06 |
+| hotpotqa/tax-1 | any | 17 | +0.36 | +0.12 | +0.20 | 0.00 | +0.20 | −0.12 | +0.29 | +0.09 |
+
+IFBench has no ceiling to reach and nothing reaches anything. HotpotQA sits at +0.20 to +0.29
+against a ceiling of +0.36, with partials at zero: the step split does not rescue a taxonomy that
+lacks the mechanism deciding gold. On HoVer the step split takes every recovery variant to +0.45
+or above on both taxonomies and under both rules; the single best cell per taxonomy reaches the
+ceiling (tax-10 mode-sum/both +0.76, tax-18 task-max/any +0.76), and the partial after gold-50 is
+positive but below significance in each.
