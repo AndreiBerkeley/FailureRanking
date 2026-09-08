@@ -26,9 +26,9 @@ from new_pipeline.generation import prompts, contracts         # noqa: E402
 from new_pipeline.generation.run import salvage                # noqa: E402
 
 MAX_EXAMPLES, MAX_STRETCHED, MAX_UNMAPPED, MAX_PROBLEM = 3, 3, 60, 320
-CHECKS = ("subject", "observable", "mechanism", "contract", "column", "adequacy", "overlap", "reason")
+CHECKS = ("subject", "observable", "mechanism", "contract", "column", "level", "adequacy", "overlap", "reason")
 FIX = ("name", "definition", "when_to_use", "when_not_to_use", "column")
-OK = {"subject": "candidate", "observable": "yes", "mechanism": "ok", "contract": "ok", "column": "ok", "adequacy": "matches", "overlap": "none"}
+OK = {"subject": "candidate", "observable": "yes", "mechanism": "ok", "contract": "ok", "column": "ok", "level": "ok", "adequacy": "matches", "overlap": "none"}
 CODE_FIELDS = ("id", "column", "name", "definition", "when_to_use", "when_not_to_use")
 
 

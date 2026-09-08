@@ -261,6 +261,32 @@ A code's boundaries separate it from its neighbours by what is VISIBLE, never
 by intent and never by outcome. No remedy, no routing, no advice in a code's
 identity.
 
+THE GENERAL FIELDS ARE GENERAL; THE SPECIFICS LIVE IN THE EVIDENCE
+
+`definition`, `when_to_use` and `when_not_to_use` state the mechanism and its
+boundaries in terms that hold for every candidate running this program. They
+name no particular token, field name, section title, phrase or clause. Where a
+mechanism is a breach of something the agent was told, they say so in that form
+("a requirement its own instructions state"), leaving WHICH requirement to the
+occurrence.
+
+The concrete instances go in `evidence`, and there they are as specific as the
+trace allows: the clause that was breached, quoted; the span that breached it,
+quoted; the agent and turn. An example promoted into a definition becomes a
+rule, and a rule about one candidate's wording is not a failure mechanism.
+
+  Grounding
+
+  "The query contains quotation marks or Boolean operators" is an example. It
+  fires on a candidate whose instructions never mentioned either, and cannot
+  fire on one that was never asked to write queries a particular way.
+
+  "The output takes a form the agent's own instructions specify against" is the
+  mechanism. Every candidate has instructions; each occurrence cites the clause
+  and the span, and one of those occurrences is the quotation-mark case above.
+
+  Reason from the principle, not from these two.
+
 Choose your own vocabulary. Nothing above is a naming convention and no phrase
 in it is a template.
 
@@ -280,6 +306,20 @@ A code names something that can recur. Three ways to get this wrong:
 
   A constant     it would fire on most traces regardless of what the candidate
                  did, and so separates nothing.
+
+  An instruction detector  applying it requires the candidate's instructions to
+                 have defined the thing being breached. "Query contains
+                 quotation marks" can only fire where some instruction forbade
+                 quotation marks; on a candidate whose instructions say nothing
+                 about query form it cannot fire, however the candidate wrote
+                 its queries. Such a code reads the candidate's CONSTRUCTION,
+                 which is not evidence, rather than its EXECUTION, which is.
+                 Write the mechanism at the level where every candidate could
+                 exhibit it: not "used quotation marks" but "produced an output
+                 whose form its own instructions specify against"; not "omitted
+                 the evidence-documents section" but "omitted a section its own
+                 instructions require". The specific clause and the specific
+                 span belong in the occurrence's evidence, never in the code.
 
   The test: could this fire on material you have not seen, within this same
   field of work? And would it fail to fire on a trace where the candidate did
@@ -986,6 +1026,14 @@ this task. For every code, answer ALL of the following.
                                  upstream, propagated or downstream
   agent_free     "yes" | "no"    no agent or role name, in either column,
                                  specialised codes included
+  general_fields "yes" | "no"    definition, when_to_use and when_not_to_use
+                                 hold for every candidate running this program:
+                                 they name no particular token, field name,
+                                 section title or clause wording. A code whose
+                                 use rule presupposes a requirement ("contains
+                                 disallowed quotation marks") instead of naming
+                                 the relation to it ("breaches a requirement its
+                                 own instructions state") answers "no".
   granularity    "ok" | "one_instance" | "task_shape" | "too_general"
   merged_from    [ids] | null    taken from the provenance you are given
   merge_ok       "yes" | "no" | "n/a"
@@ -1009,6 +1057,9 @@ There is NO verdict field. The verdict is DERIVED:
                                             input
   column_ok = no                         -> MOVE column
   agent_free = no                        -> RENAME without the agent
+  general_fields = no                    -> REWRITE the general fields at the
+                                            level every candidate could exhibit,
+                                            moving the specifics into evidence
   granularity != ok                      -> REWRITE at the right level
   merge_ok = no                          -> SPLIT back into the codes it
                                             absorbed, restoring their ids
@@ -1028,7 +1079,7 @@ correction you derived, and look once more at the result:
 
 Return ONLY JSON:
 {"checks": [{"id": "...", "column": "...", "column_ok": "...", "is_mechanism": "...",
-             "contract_ok": "...", "agent_free": "...", "granularity": "...",
+             "contract_ok": "...", "agent_free": "...", "general_fields": "...", "granularity": "...",
              "merged_from": [...] or null, "merge_ok": "...", "observable": "...",
              "evidence_ok": "..."}],
  "taxonomy": [{"id": "...", "column": "...", "name": "...", "definition": "...",
@@ -1112,6 +1163,14 @@ code's exact id. A missing entry or a missing field is an error.
                A code readers keep stretching to fit is too narrow. One they
                apply to unlike problems is too broad, or covers two
                mechanisms.
+  level        "ok" | "instruction_detector"
+               "instruction_detector" when the code can only fire where the
+               candidate's instructions happen to define the thing breached
+               (a named token, field, section or clause), so a candidate whose
+               instructions are silent cannot exhibit it however it behaved.
+               The general fields must name the relation ("breaches a
+               requirement its own instructions state"); the particular clause
+               and span belong in the evidence.
   overlap      "none" | "<code id>"
                Another code that names the SAME mechanism.
   reason       One sentence citing the evidence you used.
@@ -1122,7 +1181,7 @@ There is NO verdict field. The verdict is DERIVED from the checks:
                                                   in a later call)
   any other check off its clean value          -> edit
       (clean values: subject candidate, observable yes, mechanism ok,
-       contract ok, column ok, adequacy matches)
+       contract ok, column ok, level ok, adequacy matches)
   otherwise                                    -> keep
 overlap on its own changes nothing here; it feeds the merge decision in a
 later call.
@@ -1138,7 +1197,7 @@ on this corpus has not been shown not to occur.
 Return ONLY JSON:
 {"checks": [{"code": "<exact id>", "subject": "...", "observable": "...",
              "mechanism": "...", "contract": "...", "column": "...",
-             "adequacy": "...", "overlap": "...", "reason": "...",
+             "level": "...", "adequacy": "...", "overlap": "...", "reason": "...",
              "name": "...", "definition": "...",
              "when_to_use": "...", "when_not_to_use": "..."}]}
 ```
@@ -1168,7 +1227,7 @@ any check is off its clean value.
 Return ONLY JSON:
 {"checks": [{"code": "<exact id>", "subject": "...", "observable": "...",
              "mechanism": "...", "contract": "...", "column": "...",
-             "adequacy": "...", "overlap": "...", "reason": "...",
+             "level": "...", "adequacy": "...", "overlap": "...", "reason": "...",
              "name": "...", "definition": "...",
              "when_to_use": "...", "when_not_to_use": "..."}]}
 ```
