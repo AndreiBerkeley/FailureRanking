@@ -59,3 +59,25 @@ behave accordingly. Part two, exposure, is untouched and is now the whole of the
 move is the one the mode-first discussion arrived at: a rate per opportunity,
 `occ_m(c) / exp_m(c)`, where the exposure count comes from the candidate's contract rather than from
 the count of tasks.
+
+## Every brute method on tax-10 (`scripts/brute_all.py`, `brute_all.json`)
+
+Fourteen counting methods, identical code, all four mappings. Against the generalization gold on
+HoVer, tax-18 versus tax-10:
+
+| method | tax-18 | tax-10 |
+|---|---:|---:|
+| amplitude | +0.02 | +0.06 |
+| any failure | +0.02 | −0.28 |
+| saturate / cap3 | 0.00 / 0.00 | −0.18 / −0.21 |
+| inclusion–exclusion to pairs | +0.18 | −0.21 |
+| combinations: all / recurring / weighted | −0.12 / −0.18 / +0.06 | +0.24 / +0.15 / +0.18 |
+| breadth / worst / persistent | −0.14 / +0.12 / −0.13 | −0.26 / −0.19 / +0.07 |
+| patterns: distinct / recurring / mass | −0.11 / +0.22 / +0.18 | −0.11 / −0.10 / +0.14 |
+
+No method reaches significance on either taxonomy; the best on tax-10 is +0.24 (p=0.31). The faint
+tax-18 winners, recurring patterns at +0.22 and pattern mass at +0.18, fall to −0.10 and +0.14, so
+they were noise. The bounded readings turn negative on tax-10 because its codes fire on 96% of
+traces, leaving "any failure" almost constant across candidates. The family is exhausted on both
+taxonomies for the same reason: every method is a function of how many codes fired, and the
+information is in which ones (domain +0.23, general −0.31).
