@@ -51,11 +51,11 @@ lifts mode-sum from +0.39 to +0.76 while the code-level version added nothing be
 | gold on the 50 judged tasks | yes | +0.78 | — |
 | recovery-discounted (code, step) mode-sum | yes, for recovery | +0.76 | +0.36 |
 | instruction word count | no | +0.64 | +0.12 |
-| placed (code, step) amplitude, equal weights | **no** | +0.50 | +0.30 |
+| placed (code, step) amplitude, equal weights | **no** | +0.50 (p=.025) | +0.12 |
 | code-level amplitude, any placement | no | +0.06 | — |
 
 The outcome-free line that matters is the fourth: firings both readers can place on a turn, counted
-per (code, step), with no gold anywhere, reach +0.50. What gold-read recovery adds on top is the
-difference between +0.50 and +0.76, and the table above says exactly which units it acts on. A
+per (code, step), with no gold anywhere, reach +0.50. It carries almost nothing beyond gold-50 on its own (partial +0.12), so what gold-read
+recovery adds is both the rise from +0.50 to +0.76 and the partial of +0.36, and the table above says exactly which units it acts on. A
 trace-read recovery signal, whether the downstream steps corrected or ignored what happened at
 summarize2, would have to reproduce that to earn the difference outcome-free.
