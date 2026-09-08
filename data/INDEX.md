@@ -13,7 +13,7 @@ Gold lives in `tasks/` and `outcomes/` and nowhere else. `traces/` and
 
 | benchmark | tasks | candidates | splits | captures | taxonomies | mappings |
 |---|---:|---:|---|---|---|---|
-| [hover](hover/README.md) | 6,084 | 40 (set pool-3 = 12) | gepa-1, eval-1, pools-1 | cap-1 (6,600), cap-2 (600), cap-3 (6,000), cap-4 (600), cap-5 (5,400) | tax-7, tax-18, tax-19, tax-20 (10, re-levelled) | map-1 to map-4 |
+| [hover](hover/README.md) | 6,084 | 40 (set pool-3 = 12) | gepa-1, eval-1, pools-1 | cap-1 (6,600), cap-2 (600), cap-3 (6,000), cap-4 (600), cap-5 (5,400) | tax-7, tax-18, tax-10 (re-levelled) | map-1 to map-4 |
 | [ifbench](ifbench/README.md) | 13,103 | 12 | gepa-1, eval-1, pools-1 | cap-1 (6,000, 5 repeats), cap-2 (300 induction), cap-3 (4,800, judging), cap-4 (3,600, taxonomy; 1 blocked task), cap-5 (4,800, generalization; 1 blocked task) | tax-1 (13), tax-2 (13, amended) | map-1 (600) |
 | [hotpotqa](hotpotqa/README.md) | 750 | 12 | gepa-1, eval-1, pools-1 | cap-1 (6,000, 5 repeats), cap-2 (2,400 domain), cap-3 (300 induction), cap-4 (4,800, generalization), cap-5 (600, judging), cap-6 (2,400, taxonomy) | tax-1 (7), tax-2 (7, amended) | map-1 (600) |
 | [swebench](swebench/README.md) | 500 | none yet | none yet | none yet | none yet | none yet |

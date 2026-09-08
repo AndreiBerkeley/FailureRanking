@@ -7,7 +7,7 @@ copies of the artifacts in `data/<benchmark>/taxonomies/`, where the ids and has
 
 | benchmark | artifact | codes | general | domain | how it was made |
 |---|---|---:|---:|---:|---|
-| [`hover`](hover/README.md) | `tax-20` | 10 | 4 | 6 | tax-19 re-levelled by hand on 2026-09-07: 10 of tax-18's 18 codes could only fire where a candidate's own instructions defined the artifact breached, so every code now names a mechanism any candidate could exhibit, with the specifics moved into per-code evidence |
+| [`hover`](hover/README.md) | `tax-10` | 10 | 4 | 6 | tax-18 re-levelled by hand on 2026-09-07: 10 of its 18 codes could only fire where a candidate's own instructions defined the artifact breached, so every code now names a mechanism any candidate could exhibit, with the specifics moved into per-code evidence |
 | [`ifbench`](ifbench/README.md) | `tax-2` | 13 | 6 | 7 | tax-1 (new_pipeline: generation, one refinement round, gate, gap test, splits) with 11 hand amendments to 4 codes' wording after review of map-1 |
 | [`hotpotqa`](hotpotqa/README.md) | `tax-2` | 7 | 3 | 4 | tax-1 (new_pipeline, same steps) with 6 hand amendments to 3 codes' wording after review of map-1 |
 

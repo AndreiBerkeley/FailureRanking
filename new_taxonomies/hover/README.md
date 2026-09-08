@@ -1,8 +1,11 @@
-# tax-20 — 10 failure modes for the HoVer program
+# tax-10 — 10 failure modes for the HoVer program
 
-`tax-19`'s 18 codes re-levelled by hand on 2026-09-07 so that every code names a mechanism any
-candidate could exhibit. 4 general, 6 domain. The number is an artifact id, not a count of
-anything; this one happens to hold 10 codes.
+`tax-18`'s 18 codes re-levelled by hand on 2026-09-07 so that every code names a mechanism any
+candidate could exhibit. 4 general, 6 domain. The id states the code count, as `tax-7` and `tax-18` do.
+
+It carries forward the amendment of the same day that the execution harness's field markers are
+not failures; that was briefly a separate artifact, `tax-19`, removed because an 18-code id
+collided with `tax-18` and nothing cited it.
 
 **Why.** A code-by-code review of `tax-18` (`analyses/pools-1-amplitude-ranking/TAX18_REVIEW.md`)
 found 10 of its 18 codes could only fire where a candidate's own instructions happened to define the
@@ -36,7 +39,7 @@ traces. Three cross-references pointed at `tax-7` parent names that no longer ex
 | `RL_09` | domain | **Misdirected Next Step** | The agent produces the action meant to carry the work forward, and that action cannot obtain what its own account says is still outstanding: it targets what is already established, or drops the detail that identifies the outstanding item. | SP_18 |
 | `RL_10` | general | **Missing Closing Marker** | The agent's output ends without the terminal marker that the prompt instructs it to close with. | SP_06 |
 
-## What became of each tax-19 code
+## What became of each tax-18 code
 
 | from | to | operation | why |
 |---|---|---|---|
@@ -54,4 +57,4 @@ traces. Three cross-references pointed at `tax-7` parent names that no longer ex
 ## Before it can be used
 
 The counts in `map-3` were produced against `tax-18`'s wording and **cannot be reinterpreted** under
-these codes. A score under `tax-20` needs a fresh judging pass over the 600 traces, roughly $40.
+these codes. A score under `tax-10` needs a fresh judging pass over the 600 traces, roughly $40.
