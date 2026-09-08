@@ -1,0 +1,671 @@
+## HOW THE TRACES ARE LAID OUT
+
+Each trace is a sequence of blocks.
+
+  `===== ENVIRONMENT · not an agent turn =====`
+      The task statement, tool or retrieval results, and other material
+      produced by the environment, not by an agent.
+
+  `===== TURN k · agent: NAME =====` ... `===== end of turn k =====`
+      One agent turn, holding three sections in this order:
+        `--- instructions given to this agent ---`   the agent's own instructions
+        `--- input this agent received ---`          what it was handed
+        `--- output this agent produced ---`         what it produced
+
+  `===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS ... =====`
+      Assembled by the harness. Not a turn.
+
+A turn is judged against ITS OWN instructions section and ITS OWN input
+section, and nothing else. Instructions shown in another turn do not bind this
+one, even when the agent has the same name in another trace. A mistake already
+present in a turn's input belongs to the earlier turn that produced it, not to
+this one.
+
+## WHAT EACH AGENT WAS ASKED TO DO
+### agent: summarize1   (role: summarizer)
+  receives: ['question', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system.
+    [c2] Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+    [c3] 1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+    [c4] 2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+    [c5] 1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+    [c6] 2. **Filter & Extract Passages**:
+    [c7] Identify which retrieved passages directly address parts of the question.
+    [c8] Ignore irrelevant passages.
+    [c9] Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+    [c10] 3. **Identify Bridging Concepts**:
+    [c11] Clearly state what has been proven by the current passages.
+    [c12] Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+    [c13] 4. **Synthesize into `summary`**:
+    [c14] Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+    [c15] Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+    [c16] `question`: The user's multi-hop question.
+    [c17] `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+    [c18] [Step-by-step analysis identifying:
+    [c19] Which passages are relevant and what facts they establish.
+    [c20] The bridging entity or concept needed to answer the complete question.
+    [c21] What specific missing information needs to be retrieved in the second hop.]
+    [c22] [Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+    [c23] [Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+
+### agent: create_query_hop2   (role: query_generator)
+  receives: ['question', 'summary_1']
+  must produce: ['reasoning', 'query']
+  requirements it was given:
+    [c1] Given the fields `question`, `summary_1`, produce the fields `query`.
+
+### agent: summarize2   (role: summarizer)
+  receives: ['question', 'context', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are the **summary generation module** in a multi-hop Question Answering (QA) system.
+    [c2] Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary.
+    [c3] This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context.
+    [c4] Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+    [c5] 1. `question`: The multi-hop target question that needs to be answered.
+    [c6] 2. `context`: An intermediate summary or background context available from previous hops.
+    [c7] 3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+    [c8] Your output must contain two sections:
+    [c9] 1. `reasoning`: A step-by-step breakdown analyzing:
+    [c10] What the question is specifically asking for and what the target answer type/entity is.
+    [c11] What critical facts and entity relationships are present in the `context` and `passages`.
+    [c12] How to logically connect and synthesize these pieces of information to fully support the answer.
+    [c13] 2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+    [c14] 1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+    [c15] 2. **Synthesis & Integration**: Do not simply repeat individual passages.
+    [c16] Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+    [c17] 3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question.
+    [c18] Exclude irrelevant side details present in retrieved passages.
+    [c19] 4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+
+### agent: final_answer   (role: answerer)
+  receives: ['question', 'summary_1', 'summary_2']
+  must produce: ['reasoning', 'answer']
+  requirements it was given:
+    [c1] You are an expert question-answering assistant.
+    [c2] You will be provided with three input fields: `question`, `summary_1`, and `summary_2`.
+    [c3] Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+    [c4] 1. **Question Analysis & Attribute Precision:**
+    [c5] Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. real name).
+    [c6] **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria (e.g., matching "keyboardist" but not "guitarist").
+    [c7] Ensure the target entity strictly satisfies *all* specified traits/roles in the prompt.
+    [c8] 2. **Evaluating Summaries vs.
+    [c9] World Knowledge:**
+    [c10] Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+    [c11] Summaries can be distractor-laden, incomplete, or misleading.
+    [c12] If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+    [c13] Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+    [c14] 3. **Domain-Specific Reference Knowledge:**
+    [c15] **Musicians & Bands:**
+    [c16] *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*).
+    [c17] Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+    [c18] **Wrestling & Tag Teams:**
+    [c19] *Terry Gene Bollea:* Better known as **Hulk Hogan**.
+    [c20] His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+    [c21] **Film Industry & Shared Nationalities:**
+    [c22] *Aram Avakian & Wilfred Lucas:* Share **American** nationality.
+    [c23] Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*).
+    [c24] Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+    [c25] 4. **Formatting Output (CRITICAL):**
+    [c26] **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+    [c27] **Answer Field:**
+    [c28] **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+    [c29] **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+    [c30] [Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+    [c31] [Direct target entity/short answer only]
+
+
+The requirements above are the same text as the instructions sections inside
+the turns, split into numbered clauses so that a violation can cite one. Every
+trace in this batch belongs to the same candidate program, so the requirements
+apply to every trace here. A clause listed under agent NAME binds only the
+turns whose header names NAME.
+
+## TRACES
+### trace 0181fa380965119264a73095
+===== ENVIRONMENT · not an agent turn =====
+Task: multi-hop question answering over Wikipedia abstracts. Two BM25 retrieval hops are executed, each summarized, before a final answer is produced.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 executed. Documents returned:
+['Children in Need 2006 | Children in Need 2006 was a campaign held in the United Kingdom to raise money for Children in Need.  It culmunated in a live broadcast on BBC One on the evening of Friday 17 November and was hosted by Terry Wogan, Natasha Kaplinsky, Fearne Cotton and Chris Moyles.  The voice over reading out money raised at various points was Alan Dedicoat.  On average, the broadcast brought in 7.72m viewers and raised a total of £18,300,392 by the closing minute.', 'Children in Need 2005 | Children in Need 2005 was a campaign held in the United Kingdom to raise money for the charity Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 18 November and was hosted by Terry Wogan, Fearne Cotton, Natasha Kaplinsky and, from RAF Brize Norton, Matt Allwright.  The voice over was Alan Dedicoat.  A total of £17,235,256 was raised by the closing minute.', "Children in Need 2014 | Children in Need 2014 is a campaign held in the United Kingdom to raise money for the charity Children in Need.  2014 marks the 34th anniversary of the appeal which culminated in a live broadcast on BBC One and BBC Two on the evening of Friday 14 November until the early hours of Saturday 15 November.  The broadcast was hosted by Sir Terry Wogan, with Tess Daly, Fearne Cotton, Rochelle Humes and Nick Grimshaw as co-hosts.  Shane Richie hosted the period the show was broadcast on BBC Two.  The show was broadcast from the BBC in Elstree but also includes regular regional opt-outs.  Wogan didn't present the 2015 appeal because of ill health, and later died on 31 January 2016, making this his last one.", 'Children in Need 2011 | Children in Need 2011 is a campaign held in the United Kingdom to raise money for Children in Need.  2011 marked the 31st anniversary of the appeal which culminated in a live broadcast on BBC One which began on the evening of Friday 18 November and ran until the early hours of Saturday 19 November.  The broadcast was hosted by Terry Wogan, with Tess Daly, Alesha Dixon and Fearne Cotton as co-hosts.  The show was broadcast from BBC Television Centre in London but also included regular regional opt-outs presented from various locations around the UK.', 'Children in Need 2008 | Children in Need 2008 was a campaign held in the United Kingdom to raise money for Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 14 November, through to the morning of Saturday 15 November.  The broadcast was hosted by Terry Wogan, Fearne Cotton and Tess Daly joined by other guest presenters throughout the night, including Alesha Dixon presenting from BT Tower.  The voice-over reading out running totals was Alan Dedicoat.  The 2008 event broke all previous records, with a total of £20,991,216 raised by the end of the broadcast.', "Children in Need 2007 | Children in Need 2007 was a campaign held in the United Kingdom to raise money for Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 16 November, through to the morning of Saturday 17 November.  The broadcast was hosted by Terry Wogan and Fearne Cotton, joined by other guest presenters throughout the night.  The voice over reading out hourly totals was Alan Dedicoat.  The event broke all previous records with a total of £19,089,771 raised by the closing minute.  The show's average audience was 9.56 million, a huge amount higher than the previous year's event.", 'Children in Need 2012 | Children in Need 2012 is a campaign held in the United Kingdom to raise money for the charity Children in Need.  2012 marks the 32nd anniversary of the appeal which culminated in a live broadcast on BBC One and BBC Two on the evening of Friday 16 November until the early hours of Saturday 17 November.  The broadcast was hosted by Terry Wogan, with Tess Daly, Fearne Cotton and Nick Grimshaw as co-hosts.  The show was broadcast from BBC Television Centre in London but also includes regular regional opt-outs presented from various locations around the UK.  The 2012 appeal also marked the last Children in Need broadcast from BBC Television Centre as the BBC have recently sold and moved out of the building.']
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize1.predict
+You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system. Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+
+### Primary Objectives
+1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+
+---
+
+### Step-by-Step Execution Guide
+
+1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+2. **Filter & Extract Passages**:
+   - Identify which retrieved passages directly address parts of the question.
+   - Ignore irrelevant passages.
+   - Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+3. **Identify Bridging Concepts**:
+   - Clearly state what has been proven by the current passages.
+   - Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+4. **Synthesize into `summary`**:
+   - Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+   - Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+
+---
+
+### Input Format
+- `question`: The user's multi-hop question.
+- `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+
+---
+
+### Output Format
+
+```
+### reasoning
+[Step-by-step analysis identifying:
+ 1. Which passages are relevant and what facts they establish.
+ 2. The bridging entity or concept needed to answer the complete question.
+ 3. What specific missing information needs to be retrieved in the second hop.]
+
+### summary
+[Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+[Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+...
+```
+--- input this agent received ---
+[[ ## question ## ]]
+What is the nationality of the woman who hosted Children in Need 2006, alongside Terry Wogan, Fearne Cotton and Chris Moyles?
+
+[[ ## passages ## ]]
+['Children in Need 2006 | Children in Need 2006 was a campaign held in the United Kingdom to raise money for Children in Need.  It culmunated in a live broadcast on BBC One on the evening of Friday 17 November and was hosted by Terry Wogan, Natasha Kaplinsky, Fearne Cotton and Chris Moyles.  The voice over reading out money raised at various points was Alan Dedicoat.  On average, the broadcast brought in 7.72m viewers and raised a total of £18,300,392 by the closing minute.', 'Children in Need 2005 | Children in Need 2005 was a campaign held in the United Kingdom to raise money for the charity Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 18 November and was hosted by Terry Wogan, Fearne Cotton, Natasha Kaplinsky and, from RAF Brize Norton, Matt Allwright.  The voice over was Alan Dedicoat.  A total of £17,235,256 was raised by the closing minute.', "Children in Need 2014 | Children in Need 2014 is a campaign held in the United Kingdom to raise money for the charity Children in Need.  2014 marks the 34th anniversary of the appeal which culminated in a live broadcast on BBC One and BBC Two on the evening of Friday 14 November until the early hours of Saturday 15 November.  The broadcast was hosted by Sir Terry Wogan, with Tess Daly, Fearne Cotton, Rochelle Humes and Nick Grimshaw as co-hosts.  Shane Richie hosted the period the show was broadcast on BBC Two.  The show was broadcast from the BBC in Elstree but also includes regular regional opt-outs.  Wogan didn't present the 2015 appeal because of ill health, and later died on 31 January 2016, making this his last one.", 'Children in Need 2011 | Children in Need 2011 is a campaign held in the United Kingdom to raise money for Children in Need.  2011 marked the 31st anniversary of the appeal which culminated in a live broadcast on BBC One which began on the evening of Friday 18 November and ran until the early hours of Saturday 19 November.  The broadcast was hosted by Terry Wogan, with Tess Daly, Alesha Dixon and Fearne Cotton as co-hosts.  The show was broadcast from BBC Television Centre in London but also included regular regional opt-outs presented from various locations around the UK.', 'Children in Need 2008 | Children in Need 2008 was a campaign held in the United Kingdom to raise money for Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 14 November, through to the morning of Saturday 15 November.  The broadcast was hosted by Terry Wogan, Fearne Cotton and Tess Daly joined by other guest presenters throughout the night, including Alesha Dixon presenting from BT Tower.  The voice-over reading out running totals was Alan Dedicoat.  The 2008 event broke all previous records, with a total of £20,991,216 raised by the end of the broadcast.', "Children in Need 2007 | Children in Need 2007 was a campaign held in the United Kingdom to raise money for Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 16 November, through to the morning of Saturday 17 November.  The broadcast was hosted by Terry Wogan and Fearne Cotton, joined by other guest presenters throughout the night.  The voice over reading out hourly totals was Alan Dedicoat.  The event broke all previous records with a total of £19,089,771 raised by the closing minute.  The show's average audience was 9.56 million, a huge amount higher than the previous year's event.", 'Children in Need 2012 | Children in Need 2012 is a campaign held in the United Kingdom to raise money for the charity Children in Need.  2012 marks the 32nd anniversary of the appeal which culminated in a live broadcast on BBC One and BBC Two on the evening of Friday 16 November until the early hours of Saturday 17 November.  The broadcast was hosted by Terry Wogan, with Tess Daly, Fearne Cotton and Nick Grimshaw as co-hosts.  The show was broadcast from BBC Television Centre in London but also includes regular regional opt-outs presented from various locations around the UK.  The 2012 appeal also marked the last Children in Need broadcast from BBC Television Centre as the BBC have recently sold and moved out of the building.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. The question asks for the nationality of a specific woman who hosted *Children in Need 2006* alongside Terry Wogan, Fearne Cotton, and Chris Moyles.
+2. Passage [1] confirms that the hosts of *Children in Need 2006* were Terry Wogan, Natasha Kaplinsky, Fearne Cotton, and Chris Moyles.
+3. The woman in question is Natasha Kaplinsky (since Fearne Cotton is already listed as a co-host in the question).
+4. The current passages do not provide the nationality of Natasha Kaplinsky. 
+5. The bridging entity is "Natasha Kaplinsky," and the next hop must retrieve information regarding her background or nationality.
+
+[[ ## summary ## ]]
+[Children in Need 2006] | The live broadcast of Children in Need 2006 was hosted by Terry Wogan, Natasha Kaplinsky, Fearne Cotton, and Chris Moyles.
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `query` (str):
+Component: create_query_hop2.predict
+Given the fields `question`, `summary_1`, produce the fields `query`.
+--- input this agent received ---
+[[ ## question ## ]]
+What is the nationality of the woman who hosted Children in Need 2006, alongside Terry Wogan, Fearne Cotton and Chris Moyles?
+
+[[ ## summary_1 ## ]]
+[Children in Need 2006] | The live broadcast of Children in Need 2006 was hosted by Terry Wogan, Natasha Kaplinsky, Fearne Cotton, and Chris Moyles.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The summary identifies that the woman hosting Children in Need 2006 alongside Terry Wogan, Fearne Cotton, and Chris Moyles is Natasha Kaplinsky. To determine her nationality, a search for her background is required.
+
+[[ ## query ## ]]
+Natasha Kaplinsky nationality
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 executed. Documents returned:
+['Natasha Kaplinsky | Natasha Margaret Kaplinsky OBE (born 9 September 1972) is an English newsreader and television presenter, best known for her roles as a newsreader on Sky News, BBC News, Channel 5 and ITV News where she is the current presenter.', 'Born to Shine | Born to Shine was an ITV entertainment programme which featured celebrities who learn a new skill taught to them by talented teenagers, live on Sunday evenings.  The show was presented by Natasha Kaplinsky and won by Jason Manford.', 'Alan Kaplinsky | Alan S. Kaplinsky (born December 1, 1945) is an American lawyer.  He heads the consumer financial services practice at Ballard Spahr.  Kaplinsky "pioneered the use of pre-dispute arbitration provisions in consumer contracts" and has written and lectured extensively on the subject.  He is a founding author of CFPB Monitor, a blog that delivers news and guidance related to the Consumer Financial Protection Bureau.  The blog was named one of the 100 best law blogs in the nation by the American Bar Association for 2012 and for 2013.  Chambers, a leading law firm ranking organization, noted that "Kaplinsky has been fundamental to [Ballard Spahr\'s] response and guidance in relation to CFPB compliance and enforcement matters."', 'Kaplinsky | Kaplinsky or Kaplinski is a Polish surname.  Notable people with the surname include:', "F2F (TV series) | F2F was a youth chat show series on the Granada Talk TV channel; it featured phone-ins, studio guests and comedy sketches/interstitials.  The series ran between October 1996 and August 1997 (when the channel was closed).  It was presented by Sacha Baron Cohen and Natasha Kaplinsky, in their first major TV roles.  Baron Cohen's Ali G and Borat characters first appeared on this programme.", 'Children in Need 2005 | Children in Need 2005 was a campaign held in the United Kingdom to raise money for the charity Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 18 November and was hosted by Terry Wogan, Fearne Cotton, Natasha Kaplinsky and, from RAF Brize Norton, Matt Allwright.  The voice over was Alan Dedicoat.  A total of £17,235,256 was raised by the closing minute.', 'Children in Need 2006 | Children in Need 2006 was a campaign held in the United Kingdom to raise money for Children in Need.  It culmunated in a live broadcast on BBC One on the evening of Friday 17 November and was hosted by Terry Wogan, Natasha Kaplinsky, Fearne Cotton and Chris Moyles.  The voice over reading out money raised at various points was Alan Dedicoat.  On average, the broadcast brought in 7.72m viewers and raised a total of £18,300,392 by the closing minute.']
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `context` (str):
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize2.predict
+You are the **summary generation module** in a multi-hop Question Answering (QA) system. Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary. 
+
+This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context. Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+
+---
+
+### **Input Format**
+1. `question`: The multi-hop target question that needs to be answered.
+2. `context`: An intermediate summary or background context available from previous hops.
+3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+
+---
+
+### **Output Format**
+Your output must contain two sections:
+
+1. `reasoning`: A step-by-step breakdown analyzing:
+   - What the question is specifically asking for and what the target answer type/entity is.
+   - What critical facts and entity relationships are present in the `context` and `passages`.
+   - How to logically connect and synthesize these pieces of information to fully support the answer.
+
+2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+
+---
+
+### **Key Rules & Strategy**
+
+1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+2. **Synthesis & Integration**: Do not simply repeat individual passages. Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question. Exclude irrelevant side details present in retrieved passages.
+4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+--- input this agent received ---
+[[ ## question ## ]]
+What is the nationality of the woman who hosted Children in Need 2006, alongside Terry Wogan, Fearne Cotton and Chris Moyles?
+
+[[ ## context ## ]]
+[Children in Need 2006] | The live broadcast of Children in Need 2006 was hosted by Terry Wogan, Natasha Kaplinsky, Fearne Cotton, and Chris Moyles.
+
+[[ ## passages ## ]]
+['Natasha Kaplinsky | Natasha Margaret Kaplinsky OBE (born 9 September 1972) is an English newsreader and television presenter, best known for her roles as a newsreader on Sky News, BBC News, Channel 5 and ITV News where she is the current presenter.', 'Born to Shine | Born to Shine was an ITV entertainment programme which featured celebrities who learn a new skill taught to them by talented teenagers, live on Sunday evenings.  The show was presented by Natasha Kaplinsky and won by Jason Manford.', 'Alan Kaplinsky | Alan S. Kaplinsky (born December 1, 1945) is an American lawyer.  He heads the consumer financial services practice at Ballard Spahr.  Kaplinsky "pioneered the use of pre-dispute arbitration provisions in consumer contracts" and has written and lectured extensively on the subject.  He is a founding author of CFPB Monitor, a blog that delivers news and guidance related to the Consumer Financial Protection Bureau.  The blog was named one of the 100 best law blogs in the nation by the American Bar Association for 2012 and for 2013.  Chambers, a leading law firm ranking organization, noted that "Kaplinsky has been fundamental to [Ballard Spahr\'s] response and guidance in relation to CFPB compliance and enforcement matters."', 'Kaplinsky | Kaplinsky or Kaplinski is a Polish surname.  Notable people with the surname include:', "F2F (TV series) | F2F was a youth chat show series on the Granada Talk TV channel; it featured phone-ins, studio guests and comedy sketches/interstitials.  The series ran between October 1996 and August 1997 (when the channel was closed).  It was presented by Sacha Baron Cohen and Natasha Kaplinsky, in their first major TV roles.  Baron Cohen's Ali G and Borat characters first appeared on this programme.", 'Children in Need 2005 | Children in Need 2005 was a campaign held in the United Kingdom to raise money for the charity Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 18 November and was hosted by Terry Wogan, Fearne Cotton, Natasha Kaplinsky and, from RAF Brize Norton, Matt Allwright.  The voice over was Alan Dedicoat.  A total of £17,235,256 was raised by the closing minute.', 'Children in Need 2006 | Children in Need 2006 was a campaign held in the United Kingdom to raise money for Children in Need.  It culmunated in a live broadcast on BBC One on the evening of Friday 17 November and was hosted by Terry Wogan, Natasha Kaplinsky, Fearne Cotton and Chris Moyles.  The voice over reading out money raised at various points was Alan Dedicoat.  On average, the broadcast brought in 7.72m viewers and raised a total of £18,300,392 by the closing minute.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the nationality of the woman who co-hosted Children in Need 2006 alongside Terry Wogan, Fearne Cotton, and Chris Moyles. Based on the context provided, the female co-host is Natasha Kaplinsky. Passage [1] confirms that Natasha Kaplinsky is an English newsreader and television presenter. Therefore, the target nationality is English.
+
+[[ ## summary ## ]]
+The live broadcast of the 2006 Children in Need charity campaign was co-hosted by Terry Wogan, Fearne Cotton, Chris Moyles, and Natasha Kaplinsky. Natasha Kaplinsky, who is an English television presenter and newsreader, is the woman identified as having hosted the event alongside the specified individuals.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: final_answer =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `answer` (str):
+Component: final_answer.predict
+You are an expert question-answering assistant. You will be provided with three input fields: `question`, `summary_1`, and `summary_2`. Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+
+---
+
+### Task Execution Guidelines:
+
+1. **Question Analysis & Attribute Precision:**
+   - Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. real name).
+   - **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria (e.g., matching "keyboardist" but not "guitarist"). Ensure the target entity strictly satisfies *all* specified traits/roles in the prompt.
+
+2. **Evaluating Summaries vs. World Knowledge:**
+   - Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+   - Summaries can be distractor-laden, incomplete, or misleading. If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+   - Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+
+3. **Domain-Specific Reference Knowledge:**
+   - **Musicians & Bands:**
+     - *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*). Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+   - **Wrestling & Tag Teams:**
+     - *Terry Gene Bollea:* Better known as **Hulk Hogan**. His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+   - **Film Industry & Shared Nationalities:**
+     - *Aram Avakian & Wilfred Lucas:* Share **American** nationality. Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*). Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+
+4. **Formatting Output (CRITICAL):**
+   - **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+   - **Answer Field:** 
+     - **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+     - **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+
+---
+
+### Output Format:
+
+### reasoning
+[Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+
+### answer
+[Direct target entity/short answer only]
+--- input this agent received ---
+[[ ## question ## ]]
+What is the nationality of the woman who hosted Children in Need 2006, alongside Terry Wogan, Fearne Cotton and Chris Moyles?
+
+[[ ## summary_1 ## ]]
+[Children in Need 2006] | The live broadcast of Children in Need 2006 was hosted by Terry Wogan, Natasha Kaplinsky, Fearne Cotton, and Chris Moyles.
+
+[[ ## summary_2 ## ]]
+The live broadcast of the 2006 Children in Need charity campaign was co-hosted by Terry Wogan, Fearne Cotton, Chris Moyles, and Natasha Kaplinsky. Natasha Kaplinsky, who is an English television presenter and newsreader, is the woman identified as having hosted the event alongside the specified individuals.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Analyze the question:** Identify the woman who hosted the 2006 Children in Need telethon alongside Terry Wogan, Fearne Cotton, and Chris Moyles.
+2. **Verify facts:** The 2006 Children in Need event was indeed hosted by Terry Wogan, Fearne Cotton, Chris Moyles, and Natasha Kaplinsky.
+3. **Determine nationality:** Natasha Kaplinsky is a British television presenter (born in Brighton, England).
+4. **Evaluate summaries:** Both summaries correctly identify Natasha Kaplinsky as the fourth host and state she is an English television presenter.
+5. **Conclusion:** The woman in question is Natasha Kaplinsky, and her nationality is British (or English).
+
+[[ ## answer ## ]]
+British
+===== end of turn 4 =====
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT —
+[[ ## answer ## ]]
+British
+
+[[ ## hop1_docs ## ]]
+['Children in Need 2006 | Children in Need 2006 was a campaign held in the United Kingdom to raise money for Children in Need.  It culmunated in a live broadcast on BBC One on the evening of Friday 17 November and was hosted by Terry Wogan, Natasha Kaplinsky, Fearne Cotton and Chris Moyles.  The voice over reading out money raised at various points was Alan Dedicoat.  On average, the broadcast brought in 7.72m viewers and raised a total of £18,300,392 by the closing minute.', 'Children in Need 2005 | Children in Need 2005 was a campaign held in the United Kingdom to raise money for the charity Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 18 November and was hosted by Terry Wogan, Fearne Cotton, Natasha Kaplinsky and, from RAF Brize Norton, Matt Allwright.  The voice over was Alan Dedicoat.  A total of £17,235,256 was raised by the closing minute.', "Children in Need 2014 | Children in Need 2014 is a campaign held in the United Kingdom to raise money for the charity Children in Need.  2014 marks the 34th anniversary of the appeal which culminated in a live broadcast on BBC One and BBC Two on the evening of Friday 14 November until the early hours of Saturday 15 November.  The broadcast was hosted by Sir Terry Wogan, with Tess Daly, Fearne Cotton, Rochelle Humes and Nick Grimshaw as co-hosts.  Shane Richie hosted the period the show was broadcast on BBC Two.  The show was broadcast from the BBC in Elstree but also includes regular regional opt-outs.  Wogan didn't present the 2015 appeal because of ill health, and later died on 31 January 2016, making this his last one.", 'Children in Need 2011 | Children in Need 2011 is a campaign held in the United Kingdom to raise money for Children in Need.  2011 marked the 31st anniversary of the appeal which culminated in a live broadcast on BBC One which began on the evening of Friday 18 November and ran until the early hours of Saturday 19 November.  The broadcast was hosted by Terry Wogan, with Tess Daly, Alesha Dixon and Fearne Cotton as co-hosts.  The show was broadcast from BBC Television Centre in London but also included regular regional opt-outs presented from various locations around the UK.', 'Children in Need 2008 | Children in Need 2008 was a campaign held in the United Kingdom to raise money for Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 14 November, through to the morning of Saturday 15 November.  The broadcast was hosted by Terry Wogan, Fearne Cotton and Tess Daly joined by other guest presenters throughout the night, including Alesha Dixon presenting from BT Tower.  The voice-over reading out running totals was Alan Dedicoat.  The 2008 event broke all previous records, with a total of £20,991,216 raised by the end of the broadcast.', "Children in Need 2007 | Children in Need 2007 was a campaign held in the United Kingdom to raise money for Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 16 November, through to the morning of Saturday 17 November.  The broadcast was hosted by Terry Wogan and Fearne Cotton, joined by other guest presenters throughout the night.  The voice over reading out hourly totals was Alan Dedicoat.  The event broke all previous records with a total of £19,089,771 raised by the closing minute.  The show's average audience was 9.56 million, a huge amount higher than the previous year's event.", 'Children in Need 2012 | Children in Need 2012 is a campaign held in the United Kingdom to raise money for the charity Children in Need.  2012 marks the 32nd anniversary of the appeal which culminated in a live broadcast on BBC One and BBC Two on the evening of Friday 16 November until the early hours of Saturday 17 November.  The broadcast was hosted by Terry Wogan, with Tess Daly, Fearne Cotton and Nick Grimshaw as co-hosts.  The show was broadcast from BBC Television Centre in London but also includes regular regional opt-outs presented from various locations around the UK.  The 2012 appeal also marked the last Children in Need broadcast from BBC Television Centre as the BBC have recently sold and moved out of the building.']
+
+[[ ## hop2_docs ## ]]
+['Natasha Kaplinsky | Natasha Margaret Kaplinsky OBE (born 9 September 1972) is an English newsreader and television presenter, best known for her roles as a newsreader on Sky News, BBC News, Channel 5 and ITV News where she is the current presenter.', 'Born to Shine | Born to Shine was an ITV entertainment programme which featured celebrities who learn a new skill taught to them by talented teenagers, live on Sunday evenings.  The show was presented by Natasha Kaplinsky and won by Jason Manford.', 'Alan Kaplinsky | Alan S. Kaplinsky (born December 1, 1945) is an American lawyer.  He heads the consumer financial services practice at Ballard Spahr.  Kaplinsky "pioneered the use of pre-dispute arbitration provisions in consumer contracts" and has written and lectured extensively on the subject.  He is a founding author of CFPB Monitor, a blog that delivers news and guidance related to the Consumer Financial Protection Bureau.  The blog was named one of the 100 best law blogs in the nation by the American Bar Association for 2012 and for 2013.  Chambers, a leading law firm ranking organization, noted that "Kaplinsky has been fundamental to [Ballard Spahr\'s] response and guidance in relation to CFPB compliance and enforcement matters."', 'Kaplinsky | Kaplinsky or Kaplinski is a Polish surname.  Notable people with the surname include:', "F2F (TV series) | F2F was a youth chat show series on the Granada Talk TV channel; it featured phone-ins, studio guests and comedy sketches/interstitials.  The series ran between October 1996 and August 1997 (when the channel was closed).  It was presented by Sacha Baron Cohen and Natasha Kaplinsky, in their first major TV roles.  Baron Cohen's Ali G and Borat characters first appeared on this programme.", 'Children in Need 2005 | Children in Need 2005 was a campaign held in the United Kingdom to raise money for the charity Children in Need.  It culminated in a live broadcast on BBC One on the evening of Friday 18 November and was hosted by Terry Wogan, Fearne Cotton, Natasha Kaplinsky and, from RAF Brize Norton, Matt Allwright.  The voice over was Alan Dedicoat.  A total of £17,235,256 was raised by the closing minute.', 'Children in Need 2006 | Children in Need 2006 was a campaign held in the United Kingdom to raise money for Children in Need.  It culmunated in a live broadcast on BBC One on the evening of Friday 17 November and was hosted by Terry Wogan, Natasha Kaplinsky, Fearne Cotton and Chris Moyles.  The voice over reading out money raised at various points was Alan Dedicoat.  On average, the broadcast brought in 7.72m viewers and raised a total of £18,300,392 by the closing minute.']
+
+### trace 0472e01bffca78234b807d20
+===== ENVIRONMENT · not an agent turn =====
+Task: multi-hop question answering over Wikipedia abstracts. Two BM25 retrieval hops are executed, each summarized, before a final answer is produced.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 executed. Documents returned:
+['Araujia sericifera | Araujia sericifera is a perennial ornamental plant in the genus "Araujia" belonging to Apocynaceae family.  This plant was described in 1817 by the Portuguese botanist Félix Avelar Brotero.  The synonym Araujia hortorum is in more frequent use in New Zealand.  Its common names include moth plant, white bladderflower, common moth vine, cruel vine and false choko.', 'Araujia | Araujia is a small genus of perennial vines in the dogbane family first described as a genus in 1817.  The group is native to South America.', 'Sophronia santolinae | Sophronia santolinae is a moth of the family Gelechiidae.  It was described by Staudinger in 1863.  It is found in Spain.', 'Santolina | Santolina is a genus of plants in the chamomile tribe within the sunflower family, primarily from the western Mediterranean region.', 'Cucullia santolinae | Cucullia santolinae is a moth of the Noctuidae family.  It is found in southern Europe, northern Africa, Turkey, the Caucasus region and Israel.', 'Santolina chamaecyparissus | Santolina chamaecyparissus syn.  "S. incana" (cotton lavender, lavender-cotton) is a species of flowering plant in the family Asteraceae, native to the western and central Mediterranean.', 'Santolina rosmarinifolia | Santolina rosmarinifolia, the holy flax, is a species of flowering plant in the daisy family Asteraceae, native to south western Europe.  It is a dense, compact evergreen shrub growing to 60 cm tall and wide, with narrow, aromatic green leaves and tight yellow composite flowerheads carried on slender stalks above the foliage, in summer.']
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize1.predict
+You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system. Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+
+### Primary Objectives
+1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+
+---
+
+### Step-by-Step Execution Guide
+
+1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+2. **Filter & Extract Passages**:
+   - Identify which retrieved passages directly address parts of the question.
+   - Ignore irrelevant passages.
+   - Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+3. **Identify Bridging Concepts**:
+   - Clearly state what has been proven by the current passages.
+   - Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+4. **Synthesize into `summary`**:
+   - Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+   - Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+
+---
+
+### Input Format
+- `question`: The user's multi-hop question.
+- `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+
+---
+
+### Output Format
+
+```
+### reasoning
+[Step-by-step analysis identifying:
+ 1. Which passages are relevant and what facts they establish.
+ 2. The bridging entity or concept needed to answer the complete question.
+ 3. What specific missing information needs to be retrieved in the second hop.]
+
+### summary
+[Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+[Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+...
+```
+--- input this agent received ---
+[[ ## question ## ]]
+how is Santolina and Araujia related?
+
+[[ ## passages ## ]]
+['Araujia sericifera | Araujia sericifera is a perennial ornamental plant in the genus "Araujia" belonging to Apocynaceae family.  This plant was described in 1817 by the Portuguese botanist Félix Avelar Brotero.  The synonym Araujia hortorum is in more frequent use in New Zealand.  Its common names include moth plant, white bladderflower, common moth vine, cruel vine and false choko.', 'Araujia | Araujia is a small genus of perennial vines in the dogbane family first described as a genus in 1817.  The group is native to South America.', 'Sophronia santolinae | Sophronia santolinae is a moth of the family Gelechiidae.  It was described by Staudinger in 1863.  It is found in Spain.', 'Santolina | Santolina is a genus of plants in the chamomile tribe within the sunflower family, primarily from the western Mediterranean region.', 'Cucullia santolinae | Cucullia santolinae is a moth of the Noctuidae family.  It is found in southern Europe, northern Africa, Turkey, the Caucasus region and Israel.', 'Santolina chamaecyparissus | Santolina chamaecyparissus syn.  "S. incana" (cotton lavender, lavender-cotton) is a species of flowering plant in the family Asteraceae, native to the western and central Mediterranean.', 'Santolina rosmarinifolia | Santolina rosmarinifolia, the holy flax, is a species of flowering plant in the daisy family Asteraceae, native to south western Europe.  It is a dense, compact evergreen shrub growing to 60 cm tall and wide, with narrow, aromatic green leaves and tight yellow composite flowerheads carried on slender stalks above the foliage, in summer.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Passage Analysis**:
+   - Passages [1] and [2] define *Araujia* as a genus of perennial vines in the Apocynaceae family native to South America.
+   - Passages [4], [6], and [7] define *Santolina* as a genus of plants in the sunflower/daisy family (Asteraceae) native to the Mediterranean region.
+   - Passages [3] and [5] discuss moths named *santolinae* (*Sophronia santolinae* and *Cucullia santolinae*), which are named after the plant *Santolina*.
+2. **Bridging Concepts**:
+   - There is no direct biological or taxonomic relationship between the plant genus *Araujia* and the plant genus *Santolina* (different families: Apocynaceae vs. Asteraceae).
+   - The question appears to be based on a false premise or a potential confusion with specific species names (e.g., naming conventions of moths).
+3. **Conclusion**:
+   - The provided passages establish that these are two distinct, unrelated plant genera. No further retrieval is needed to establish that they are taxonomically distinct.
+
+[[ ## summary ## ]]
+[Araujia] | A small genus of perennial vines in the dogbane family (Apocynaceae) native to South America, described in 1817.
+[Santolina] | A genus of plants in the chamomile tribe within the sunflower family (Asteraceae), primarily from the western Mediterranean region.
+[Synthesized Fact] | There is no shared taxonomic relationship between the plant genera Araujia and Santolina; they belong to entirely different botanical families and are native to different continents.
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `query` (str):
+Component: create_query_hop2.predict
+Given the fields `question`, `summary_1`, produce the fields `query`.
+--- input this agent received ---
+[[ ## question ## ]]
+how is Santolina and Araujia related?
+
+[[ ## summary_1 ## ]]
+[Araujia] | A small genus of perennial vines in the dogbane family (Apocynaceae) native to South America, described in 1817.
+[Santolina] | A genus of plants in the chamomile tribe within the sunflower family (Asteraceae), primarily from the western Mediterranean region.
+[Synthesized Fact] | There is no shared taxonomic relationship between the plant genera Araujia and Santolina; they belong to entirely different botanical families and are native to different continents.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the relationship between the plant genera Santolina and Araujia. The provided summary establishes that these two genera belong to completely different botanical families (Apocynaceae vs. Asteraceae) and originate from different geographic regions (South America vs. the Mediterranean). Therefore, there is no scientific, taxonomic, or evolutionary relationship between them.
+
+[[ ## query ## ]]
+Are there any shared taxonomic, evolutionary, or geographic relationships between the plant genera Araujia and Santolina?
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 executed. Documents returned:
+['Taxonomic sequence | Taxonomic sequence (also known as systematic, phyletic or taxonomic order) is a sequence followed in listing of taxa which aids ease of use and roughly reflects the evolutionary relationships among the taxa.  Taxonomic sequences can exist for taxa within any rank, that is, a list of families, genera, species can each have a sequence.', 'Araujia sericifera | Araujia sericifera is a perennial ornamental plant in the genus "Araujia" belonging to Apocynaceae family.  This plant was described in 1817 by the Portuguese botanist Félix Avelar Brotero.  The synonym Araujia hortorum is in more frequent use in New Zealand.  Its common names include moth plant, white bladderflower, common moth vine, cruel vine and false choko.', 'Heteromerae | Heteromerae is an artificial group used in the identification of plants based on Bentham and Hooker classification system.  Bentham and Hooker published an excellent classification in three volumes between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key.  It is the most popular system of classification especially for the flowering plant groups (angiosperms) based on key characteristics.  This enables taxonomic students to quickly identify plant groups based only on physical characteristics.  Under the system Heteromerae is a Sub Class, Series ii and it is often not used.  The series comprises;', "Gamopetalae | Gamopetalae is an artificial group used in the identification of plants based on Bentham and Hooker's classification system.  George Bentham and Joseph Dalton Hooker published an excellent classification in three volumes between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key especially for the flowering plant groups (angiosperms).  It is the most popular system of classification based on key characteristics enabling taxonomic students to quickly identify plant groups based only on physical characteristics.  However, it is not a scientific group and is used for identification purposes only based on similar plant characteristics.  Under the system Gamopetalae is a Sub Class and comprises;", "Inferae | Inferae is an artificial group used in the identification of plants based on Bentham and Hooker's classification.  Bentham and Hooker published an excellent classification in three volumes in between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key especially for the flowering plant groups (angiosperms.)  It is the most popular system of classification based on key characteristics enabling taxonomic students to quickly identify plant groups based only on physical characteristics.  However, it is not a scientific group and is used for identification purposes only based on similar plant characteristics.  Under the system Inferae are a group of plants based on an artificial and non scientific series.  The group Inferae are Gamopetalae and dicotyledons.  The group comprises;", "Bicarpellatae | Bicarpellatae is an artificial group used in the identification of plants based on Bentham and Hooker's classification system.  George Bentham and Joseph Dalton Hooker published an excellent classification in three volumes in between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key especially for the flowering plant groups (angiosperms).  It is the most popular system of classification based on key characteristics enabling taxonomic students to quickly identify plant groups based only on physical characteristics.  However, it is not a scientific group and is used for identification purposes only based on similar plant characteristics.  Under the system Bicarpellatae are a group of plants based on an artificial and non scientific series.  The group Bicarpellatea are Gamopetalae and dicotyledons.  The group comprises;", 'List of Helotiales genera incertae sedis | The Helotiales are an order of fungi in the Ascomycetes.  Many species are plant pathogens.  The following list of Helotiales genera have not been placed with any certainty (incertae sedis) into a family.  A question mark preceding the name of the genus means that its taxonomic placement within the Helotiales is uncertain.']
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `context` (str):
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize2.predict
+You are the **summary generation module** in a multi-hop Question Answering (QA) system. Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary. 
+
+This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context. Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+
+---
+
+### **Input Format**
+1. `question`: The multi-hop target question that needs to be answered.
+2. `context`: An intermediate summary or background context available from previous hops.
+3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+
+---
+
+### **Output Format**
+Your output must contain two sections:
+
+1. `reasoning`: A step-by-step breakdown analyzing:
+   - What the question is specifically asking for and what the target answer type/entity is.
+   - What critical facts and entity relationships are present in the `context` and `passages`.
+   - How to logically connect and synthesize these pieces of information to fully support the answer.
+
+2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+
+---
+
+### **Key Rules & Strategy**
+
+1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+2. **Synthesis & Integration**: Do not simply repeat individual passages. Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question. Exclude irrelevant side details present in retrieved passages.
+4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+--- input this agent received ---
+[[ ## question ## ]]
+how is Santolina and Araujia related?
+
+[[ ## context ## ]]
+[Araujia] | A small genus of perennial vines in the dogbane family (Apocynaceae) native to South America, described in 1817.
+[Santolina] | A genus of plants in the chamomile tribe within the sunflower family (Asteraceae), primarily from the western Mediterranean region.
+[Synthesized Fact] | There is no shared taxonomic relationship between the plant genera Araujia and Santolina; they belong to entirely different botanical families and are native to different continents.
+
+[[ ## passages ## ]]
+['Taxonomic sequence | Taxonomic sequence (also known as systematic, phyletic or taxonomic order) is a sequence followed in listing of taxa which aids ease of use and roughly reflects the evolutionary relationships among the taxa.  Taxonomic sequences can exist for taxa within any rank, that is, a list of families, genera, species can each have a sequence.', 'Araujia sericifera | Araujia sericifera is a perennial ornamental plant in the genus "Araujia" belonging to Apocynaceae family.  This plant was described in 1817 by the Portuguese botanist Félix Avelar Brotero.  The synonym Araujia hortorum is in more frequent use in New Zealand.  Its common names include moth plant, white bladderflower, common moth vine, cruel vine and false choko.', 'Heteromerae | Heteromerae is an artificial group used in the identification of plants based on Bentham and Hooker classification system.  Bentham and Hooker published an excellent classification in three volumes between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key.  It is the most popular system of classification especially for the flowering plant groups (angiosperms) based on key characteristics.  This enables taxonomic students to quickly identify plant groups based only on physical characteristics.  Under the system Heteromerae is a Sub Class, Series ii and it is often not used.  The series comprises;', "Gamopetalae | Gamopetalae is an artificial group used in the identification of plants based on Bentham and Hooker's classification system.  George Bentham and Joseph Dalton Hooker published an excellent classification in three volumes between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key especially for the flowering plant groups (angiosperms).  It is the most popular system of classification based on key characteristics enabling taxonomic students to quickly identify plant groups based only on physical characteristics.  However, it is not a scientific group and is used for identification purposes only based on similar plant characteristics.  Under the system Gamopetalae is a Sub Class and comprises;", "Inferae | Inferae is an artificial group used in the identification of plants based on Bentham and Hooker's classification.  Bentham and Hooker published an excellent classification in three volumes in between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key especially for the flowering plant groups (angiosperms.)  It is the most popular system of classification based on key characteristics enabling taxonomic students to quickly identify plant groups based only on physical characteristics.  However, it is not a scientific group and is used for identification purposes only based on similar plant characteristics.  Under the system Inferae are a group of plants based on an artificial and non scientific series.  The group Inferae are Gamopetalae and dicotyledons.  The group comprises;", "Bicarpellatae | Bicarpellatae is an artificial group used in the identification of plants based on Bentham and Hooker's classification system.  George Bentham and Joseph Dalton Hooker published an excellent classification in three volumes in between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key especially for the flowering plant groups (angiosperms).  It is the most popular system of classification based on key characteristics enabling taxonomic students to quickly identify plant groups based only on physical characteristics.  However, it is not a scientific group and is used for identification purposes only based on similar plant characteristics.  Under the system Bicarpellatae are a group of plants based on an artificial and non scientific series.  The group Bicarpellatea are Gamopetalae and dicotyledons.  The group comprises;", 'List of Helotiales genera incertae sedis | The Helotiales are an order of fungi in the Ascomycetes.  Many species are plant pathogens.  The following list of Helotiales genera have not been placed with any certainty (incertae sedis) into a family.  A question mark preceding the name of the genus means that its taxonomic placement within the Helotiales is uncertain.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the relationship between the plant genera *Santolina* and *Araujia*. 
+
+1.  **Analyze Entities**: *Araujia* is a genus of vines in the family Apocynaceae (native to South America). *Santolina* is a genus in the tribe Anthemideae of the family Asteraceae (primarily Mediterranean).
+2.  **Evaluate Taxonomic Links**: The provided passages discuss taxonomic sequences and artificial classification systems (Bentham and Hooker's system, including groups like *Heteromerae*, *Gamopetalae*, *Inferae*, and *Bicarpellatae*). These systems are used for plant identification based on physical characteristics but do not imply modern evolutionary relationships between these specific genera.
+3.  **Synthesize**: There is no biological, evolutionary, or geographic connection between *Araujia* and *Santolina*. They belong to distinct botanical families (Apocynaceae vs. Asteraceae) and different evolutionary lineages. The references to historical classification systems confirm that any potential grouping of plants in those systems is artificial and non-scientific, further reinforcing that there is no meaningful relationship between these two genera.
+
+[[ ## summary ## ]]
+There is no evolutionary or taxonomic relationship between the plant genera *Santolina* and *Araujia*. *Araujia* is a South American genus within the Apocynaceae family (dogbanes), while *Santolina* belongs to the Asteraceae family (sunflowers), which is native to the western Mediterranean. Historical botanical classification systems, such as those by Bentham and Hooker, used artificial groupings (like *Gamopetalae* or *Inferae*) to assist in plant identification based on physical traits; however, these groupings are non-scientific and do not indicate a shared lineage or connection between these two genera.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: final_answer =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `answer` (str):
+Component: final_answer.predict
+You are an expert question-answering assistant. You will be provided with three input fields: `question`, `summary_1`, and `summary_2`. Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+
+---
+
+### Task Execution Guidelines:
+
+1. **Question Analysis & Attribute Precision:**
+   - Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. real name).
+   - **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria (e.g., matching "keyboardist" but not "guitarist"). Ensure the target entity strictly satisfies *all* specified traits/roles in the prompt.
+
+2. **Evaluating Summaries vs. World Knowledge:**
+   - Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+   - Summaries can be distractor-laden, incomplete, or misleading. If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+   - Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+
+3. **Domain-Specific Reference Knowledge:**
+   - **Musicians & Bands:**
+     - *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*). Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+   - **Wrestling & Tag Teams:**
+     - *Terry Gene Bollea:* Better known as **Hulk Hogan**. His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+   - **Film Industry & Shared Nationalities:**
+     - *Aram Avakian & Wilfred Lucas:* Share **American** nationality. Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*). Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+
+4. **Formatting Output (CRITICAL):**
+   - **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+   - **Answer Field:** 
+     - **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+     - **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+
+---
+
+### Output Format:
+
+### reasoning
+[Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+
+### answer
+[Direct target entity/short answer only]
+--- input this agent received ---
+[[ ## question ## ]]
+how is Santolina and Araujia related?
+
+[[ ## summary_1 ## ]]
+[Araujia] | A small genus of perennial vines in the dogbane family (Apocynaceae) native to South America, described in 1817.
+[Santolina] | A genus of plants in the chamomile tribe within the sunflower family (Asteraceae), primarily from the western Mediterranean region.
+[Synthesized Fact] | There is no shared taxonomic relationship between the plant genera Araujia and Santolina; they belong to entirely different botanical families and are native to different continents.
+
+[[ ## summary_2 ## ]]
+There is no evolutionary or taxonomic relationship between the plant genera *Santolina* and *Araujia*. *Araujia* is a South American genus within the Apocynaceae family (dogbanes), while *Santolina* belongs to the Asteraceae family (sunflowers), which is native to the western Mediterranean. Historical botanical classification systems, such as those by Bentham and Hooker, used artificial groupings (like *Gamopetalae* or *Inferae*) to assist in plant identification based on physical traits; however, these groupings are non-scientific and do not indicate a shared lineage or connection between these two genera.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the relationship between the plant genera *Santolina* and *Araujia*. 
+1. *Santolina* is a member of the Asteraceae family (sunflowers/daisies), native to the Mediterranean.
+2. *Araujia* is a member of the Apocynaceae family (dogbanes), native to South America.
+3. Both summaries correctly identify that these two genera belong to entirely different botanical families and have no direct evolutionary or taxonomic relationship.
+4. There is no biological, historical, or common-name connection between the two; they are distinct botanical entities.
+
+[[ ## answer ## ]]
+They are unrelated.
+===== end of turn 4 =====
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT —
+[[ ## answer ## ]]
+They are unrelated.
+
+[[ ## hop1_docs ## ]]
+['Araujia sericifera | Araujia sericifera is a perennial ornamental plant in the genus "Araujia" belonging to Apocynaceae family.  This plant was described in 1817 by the Portuguese botanist Félix Avelar Brotero.  The synonym Araujia hortorum is in more frequent use in New Zealand.  Its common names include moth plant, white bladderflower, common moth vine, cruel vine and false choko.', 'Araujia | Araujia is a small genus of perennial vines in the dogbane family first described as a genus in 1817.  The group is native to South America.', 'Sophronia santolinae | Sophronia santolinae is a moth of the family Gelechiidae.  It was described by Staudinger in 1863.  It is found in Spain.', 'Santolina | Santolina is a genus of plants in the chamomile tribe within the sunflower family, primarily from the western Mediterranean region.', 'Cucullia santolinae | Cucullia santolinae is a moth of the Noctuidae family.  It is found in southern Europe, northern Africa, Turkey, the Caucasus region and Israel.', 'Santolina chamaecyparissus | Santolina chamaecyparissus syn.  "S. incana" (cotton lavender, lavender-cotton) is a species of flowering plant in the family Asteraceae, native to the western and central Mediterranean.', 'Santolina rosmarinifolia | Santolina rosmarinifolia, the holy flax, is a species of flowering plant in the daisy family Asteraceae, native to south western Europe.  It is a dense, compact evergreen shrub growing to 60 cm tall and wide, with narrow, aromatic green leaves and tight yellow composite flowerheads carried on slender stalks above the foliage, in summer.']
+
+[[ ## hop2_docs ## ]]
+['Taxonomic sequence | Taxonomic sequence (also known as systematic, phyletic or taxonomic order) is a sequence followed in listing of taxa which aids ease of use and roughly reflects the evolutionary relationships among the taxa.  Taxonomic sequences can exist for taxa within any rank, that is, a list of families, genera, species can each have a sequence.', 'Araujia sericifera | Araujia sericifera is a perennial ornamental plant in the genus "Araujia" belonging to Apocynaceae family.  This plant was described in 1817 by the Portuguese botanist Félix Avelar Brotero.  The synonym Araujia hortorum is in more frequent use in New Zealand.  Its common names include moth plant, white bladderflower, common moth vine, cruel vine and false choko.', 'Heteromerae | Heteromerae is an artificial group used in the identification of plants based on Bentham and Hooker classification system.  Bentham and Hooker published an excellent classification in three volumes between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key.  It is the most popular system of classification especially for the flowering plant groups (angiosperms) based on key characteristics.  This enables taxonomic students to quickly identify plant groups based only on physical characteristics.  Under the system Heteromerae is a Sub Class, Series ii and it is often not used.  The series comprises;', "Gamopetalae | Gamopetalae is an artificial group used in the identification of plants based on Bentham and Hooker's classification system.  George Bentham and Joseph Dalton Hooker published an excellent classification in three volumes between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key especially for the flowering plant groups (angiosperms).  It is the most popular system of classification based on key characteristics enabling taxonomic students to quickly identify plant groups based only on physical characteristics.  However, it is not a scientific group and is used for identification purposes only based on similar plant characteristics.  Under the system Gamopetalae is a Sub Class and comprises;", "Inferae | Inferae is an artificial group used in the identification of plants based on Bentham and Hooker's classification.  Bentham and Hooker published an excellent classification in three volumes in between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key especially for the flowering plant groups (angiosperms.)  It is the most popular system of classification based on key characteristics enabling taxonomic students to quickly identify plant groups based only on physical characteristics.  However, it is not a scientific group and is used for identification purposes only based on similar plant characteristics.  Under the system Inferae are a group of plants based on an artificial and non scientific series.  The group Inferae are Gamopetalae and dicotyledons.  The group comprises;", "Bicarpellatae | Bicarpellatae is an artificial group used in the identification of plants based on Bentham and Hooker's classification system.  George Bentham and Joseph Dalton Hooker published an excellent classification in three volumes in between 1862 and 1883.  As a natural system of classification, it does not show evolutionary relationship between plants but still is a useful and popular system of classification based on a dichotomous key especially for the flowering plant groups (angiosperms).  It is the most popular system of classification based on key characteristics enabling taxonomic students to quickly identify plant groups based only on physical characteristics.  However, it is not a scientific group and is used for identification purposes only based on similar plant characteristics.  Under the system Bicarpellatae are a group of plants based on an artificial and non scientific series.  The group Bicarpellatea are Gamopetalae and dicotyledons.  The group comprises;", 'List of Helotiales genera incertae sedis | The Helotiales are an order of fungi in the Ascomycetes.  Many species are plant pathogens.  The following list of Helotiales genera have not been placed with any certainty (incertae sedis) into a family.  A question mark preceding the name of the genus means that its taxonomic placement within the Helotiales is uncertain.']
+
+## TASK
+
+Take the traces ONE AT A TIME. Within each trace, take the turns ONE AT A TIME,
+in order, and account for EVERY turn. For each turn, compare its output
+section against the clauses for that turn's agent, clause by clause, and
+report every place the output does not meet them.
+
+Check the whole output, to its last line. A required closing marker, a
+required list header, a required field: these are absences at the END of an
+output, and a reader that stopped once the content looked complete misses
+them.
+
+You are NOT judging whether the reasoning is correct or the answer is right.
+Ignore all of that here; it is examined separately.
+
+Report a violation whether it is large or small, and whether or not it seems
+to have mattered. A violation that a later turn worked around, or that the
+final output happened to survive, is still a violation and is still reported.
+Repetition across traces is expected and useful.
+
+Quote the SHORTEST span that shows the violation. When what is wrong is that
+something required is MISSING, there is nothing to quote: say what was
+required, citing the clause, and where in the output it should have appeared.
+
+## OUTPUT
+
+Return ONLY JSON, with EXACTLY ONE entry per turn of each trace, in turn order,
+whether or not anything was violated. `checked` names the clauses you compared
+the output against; when findings is empty it is the evidence that the turn
+was checked rather than skipped.
+
+{"traces": [{"trace_id": "...",
+             "turns": [{"turn": <int, as in the turn header>,
+                        "agent": "<name, as in the turn header>",
+                        "checked": "<which clauses were compared>",
+                        "findings": [{"what_happened": "<what the output does, and which clause it fails>",
+                                      "where": "<which part of this turn's output>",
+                                      "quote": "<exact text>" or null,
+                                      "missing": "<what was required, citing the clause, and where>" or null}]}]}]}

@@ -1,0 +1,720 @@
+## HOW THE TRACES ARE LAID OUT
+
+Each trace is a sequence of blocks.
+
+  `===== ENVIRONMENT · not an agent turn =====`
+      The task statement, tool or retrieval results, and other material
+      produced by the environment, not by an agent.
+
+  `===== TURN k · agent: NAME =====` ... `===== end of turn k =====`
+      One agent turn, holding three sections in this order:
+        `--- instructions given to this agent ---`   the agent's own instructions
+        `--- input this agent received ---`          what it was handed
+        `--- output this agent produced ---`         what it produced
+
+  `===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS ... =====`
+      Assembled by the harness. Not a turn.
+
+A turn is judged against ITS OWN instructions section and ITS OWN input
+section, and nothing else. Instructions shown in another turn do not bind this
+one, even when the agent has the same name in another trace. A mistake already
+present in a turn's input belongs to the earlier turn that produced it, not to
+this one.
+
+## WHAT EACH AGENT WAS ASKED TO DO
+### agent: summarize1   (role: summarizer)
+  receives: ['question', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system.
+    [c2] Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+    [c3] 1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+    [c4] 2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+    [c5] 1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+    [c6] 2. **Filter & Extract Passages**:
+    [c7] Identify which retrieved passages directly address parts of the question.
+    [c8] Ignore irrelevant passages.
+    [c9] Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+    [c10] 3. **Identify Bridging Concepts**:
+    [c11] Clearly state what has been proven by the current passages.
+    [c12] Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+    [c13] 4. **Synthesize into `summary`**:
+    [c14] Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+    [c15] Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+    [c16] `question`: The user's multi-hop question.
+    [c17] `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+    [c18] [Step-by-step analysis identifying:
+    [c19] Which passages are relevant and what facts they establish.
+    [c20] The bridging entity or concept needed to answer the complete question.
+    [c21] What specific missing information needs to be retrieved in the second hop.]
+    [c22] [Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+    [c23] [Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+
+### agent: create_query_hop2   (role: query_generator)
+  receives: ['question', 'summary_1']
+  must produce: ['reasoning', 'query']
+  requirements it was given:
+    [c1] Given the fields `question`, `summary_1`, produce the fields `query`.
+
+### agent: summarize2   (role: summarizer)
+  receives: ['question', 'context', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are the **summary generation module** in a multi-hop Question Answering (QA) system.
+    [c2] Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary.
+    [c3] This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context.
+    [c4] Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+    [c5] 1. `question`: The multi-hop target question that needs to be answered.
+    [c6] 2. `context`: An intermediate summary or background context available from previous hops.
+    [c7] 3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+    [c8] Your output must contain two sections:
+    [c9] 1. `reasoning`: A step-by-step breakdown analyzing:
+    [c10] What the question is specifically asking for and what the target answer type/entity is.
+    [c11] What critical facts and entity relationships are present in the `context` and `passages`.
+    [c12] How to logically connect and synthesize these pieces of information to fully support the answer.
+    [c13] 2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+    [c14] 1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+    [c15] 2. **Synthesis & Integration**: Do not simply repeat individual passages.
+    [c16] Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+    [c17] 3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question.
+    [c18] Exclude irrelevant side details present in retrieved passages.
+    [c19] 4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+
+### agent: final_answer   (role: answerer)
+  receives: ['question', 'summary_1', 'summary_2']
+  must produce: ['reasoning', 'answer']
+  requirements it was given:
+    [c1] You are an expert question-answering assistant.
+    [c2] You will be provided with three input fields: `question`, `summary_1`, and `summary_2`.
+    [c3] Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two output fields: `reasoning` and `answer`.
+    [c4] 1. **Question Analysis & Attribute Precision:**
+    [c5] Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. real name, specific character motivations).
+    [c6] **Watch out for partial attribute matches & conflated roles:**
+    [c7] Summaries may highlight an entity that only partially matches the prompt (e.g., matching "keyboardist" but not "guitarist").
+    [c8] Distinguish between an entity's primary canonical profession versus additional administrative titles/roles (e.g., Mikael Blomkvist's profession is strictly "investigative journalist", not "investigative journalist and publisher").
+    [c9] Select the precise, minimal core attribute requested.
+    [c10] 2. **Evaluating Summaries vs.
+    [c11] World Knowledge:**
+    [c12] Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+    [c13] Summaries can be distractor-laden, incomplete, or misleading.
+    [c14] If summaries point to an incorrect entity or include redundant/extraneous information, prioritize accurate, verified world knowledge.
+    [c15] Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+    [c16] 3. **Domain-Specific Reference Knowledge:**
+    [c17] **Musicians & Bands:**
+    [c18] *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*).
+    [c19] Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+    [c20] **Wrestling & Tag Teams:**
+    [c21] *Terry Gene Bollea:* Better known as **Hulk Hogan**.
+    [c22] His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+    [c23] **Film Industry & Shared Nationalities:**
+    [c24] *Aram Avakian & Wilfred Lucas:* Share **American** nationality.
+    [c25] Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*).
+    [c26] Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+    [c27] **Airports & Geography:**
+    [c28] *Garden City Regional Airport (GCK):* Located in Finney County, **Kansas**.
+    [c29] Serviced under the Essential Air Service program.
+    [c30] *Valdez Airport (VDZ / Pioneer Field):* State-owned public airport in the Valdez-Cordova Census Area, **Alaska**.
+    [c31] **Anime & Voice Acting:**
+    [c32] *Max Mittelman:* Voice actor who voices **Saitama** in the English dub of *One-Punch Man* (a webcomic created by ONE; "Wanpanman" is a play on "Anpanman" and "wanpanchi").
+    [c33] Saitama, bored by the absence of challenge in fighting evil, seeks to find **a worthy opponent**.
+    [c34] Other roles of Mittelman include Kousei Arima (*Your Lie in April*), King (*The Seven Deadly Sins*), Ritsu Kageyama (*Mob Psycho 100*), Inaho Kaizuka (*Aldnoah.Zero*), and Ryuji Sakamoto (*Persona 5*).
+    [c35] **Literature & Millennium Series:**
+    [c36] *Mikael Blomkvist:* Created by Stieg Larsson (and later written by David Lagercrantz in *The Girl in the Spider's Web*).
+    [c37] His primary profession is **investigative journalist**.
+    [c38] Avoid padding the answer with extra titles like "publisher".
+    [c39] 4. **Formatting Output (CRITICAL):**
+    [c40] **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+    [c41] **Answer Field:**
+    [c42] **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+    [c43] **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+    [... 45 clauses total, remainder omitted for length ...]
+
+
+The requirements above are the same text as the instructions sections inside
+the turns, split into numbered clauses so that a violation can cite one. Every
+trace in this batch belongs to the same candidate program, so the requirements
+apply to every trace here. A clause listed under agent NAME binds only the
+turns whose header names NAME.
+
+## TRACES
+### trace 3b840c68fd56294c62aea381
+===== ENVIRONMENT · not an agent turn =====
+Task: multi-hop question answering over Wikipedia abstracts. Two BM25 retrieval hops are executed, each summarized, before a final answer is produced.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 executed. Documents returned:
+['Dark City (1998 film) | Dark City is a 1998 American-Australian neo-noir science fiction film directed by Alex Proyas.  The screenplay was written by Proyas, Lem Dobbs and David S. Goyer.  The film stars Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.  Sewell plays John Murdoch, an amnesiac man who finds himself suspected of murder.  Murdoch attempts to discover his true identity and clear his name while on the run from the police and a mysterious group known only as the "Strangers".', "I, Robot (film) | I, Robot (stylized as i,robot ) is a 2004 American neo-noir dystopian science fiction action film directed by Alex Proyas.  The screenplay by Jeff Vintar and Akiva Goldsman is from a screen story by Vintar, suggested by Isaac Asimov's short-story collection of the same name.  The film stars Will Smith, Bridget Moynahan, Bruce Greenwood, James Cromwell, Chi McBride, Alan Tudyk and Shia LaBeouf.", 'Alex Proyas | Alexander "Alex" Proyas ( ; born 23 September 1963) is an Australian film director, screenwriter, and producer.  Proyas is best known for directing the films "The Crow" (1994), "Dark City" (1998), "I, Robot" (2004), "Knowing" (2009), and "Gods of Egypt" (2016).', 'Mark Wahlberg | Mark Robert Michael Wahlberg (born June 5, 1971) is an American actor, producer, businessman, former model, and former rapper.  Wahlberg was known as Marky Mark in his early career as frontman for the group Marky Mark and the Funky Bunch, releasing the albums "Music for the People" and "You Gotta Believe".  Wahlberg later transitioned to acting, appearing in films such as the drama "Boogie Nights" and the satirical war comedy-drama "Three Kings" during the 1990s.  In the 2000s, he starred in the biographical disaster drama "The Perfect Storm", the science fiction film "Planet of the Apes", the heist film "The Italian Job", and the Martin Scorsese-directed neo-noir crime drama "The Departed", for which he received an Academy Award nomination for Best Supporting Actor.  In the 2010s, he starred in the action comedy "The Other Guys" alongside Will Ferrell, the biographical sports drama "The Fighter" (for which he earned an Academy Award nomination as a producer for Best Picture), the comedy "Ted", the war film "Lone Survivor", the crime comedy "Pain & Gain", the science fiction action film "" and the sequel "", the comedy "Daddy\'s Home", the disaster film "Deepwater Horizon", and the thriller "Patriots Day".', 'Bad Lieutenant | Bad Lieutenant is a 1992 American neo-noir crime drama film directed by Abel Ferrara.  The film stars Harvey Keitel as the titular "bad lieutenant."  The screenplay was co-written by Ferrara with actor-writer Paul Calderón and actress-model Zoë Lund, both of whom appear in the film.', 'Megaville | Megaville is an independent/low-budget direct-to-video 1990 American science fiction film, starring Billy Zane in his first lead role.  "Megaville" is a neo-noir psychological thriller which utilizes elements of science fiction such as cyberpunk and existentialism.', 'Ridley Scott | Sir Ridley Scott (born 30 November 1937) is an English film director and producer.  Following his commercial breakthrough with the science-fiction horror film "Alien" (1979), his best known works include the neo-noir dystopian science fiction film "Blade Runner" (1982), historical drama and Best Picture Oscar winner "Gladiator" (2000), and science fiction film "The Martian" (2015).']
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize1.predict
+You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system. Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+
+### Primary Objectives
+1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+
+---
+
+### Step-by-Step Execution Guide
+
+1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+2. **Filter & Extract Passages**:
+   - Identify which retrieved passages directly address parts of the question.
+   - Ignore irrelevant passages.
+   - Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+3. **Identify Bridging Concepts**:
+   - Clearly state what has been proven by the current passages.
+   - Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+4. **Synthesize into `summary`**:
+   - Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+   - Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+
+---
+
+### Input Format
+- `question`: The user's multi-hop question.
+- `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+
+---
+
+### Output Format
+
+```
+### reasoning
+[Step-by-step analysis identifying:
+ 1. Which passages are relevant and what facts they establish.
+ 2. The bridging entity or concept needed to answer the complete question.
+ 3. What specific missing information needs to be retrieved in the second hop.]
+
+### summary
+[Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+[Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+...
+```
+--- input this agent received ---
+[[ ## question ## ]]
+This English actor who starred in the CBS drama "Eleventh Hour" appeared in this 1998 American-Australian Neo-noir science fiction film directed by Alex Proyas?
+
+[[ ## passages ## ]]
+['Dark City (1998 film) | Dark City is a 1998 American-Australian neo-noir science fiction film directed by Alex Proyas.  The screenplay was written by Proyas, Lem Dobbs and David S. Goyer.  The film stars Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.  Sewell plays John Murdoch, an amnesiac man who finds himself suspected of murder.  Murdoch attempts to discover his true identity and clear his name while on the run from the police and a mysterious group known only as the "Strangers".', "I, Robot (film) | I, Robot (stylized as i,robot ) is a 2004 American neo-noir dystopian science fiction action film directed by Alex Proyas.  The screenplay by Jeff Vintar and Akiva Goldsman is from a screen story by Vintar, suggested by Isaac Asimov's short-story collection of the same name.  The film stars Will Smith, Bridget Moynahan, Bruce Greenwood, James Cromwell, Chi McBride, Alan Tudyk and Shia LaBeouf.", 'Alex Proyas | Alexander "Alex" Proyas ( ; born 23 September 1963) is an Australian film director, screenwriter, and producer.  Proyas is best known for directing the films "The Crow" (1994), "Dark City" (1998), "I, Robot" (2004), "Knowing" (2009), and "Gods of Egypt" (2016).', 'Mark Wahlberg | Mark Robert Michael Wahlberg (born June 5, 1971) is an American actor, producer, businessman, former model, and former rapper.  Wahlberg was known as Marky Mark in his early career as frontman for the group Marky Mark and the Funky Bunch, releasing the albums "Music for the People" and "You Gotta Believe".  Wahlberg later transitioned to acting, appearing in films such as the drama "Boogie Nights" and the satirical war comedy-drama "Three Kings" during the 1990s.  In the 2000s, he starred in the biographical disaster drama "The Perfect Storm", the science fiction film "Planet of the Apes", the heist film "The Italian Job", and the Martin Scorsese-directed neo-noir crime drama "The Departed", for which he received an Academy Award nomination for Best Supporting Actor.  In the 2010s, he starred in the action comedy "The Other Guys" alongside Will Ferrell, the biographical sports drama "The Fighter" (for which he earned an Academy Award nomination as a producer for Best Picture), the comedy "Ted", the war film "Lone Survivor", the crime comedy "Pain & Gain", the science fiction action film "" and the sequel "", the comedy "Daddy\'s Home", the disaster film "Deepwater Horizon", and the thriller "Patriots Day".', 'Bad Lieutenant | Bad Lieutenant is a 1992 American neo-noir crime drama film directed by Abel Ferrara.  The film stars Harvey Keitel as the titular "bad lieutenant."  The screenplay was co-written by Ferrara with actor-writer Paul Calderón and actress-model Zoë Lund, both of whom appear in the film.', 'Megaville | Megaville is an independent/low-budget direct-to-video 1990 American science fiction film, starring Billy Zane in his first lead role.  "Megaville" is a neo-noir psychological thriller which utilizes elements of science fiction such as cyberpunk and existentialism.', 'Ridley Scott | Sir Ridley Scott (born 30 November 1937) is an English film director and producer.  Following his commercial breakthrough with the science-fiction horror film "Alien" (1979), his best known works include the neo-noir dystopian science fiction film "Blade Runner" (1982), historical drama and Best Picture Oscar winner "Gladiator" (2000), and science fiction film "The Martian" (2015).']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. The question asks for an English actor who starred in the CBS drama "Eleventh Hour" and appeared in the 1998 American-Australian Neo-noir science fiction film directed by Alex Proyas.
+2. Passage [1] identifies "Dark City" (1998) as the American-Australian Neo-noir science fiction film directed by Alex Proyas, and lists the cast as Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.
+3. The English actor sought must be one of the cast members of "Dark City" who also starred in "Eleventh Hour."
+4. Rufus Sewell is an English actor (confirmed by general knowledge, though not explicitly in these passages, he is listed in [1] as the lead of the specific film mentioned).
+5. The bridging entity is the TV show "Eleventh Hour." I need to verify which cast member of "Dark City" (Rufus Sewell, Kiefer Sutherland, etc.) starred in the CBS drama "Eleventh Hour" to confirm the identity.
+
+[[ ## summary ## ]]
+[Dark City (1998 film)] | The film is a 1998 American-Australian neo-noir science fiction film directed by Alex Proyas, starring Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.
+[Alex Proyas] | Confirms Alex Proyas as the director of the 1998 film "Dark City".
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `query` (str):
+Component: create_query_hop2.predict
+Given the fields `question`, `summary_1`, produce the fields `query`.
+--- input this agent received ---
+[[ ## question ## ]]
+This English actor who starred in the CBS drama "Eleventh Hour" appeared in this 1998 American-Australian Neo-noir science fiction film directed by Alex Proyas?
+
+[[ ## summary_1 ## ]]
+[Dark City (1998 film)] | The film is a 1998 American-Australian neo-noir science fiction film directed by Alex Proyas, starring Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.
+[Alex Proyas] | Confirms Alex Proyas as the director of the 1998 film "Dark City".
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for an English actor who starred in the CBS drama "Eleventh Hour" and also appeared in the 1998 film "Dark City". The summary identifies the cast of "Dark City" as Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt. I need to verify which of these actors is English and starred in the CBS series "Eleventh Hour". Rufus Sewell fits both criteria as he is an English actor who played the lead role of Dr. Jacob Hood in the CBS series "Eleventh Hour".
+
+[[ ## query ## ]]
+"Rufus Sewell" "Eleventh Hour" "Dark City"
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 executed. Documents returned:
+['Rufus Sewell | Rufus Frederik Sewell ( ; born 29 October 1967) is an English actor.  In film, he has appeared in Kenneth Branagh\'s rendition of "Hamlet" (1996) playing Fortinbras, "The Woodlanders", "Dangerous Beauty", "Dark City", "A Knight\'s Tale", "The Illusionist", "Tristan and Isolde", and "Martha, Meet Frank, Daniel and Laurence".  On television, he starred as "Obergruppenführer" John Smith in "The Man in the High Castle", an Italian detective in the BBC\'s television series "Zen" (2011) and also appeared in the mini-series "The Pillars of the Earth" (2010).  In 1993 he played the hero, Will Ladislaw, in the BBC\'s adaptation of George Eliot\'s "Middlemarch".  In 2003, he appeared in the lead role in "".  He starred in the CBS drama "Eleventh Hour", which was cancelled in April 2009.  On stage, he originated the role of Septimus Hodge in Tom Stoppard\'s "Arcadia" and the role of Jan in Stoppard\'s "Rock \'n\' Roll"; the latter earned him an Olivier Award and a Tony Award nomination.', 'Dark City (1998 film) | Dark City is a 1998 American-Australian neo-noir science fiction film directed by Alex Proyas.  The screenplay was written by Proyas, Lem Dobbs and David S. Goyer.  The film stars Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.  Sewell plays John Murdoch, an amnesiac man who finds himself suspected of murder.  Murdoch attempts to discover his true identity and clear his name while on the run from the police and a mysterious group known only as the "Strangers".', 'Eleventh Hour (UK TV series) | Eleventh Hour (originally entitled "Dark Matter") is a four-part British television series developed by Granada Television for ITV, created by writer Stephen Gallagher.', 'Hotel Noir | Hotel Noir is a 2012 crime film directed and written by Sebastian Gutierrez.  The film stars Carla Gugino and Rufus Sewell.  The film was released at Video on demand on October 9, 2012 in USA.  It was relaunched in 2016 in color, with the name "City of Sin".', 'All Things to All Men (film) | All Things to All Men is a British film written and directed by George Isaac.  It stars Gabriel Byrne, Rufus Sewell, Toby Stephens, and Julian Sands.  Sewell plays a dirty cop who manipulates both the underworld and police in order to entrap a thief.', "Abraham Lincoln: Vampire Hunter | Abraham Lincoln: Vampire Hunter is a 2012 American dark fantasy action horror film directed by Timur Bekmambetov, based on the 2010 mashup novel of the same name.  The novel's author, Seth Grahame-Smith, wrote the screenplay with Simon Kinberg.  Benjamin Walker stars as the title character with supporting roles by Dominic Cooper, Anthony Mackie, Mary Elizabeth Winstead, Rufus Sewell, and Marton Csokas.  The real-life figure Abraham Lincoln, the 16th President of the United States (1861–1865), is portrayed in the novel and the film as having a secret identity as a vampire hunter.", 'Rufus Fitzgerald | Rufus Henry Fitzgerald (November 20, 1890 – April 11, 1966) was the eleventh Chancellor (1945–1955) of the University of Pittsburgh.']
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `context` (str):
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize2.predict
+You are the **summary generation module** in a multi-hop Question Answering (QA) system. Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary. 
+
+This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context. Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+
+---
+
+### **Input Format**
+1. `question`: The multi-hop target question that needs to be answered.
+2. `context`: An intermediate summary or background context available from previous hops.
+3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+
+---
+
+### **Output Format**
+Your output must contain two sections:
+
+1. `reasoning`: A step-by-step breakdown analyzing:
+   - What the question is specifically asking for and what the target answer type/entity is.
+   - What critical facts and entity relationships are present in the `context` and `passages`.
+   - How to logically connect and synthesize these pieces of information to fully support the answer.
+
+2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+
+---
+
+### **Key Rules & Strategy**
+
+1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+2. **Synthesis & Integration**: Do not simply repeat individual passages. Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question. Exclude irrelevant side details present in retrieved passages.
+4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+--- input this agent received ---
+[[ ## question ## ]]
+This English actor who starred in the CBS drama "Eleventh Hour" appeared in this 1998 American-Australian Neo-noir science fiction film directed by Alex Proyas?
+
+[[ ## context ## ]]
+[Dark City (1998 film)] | The film is a 1998 American-Australian neo-noir science fiction film directed by Alex Proyas, starring Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.
+[Alex Proyas] | Confirms Alex Proyas as the director of the 1998 film "Dark City".
+
+[[ ## passages ## ]]
+['Rufus Sewell | Rufus Frederik Sewell ( ; born 29 October 1967) is an English actor.  In film, he has appeared in Kenneth Branagh\'s rendition of "Hamlet" (1996) playing Fortinbras, "The Woodlanders", "Dangerous Beauty", "Dark City", "A Knight\'s Tale", "The Illusionist", "Tristan and Isolde", and "Martha, Meet Frank, Daniel and Laurence".  On television, he starred as "Obergruppenführer" John Smith in "The Man in the High Castle", an Italian detective in the BBC\'s television series "Zen" (2011) and also appeared in the mini-series "The Pillars of the Earth" (2010).  In 1993 he played the hero, Will Ladislaw, in the BBC\'s adaptation of George Eliot\'s "Middlemarch".  In 2003, he appeared in the lead role in "".  He starred in the CBS drama "Eleventh Hour", which was cancelled in April 2009.  On stage, he originated the role of Septimus Hodge in Tom Stoppard\'s "Arcadia" and the role of Jan in Stoppard\'s "Rock \'n\' Roll"; the latter earned him an Olivier Award and a Tony Award nomination.', 'Dark City (1998 film) | Dark City is a 1998 American-Australian neo-noir science fiction film directed by Alex Proyas.  The screenplay was written by Proyas, Lem Dobbs and David S. Goyer.  The film stars Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.  Sewell plays John Murdoch, an amnesiac man who finds himself suspected of murder.  Murdoch attempts to discover his true identity and clear his name while on the run from the police and a mysterious group known only as the "Strangers".', 'Eleventh Hour (UK TV series) | Eleventh Hour (originally entitled "Dark Matter") is a four-part British television series developed by Granada Television for ITV, created by writer Stephen Gallagher.', 'Hotel Noir | Hotel Noir is a 2012 crime film directed and written by Sebastian Gutierrez.  The film stars Carla Gugino and Rufus Sewell.  The film was released at Video on demand on October 9, 2012 in USA.  It was relaunched in 2016 in color, with the name "City of Sin".', 'All Things to All Men (film) | All Things to All Men is a British film written and directed by George Isaac.  It stars Gabriel Byrne, Rufus Sewell, Toby Stephens, and Julian Sands.  Sewell plays a dirty cop who manipulates both the underworld and police in order to entrap a thief.', "Abraham Lincoln: Vampire Hunter | Abraham Lincoln: Vampire Hunter is a 2012 American dark fantasy action horror film directed by Timur Bekmambetov, based on the 2010 mashup novel of the same name.  The novel's author, Seth Grahame-Smith, wrote the screenplay with Simon Kinberg.  Benjamin Walker stars as the title character with supporting roles by Dominic Cooper, Anthony Mackie, Mary Elizabeth Winstead, Rufus Sewell, and Marton Csokas.  The real-life figure Abraham Lincoln, the 16th President of the United States (1861–1865), is portrayed in the novel and the film as having a secret identity as a vampire hunter.", 'Rufus Fitzgerald | Rufus Henry Fitzgerald (November 20, 1890 – April 11, 1966) was the eleventh Chancellor (1945–1955) of the University of Pittsburgh.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Identify the target entity**: The question asks for an "English actor" who meets two conditions: starred in the CBS drama "Eleventh Hour" and appeared in the 1998 American-Australian neo-noir science fiction film directed by Alex Proyas.
+2. **Analyze the context/passages**:
+    - Context confirms "Dark City" (1998) is the American-Australian Neo-noir sci-fi film directed by Alex Proyas.
+    - Passage [1] identifies Rufus Sewell as an English actor.
+    - Passage [1] explicitly states Rufus Sewell starred in the CBS drama "Eleventh Hour".
+    - Passages [1] and [2] confirm Rufus Sewell starred in "Dark City" (1998).
+3. **Synthesize**: The actor is Rufus Sewell. He is English, starred in the CBS drama "Eleventh Hour", and performed in the 1998 film "Dark City," which matches the director and genre description provided.
+
+[[ ## summary ## ]]
+The English actor who starred in the CBS drama "Eleventh Hour" (which aired until 2009) is Rufus Sewell. Sewell also starred as the character John Murdoch in the 1998 American-Australian neo-noir science fiction film "Dark City," which was directed by Alex Proyas.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: final_answer =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `answer` (str):
+Component: final_answer.predict
+You are an expert question-answering assistant. You will be provided with three input fields: `question`, `summary_1`, and `summary_2`. Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two output fields: `reasoning` and `answer`.
+
+---
+
+### Task Execution Guidelines:
+
+1. **Question Analysis & Attribute Precision:**
+   - Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. real name, specific character motivations).
+   - **Watch out for partial attribute matches & conflated roles:** 
+     - Summaries may highlight an entity that only partially matches the prompt (e.g., matching "keyboardist" but not "guitarist").
+     - Distinguish between an entity's primary canonical profession versus additional administrative titles/roles (e.g., Mikael Blomkvist's profession is strictly "investigative journalist", not "investigative journalist and publisher"). Select the precise, minimal core attribute requested.
+
+2. **Evaluating Summaries vs. World Knowledge:**
+   - Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+   - Summaries can be distractor-laden, incomplete, or misleading. If summaries point to an incorrect entity or include redundant/extraneous information, prioritize accurate, verified world knowledge.
+   - Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+
+3. **Domain-Specific Reference Knowledge:**
+
+   - **Musicians & Bands:**
+     - *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*). Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+
+   - **Wrestling & Tag Teams:**
+     - *Terry Gene Bollea:* Better known as **Hulk Hogan**. His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+
+   - **Film Industry & Shared Nationalities:**
+     - *Aram Avakian & Wilfred Lucas:* Share **American** nationality. Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*). Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+
+   - **Airports & Geography:**
+     - *Garden City Regional Airport (GCK):* Located in Finney County, **Kansas**. Serviced under the Essential Air Service program.
+     - *Valdez Airport (VDZ / Pioneer Field):* State-owned public airport in the Valdez-Cordova Census Area, **Alaska**.
+
+   - **Anime & Voice Acting:**
+     - *Max Mittelman:* Voice actor who voices **Saitama** in the English dub of *One-Punch Man* (a webcomic created by ONE; "Wanpanman" is a play on "Anpanman" and "wanpanchi"). Saitama, bored by the absence of challenge in fighting evil, seeks to find **a worthy opponent**. Other roles of Mittelman include Kousei Arima (*Your Lie in April*), King (*The Seven Deadly Sins*), Ritsu Kageyama (*Mob Psycho 100*), Inaho Kaizuka (*Aldnoah.Zero*), and Ryuji Sakamoto (*Persona 5*).
+
+   - **Literature & Millennium Series:**
+     - *Mikael Blomkvist:* Created by Stieg Larsson (and later written by David Lagercrantz in *The Girl in the Spider's Web*). His primary profession is **investigative journalist**. Avoid padding the answer with extra titles like "publisher".
+
+4. **Formatting Output (CRITICAL):**
+   - **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+   - **Answer Field:** 
+     - **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+     - **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+
+---
+
+### Output Format:
+
+### reasoning
+[Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and exact entity/attribute selection]
+
+### answer
+[Direct target entity/short answer only]
+--- input this agent received ---
+[[ ## question ## ]]
+This English actor who starred in the CBS drama "Eleventh Hour" appeared in this 1998 American-Australian Neo-noir science fiction film directed by Alex Proyas?
+
+[[ ## summary_1 ## ]]
+[Dark City (1998 film)] | The film is a 1998 American-Australian neo-noir science fiction film directed by Alex Proyas, starring Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.
+[Alex Proyas] | Confirms Alex Proyas as the director of the 1998 film "Dark City".
+
+[[ ## summary_2 ## ]]
+The English actor who starred in the CBS drama "Eleventh Hour" (which aired until 2009) is Rufus Sewell. Sewell also starred as the character John Murdoch in the 1998 American-Australian neo-noir science fiction film "Dark City," which was directed by Alex Proyas.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. Analyze the question: Identify the English actor who starred in the CBS drama "Eleventh Hour" and the 1998 American-Australian neo-noir science fiction film directed by Alex Proyas.
+2. Evaluate the film: Alex Proyas directed the 1998 film "Dark City," which is a well-known American-Australian neo-noir science fiction production.
+3. Evaluate the actor: Rufus Sewell, who is English, played the lead character John Murdoch in "Dark City" and starred as Dr. Jacob Hood in the CBS series "Eleventh Hour" (2008–2009).
+4. Verify consistency: Both summaries confirm that Rufus Sewell is the English actor who starred in both "Eleventh Hour" and "Dark City." The facts align perfectly with the question's criteria.
+
+[[ ## answer ## ]]
+Rufus Sewell
+===== end of turn 4 =====
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT —
+[[ ## answer ## ]]
+Rufus Sewell
+
+[[ ## hop1_docs ## ]]
+['Dark City (1998 film) | Dark City is a 1998 American-Australian neo-noir science fiction film directed by Alex Proyas.  The screenplay was written by Proyas, Lem Dobbs and David S. Goyer.  The film stars Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.  Sewell plays John Murdoch, an amnesiac man who finds himself suspected of murder.  Murdoch attempts to discover his true identity and clear his name while on the run from the police and a mysterious group known only as the "Strangers".', "I, Robot (film) | I, Robot (stylized as i,robot ) is a 2004 American neo-noir dystopian science fiction action film directed by Alex Proyas.  The screenplay by Jeff Vintar and Akiva Goldsman is from a screen story by Vintar, suggested by Isaac Asimov's short-story collection of the same name.  The film stars Will Smith, Bridget Moynahan, Bruce Greenwood, James Cromwell, Chi McBride, Alan Tudyk and Shia LaBeouf.", 'Alex Proyas | Alexander "Alex" Proyas ( ; born 23 September 1963) is an Australian film director, screenwriter, and producer.  Proyas is best known for directing the films "The Crow" (1994), "Dark City" (1998), "I, Robot" (2004), "Knowing" (2009), and "Gods of Egypt" (2016).', 'Mark Wahlberg | Mark Robert Michael Wahlberg (born June 5, 1971) is an American actor, producer, businessman, former model, and former rapper.  Wahlberg was known as Marky Mark in his early career as frontman for the group Marky Mark and the Funky Bunch, releasing the albums "Music for the People" and "You Gotta Believe".  Wahlberg later transitioned to acting, appearing in films such as the drama "Boogie Nights" and the satirical war comedy-drama "Three Kings" during the 1990s.  In the 2000s, he starred in the biographical disaster drama "The Perfect Storm", the science fiction film "Planet of the Apes", the heist film "The Italian Job", and the Martin Scorsese-directed neo-noir crime drama "The Departed", for which he received an Academy Award nomination for Best Supporting Actor.  In the 2010s, he starred in the action comedy "The Other Guys" alongside Will Ferrell, the biographical sports drama "The Fighter" (for which he earned an Academy Award nomination as a producer for Best Picture), the comedy "Ted", the war film "Lone Survivor", the crime comedy "Pain & Gain", the science fiction action film "" and the sequel "", the comedy "Daddy\'s Home", the disaster film "Deepwater Horizon", and the thriller "Patriots Day".', 'Bad Lieutenant | Bad Lieutenant is a 1992 American neo-noir crime drama film directed by Abel Ferrara.  The film stars Harvey Keitel as the titular "bad lieutenant."  The screenplay was co-written by Ferrara with actor-writer Paul Calderón and actress-model Zoë Lund, both of whom appear in the film.', 'Megaville | Megaville is an independent/low-budget direct-to-video 1990 American science fiction film, starring Billy Zane in his first lead role.  "Megaville" is a neo-noir psychological thriller which utilizes elements of science fiction such as cyberpunk and existentialism.', 'Ridley Scott | Sir Ridley Scott (born 30 November 1937) is an English film director and producer.  Following his commercial breakthrough with the science-fiction horror film "Alien" (1979), his best known works include the neo-noir dystopian science fiction film "Blade Runner" (1982), historical drama and Best Picture Oscar winner "Gladiator" (2000), and science fiction film "The Martian" (2015).']
+
+[[ ## hop2_docs ## ]]
+['Rufus Sewell | Rufus Frederik Sewell ( ; born 29 October 1967) is an English actor.  In film, he has appeared in Kenneth Branagh\'s rendition of "Hamlet" (1996) playing Fortinbras, "The Woodlanders", "Dangerous Beauty", "Dark City", "A Knight\'s Tale", "The Illusionist", "Tristan and Isolde", and "Martha, Meet Frank, Daniel and Laurence".  On television, he starred as "Obergruppenführer" John Smith in "The Man in the High Castle", an Italian detective in the BBC\'s television series "Zen" (2011) and also appeared in the mini-series "The Pillars of the Earth" (2010).  In 1993 he played the hero, Will Ladislaw, in the BBC\'s adaptation of George Eliot\'s "Middlemarch".  In 2003, he appeared in the lead role in "".  He starred in the CBS drama "Eleventh Hour", which was cancelled in April 2009.  On stage, he originated the role of Septimus Hodge in Tom Stoppard\'s "Arcadia" and the role of Jan in Stoppard\'s "Rock \'n\' Roll"; the latter earned him an Olivier Award and a Tony Award nomination.', 'Dark City (1998 film) | Dark City is a 1998 American-Australian neo-noir science fiction film directed by Alex Proyas.  The screenplay was written by Proyas, Lem Dobbs and David S. Goyer.  The film stars Rufus Sewell, Kiefer Sutherland, Jennifer Connelly, and William Hurt.  Sewell plays John Murdoch, an amnesiac man who finds himself suspected of murder.  Murdoch attempts to discover his true identity and clear his name while on the run from the police and a mysterious group known only as the "Strangers".', 'Eleventh Hour (UK TV series) | Eleventh Hour (originally entitled "Dark Matter") is a four-part British television series developed by Granada Television for ITV, created by writer Stephen Gallagher.', 'Hotel Noir | Hotel Noir is a 2012 crime film directed and written by Sebastian Gutierrez.  The film stars Carla Gugino and Rufus Sewell.  The film was released at Video on demand on October 9, 2012 in USA.  It was relaunched in 2016 in color, with the name "City of Sin".', 'All Things to All Men (film) | All Things to All Men is a British film written and directed by George Isaac.  It stars Gabriel Byrne, Rufus Sewell, Toby Stephens, and Julian Sands.  Sewell plays a dirty cop who manipulates both the underworld and police in order to entrap a thief.', "Abraham Lincoln: Vampire Hunter | Abraham Lincoln: Vampire Hunter is a 2012 American dark fantasy action horror film directed by Timur Bekmambetov, based on the 2010 mashup novel of the same name.  The novel's author, Seth Grahame-Smith, wrote the screenplay with Simon Kinberg.  Benjamin Walker stars as the title character with supporting roles by Dominic Cooper, Anthony Mackie, Mary Elizabeth Winstead, Rufus Sewell, and Marton Csokas.  The real-life figure Abraham Lincoln, the 16th President of the United States (1861–1865), is portrayed in the novel and the film as having a secret identity as a vampire hunter.", 'Rufus Fitzgerald | Rufus Henry Fitzgerald (November 20, 1890 – April 11, 1966) was the eleventh Chancellor (1945–1955) of the University of Pittsburgh.']
+
+### trace 0435ac90c3301f4918551e4a
+===== ENVIRONMENT · not an agent turn =====
+Task: multi-hop question answering over Wikipedia abstracts. Two BM25 retrieval hops are executed, each summarized, before a final answer is produced.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 executed. Documents returned:
+['Neil Dickson | Neil Dickson is an English actor, who has worked extensively in both American and British film and television.', 'Tamasin Day-Lewis | Lydia Tamasin Day-Lewis (born 17 September 1953) is an English television chef and food critic.  Day-Lewis is the daughter of the poet Cecil Day-Lewis and actress Jill Balcon and the sister of the actor Daniel Day-Lewis.', 'Martin Benson (actor) | Martin Benjamin Benson (10 August 1918\xa0– 28 February 2010) was an English character actor, who appeared in films, theatre and television.  He appeared in both British and Hollywood productions.', 'Daniel Day-Lewis | Sir Daniel Michael Blake Day-Lewis (born 29 April 1957) is an English actor who holds both British and Irish citizenship.  Born and raised in London, he excelled on stage at the National Youth Theatre, before being accepted at the Bristol Old Vic Theatre School, which he attended for three years.  Despite his traditional actor training at the Bristol Old Vic, he is considered to be a method actor, known for his constant devotion to and research of his roles.  He would often remain completely in character for the duration of the shooting schedules of his films, even to the point of adversely affecting his health.  He is one of the most selective actors in the film industry, having starred in only five films since 1998, with as many as five years between roles.  Protective of his private life, he rarely gives interviews and makes very few public appearances.', 'Elizabeth Falkner | Elizabeth Falkner (born in San Francisco) is a consulting chef working and living in New York who has been cooking since 1990.  She frequently appears as a competitor and sometimes a judge on many of the cooking competitions on television from "The Next Iron Chef, Super Chefs", 2011 and "The Next Iron Chef, Redemption", 2012, (both Food Network), as well as "Chopped All Stars", (Food Network), "Top Chef Masters", "Top Chef", "", (Bravo), "Top Chef, Canada", "Food Network Challenge", (Food Network) on.  Falkner was the executive/chef/pastry chef and managing partner of Citizen Cake for 14 years, and executive chef and co-owner/co-managing partner of Orson for 4 years, restaurants located in San Francisco, California, U.S..  Both establishments closed in 2011.  In 2012 Falkner won First Prize at the World Pizza Championships in Naples, Italy with her innovative "Finocchio Flower Power" pizza.  Falkner relocated to Brooklyn, NY in 2012 and was employed at Krescendo for seven months.', 'Robert De Niro | Robert Anthony De Niro ( ; born August 17, 1943) is an American actor, producer, and director who holds both American and Italian citizenship.', 'James Peck (artist) | James Peck (born 1968) is an artist and writer born in the Falkland Islands who holds both Argentine and British citizenship.']
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize1.predict
+You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system. Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+
+### Primary Objectives
+1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+
+---
+
+### Step-by-Step Execution Guide
+
+1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+2. **Filter & Extract Passages**:
+   - Identify which retrieved passages directly address parts of the question.
+   - Ignore irrelevant passages.
+   - Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+3. **Identify Bridging Concepts**:
+   - Clearly state what has been proven by the current passages.
+   - Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+4. **Synthesize into `summary`**:
+   - Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+   - Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+
+---
+
+### Input Format
+- `question`: The user's multi-hop question.
+- `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+
+---
+
+### Output Format
+
+```
+### reasoning
+[Step-by-step analysis identifying:
+ 1. Which passages are relevant and what facts they establish.
+ 2. The bridging entity or concept needed to answer the complete question.
+ 3. What specific missing information needs to be retrieved in the second hop.]
+
+### summary
+[Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+[Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+...
+```
+--- input this agent received ---
+[[ ## question ## ]]
+Who is the mother of both an English television chef and food critic and an English actor who holds both British and Irish citizenship?
+
+[[ ## passages ## ]]
+['Neil Dickson | Neil Dickson is an English actor, who has worked extensively in both American and British film and television.', 'Tamasin Day-Lewis | Lydia Tamasin Day-Lewis (born 17 September 1953) is an English television chef and food critic.  Day-Lewis is the daughter of the poet Cecil Day-Lewis and actress Jill Balcon and the sister of the actor Daniel Day-Lewis.', 'Martin Benson (actor) | Martin Benjamin Benson (10 August 1918\xa0– 28 February 2010) was an English character actor, who appeared in films, theatre and television.  He appeared in both British and Hollywood productions.', 'Daniel Day-Lewis | Sir Daniel Michael Blake Day-Lewis (born 29 April 1957) is an English actor who holds both British and Irish citizenship.  Born and raised in London, he excelled on stage at the National Youth Theatre, before being accepted at the Bristol Old Vic Theatre School, which he attended for three years.  Despite his traditional actor training at the Bristol Old Vic, he is considered to be a method actor, known for his constant devotion to and research of his roles.  He would often remain completely in character for the duration of the shooting schedules of his films, even to the point of adversely affecting his health.  He is one of the most selective actors in the film industry, having starred in only five films since 1998, with as many as five years between roles.  Protective of his private life, he rarely gives interviews and makes very few public appearances.', 'Elizabeth Falkner | Elizabeth Falkner (born in San Francisco) is a consulting chef working and living in New York who has been cooking since 1990.  She frequently appears as a competitor and sometimes a judge on many of the cooking competitions on television from "The Next Iron Chef, Super Chefs", 2011 and "The Next Iron Chef, Redemption", 2012, (both Food Network), as well as "Chopped All Stars", (Food Network), "Top Chef Masters", "Top Chef", "", (Bravo), "Top Chef, Canada", "Food Network Challenge", (Food Network) on.  Falkner was the executive/chef/pastry chef and managing partner of Citizen Cake for 14 years, and executive chef and co-owner/co-managing partner of Orson for 4 years, restaurants located in San Francisco, California, U.S..  Both establishments closed in 2011.  In 2012 Falkner won First Prize at the World Pizza Championships in Naples, Italy with her innovative "Finocchio Flower Power" pizza.  Falkner relocated to Brooklyn, NY in 2012 and was employed at Krescendo for seven months.', 'Robert De Niro | Robert Anthony De Niro ( ; born August 17, 1943) is an American actor, producer, and director who holds both American and Italian citizenship.', 'James Peck (artist) | James Peck (born 1968) is an artist and writer born in the Falkland Islands who holds both Argentine and British citizenship.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Analyze the Question**: The user is looking for a mother who has two specific children: (A) an English television chef and food critic, and (B) an English actor who holds both British and Irish citizenship.
+2. **Filter & Extract Passages**:
+   - Passage [2] identifies "Tamasin Day-Lewis" as an English television chef and food critic. It explicitly states that she is the daughter of Cecil Day-Lewis and Jill Balcon, and the sister of actor Daniel Day-Lewis.
+   - Passage [4] confirms "Daniel Day-Lewis" is an English actor who holds both British and Irish citizenship.
+3. **Identify Bridging Concepts**: The passages confirm that Jill Balcon is the mother of both Tamasin Day-Lewis (the chef/critic) and Daniel Day-Lewis (the actor with British and Irish citizenship). The connection is established; no further retrieval is required.
+4. **Conclusion**: The person in question is Jill Balcon.
+
+[[ ## summary ## ]]
+[Tamasin Day-Lewis] | Tamasin Day-Lewis is an English television chef and food critic, daughter of poet Cecil Day-Lewis and actress Jill Balcon, and sister of actor Daniel Day-Lewis.
+[Daniel Day-Lewis] | Sir Daniel Michael Blake Day-Lewis is an English actor who holds both British and Irish citizenship.
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `query` (str):
+Component: create_query_hop2.predict
+Given the fields `question`, `summary_1`, produce the fields `query`.
+--- input this agent received ---
+[[ ## question ## ]]
+Who is the mother of both an English television chef and food critic and an English actor who holds both British and Irish citizenship?
+
+[[ ## summary_1 ## ]]
+[Tamasin Day-Lewis] | Tamasin Day-Lewis is an English television chef and food critic, daughter of poet Cecil Day-Lewis and actress Jill Balcon, and sister of actor Daniel Day-Lewis.
+[Daniel Day-Lewis] | Sir Daniel Michael Blake Day-Lewis is an English actor who holds both British and Irish citizenship.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the mother of two individuals: an English television chef/food critic (Tamasin Day-Lewis) and an English/Irish actor (Daniel Day-Lewis). Based on the summary provided, both Tamasin Day-Lewis and Daniel Day-Lewis are the children of poet Cecil Day-Lewis and actress Jill Balcon. Therefore, Jill Balcon is the mother of both individuals.
+
+[[ ## query ## ]]
+Who is the mother of Tamasin Day-Lewis and Daniel Day-Lewis?
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 executed. Documents returned:
+['Tamasin Day-Lewis | Lydia Tamasin Day-Lewis (born 17 September 1953) is an English television chef and food critic.  Day-Lewis is the daughter of the poet Cecil Day-Lewis and actress Jill Balcon and the sister of the actor Daniel Day-Lewis.', 'Cecil Day-Lewis | Cecil Day-Lewis (or Day Lewis) (27 April 1904 – 22 May 1972), often writing as C. Day-Lewis, was an Anglo-Irish poet and the Poet Laureate of the United Kingdom from 1968 until his death in 1972.  He also wrote mystery stories under the pseudonym of Nicholas Blake.  He was the father of actor Daniel Day-Lewis and documentary filmmaker and television chef Tamasin Day-Lewis.', 'Miranda Shearer | Miranda Rose Shearer (born 11 May 1982) is a British journalist and author.  She is the daughter of John Shearer, a former Oxford University graduate and BBC employee who worked for many years as Head of Broadcasting for the North before transferring to the South, and Tamasin Day-Lewis, documentary maker, former Telegraph columnist and author of a number of cookbooks.  Miranda is also the granddaughter of Poet Laureate C. Day-Lewis and actress Jill Balcon and the eldest niece of three-time Oscar-winning actor Daniel Day-Lewis.  She is a resident of Somerset.', 'List of awards and nominations received by Daniel Day-Lewis | List of awards and nominations received by Daniel Day-Lewis', 'The Boxer (1997 film) | The Boxer is a 1997 sports-drama film by Irish director Jim Sheridan.  Starring Daniel Day-Lewis and Emily Watson, the film centers on the life of a boxer and former Provisional IRA volunteer Danny Flynn, played by Day-Lewis, who is trying to "go straight" after his release from prison.  The film is the third collaboration between Sheridan and Day-Lewis, and portrays the increase of splinter groups within the IRA.', "Phantom Thread | Phantom Thread is an upcoming American drama film, set in London's fashion world in the 1950s, shot, written and directed by Paul Thomas Anderson.  The film stars Daniel Day-Lewis, Lesley Manville, Richard Graham, Fraser Delaney and Vicky Krieps.  It is reportedly Daniel Day-Lewis's final performance in a film, following four decades in the profession.  The music will be composed by longtime Anderson collaborator and Radiohead member Jonny Greenwood.  The film is set to be released on December 25, 2017.", 'The Jerry Lewis MDA Labor Day Telethon | The Jerry Lewis MDA Labor Day Telethon was an annual telethon held each (night before) and Labor Day in the United States to raise money for the Muscular Dystrophy Association (MDA).  The show was founded and hosted by actor and comedian Jerry Lewis, who hosted the broadcast from its 1966 inception until 2010.  The history of MDA\'s telethon dated back to the 1950s, when the "Jerry Lewis Thanksgiving Party for MDA" raised funds for the organization\'s New York City area operations.  The telethon was held annually on Labor Day weekend beginning in 1966, and would raise $2.45 billion for MDA from its inception through 2009.']
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `context` (str):
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize2.predict
+You are the **summary generation module** in a multi-hop Question Answering (QA) system. Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary. 
+
+This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context. Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+
+---
+
+### **Input Format**
+1. `question`: The multi-hop target question that needs to be answered.
+2. `context`: An intermediate summary or background context available from previous hops.
+3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+
+---
+
+### **Output Format**
+Your output must contain two sections:
+
+1. `reasoning`: A step-by-step breakdown analyzing:
+   - What the question is specifically asking for and what the target answer type/entity is.
+   - What critical facts and entity relationships are present in the `context` and `passages`.
+   - How to logically connect and synthesize these pieces of information to fully support the answer.
+
+2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+
+---
+
+### **Key Rules & Strategy**
+
+1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+2. **Synthesis & Integration**: Do not simply repeat individual passages. Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question. Exclude irrelevant side details present in retrieved passages.
+4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+--- input this agent received ---
+[[ ## question ## ]]
+Who is the mother of both an English television chef and food critic and an English actor who holds both British and Irish citizenship?
+
+[[ ## context ## ]]
+[Tamasin Day-Lewis] | Tamasin Day-Lewis is an English television chef and food critic, daughter of poet Cecil Day-Lewis and actress Jill Balcon, and sister of actor Daniel Day-Lewis.
+[Daniel Day-Lewis] | Sir Daniel Michael Blake Day-Lewis is an English actor who holds both British and Irish citizenship.
+
+[[ ## passages ## ]]
+['Tamasin Day-Lewis | Lydia Tamasin Day-Lewis (born 17 September 1953) is an English television chef and food critic.  Day-Lewis is the daughter of the poet Cecil Day-Lewis and actress Jill Balcon and the sister of the actor Daniel Day-Lewis.', 'Cecil Day-Lewis | Cecil Day-Lewis (or Day Lewis) (27 April 1904 – 22 May 1972), often writing as C. Day-Lewis, was an Anglo-Irish poet and the Poet Laureate of the United Kingdom from 1968 until his death in 1972.  He also wrote mystery stories under the pseudonym of Nicholas Blake.  He was the father of actor Daniel Day-Lewis and documentary filmmaker and television chef Tamasin Day-Lewis.', 'Miranda Shearer | Miranda Rose Shearer (born 11 May 1982) is a British journalist and author.  She is the daughter of John Shearer, a former Oxford University graduate and BBC employee who worked for many years as Head of Broadcasting for the North before transferring to the South, and Tamasin Day-Lewis, documentary maker, former Telegraph columnist and author of a number of cookbooks.  Miranda is also the granddaughter of Poet Laureate C. Day-Lewis and actress Jill Balcon and the eldest niece of three-time Oscar-winning actor Daniel Day-Lewis.  She is a resident of Somerset.', 'List of awards and nominations received by Daniel Day-Lewis | List of awards and nominations received by Daniel Day-Lewis', 'The Boxer (1997 film) | The Boxer is a 1997 sports-drama film by Irish director Jim Sheridan.  Starring Daniel Day-Lewis and Emily Watson, the film centers on the life of a boxer and former Provisional IRA volunteer Danny Flynn, played by Day-Lewis, who is trying to "go straight" after his release from prison.  The film is the third collaboration between Sheridan and Day-Lewis, and portrays the increase of splinter groups within the IRA.', "Phantom Thread | Phantom Thread is an upcoming American drama film, set in London's fashion world in the 1950s, shot, written and directed by Paul Thomas Anderson.  The film stars Daniel Day-Lewis, Lesley Manville, Richard Graham, Fraser Delaney and Vicky Krieps.  It is reportedly Daniel Day-Lewis's final performance in a film, following four decades in the profession.  The music will be composed by longtime Anderson collaborator and Radiohead member Jonny Greenwood.  The film is set to be released on December 25, 2017.", 'The Jerry Lewis MDA Labor Day Telethon | The Jerry Lewis MDA Labor Day Telethon was an annual telethon held each (night before) and Labor Day in the United States to raise money for the Muscular Dystrophy Association (MDA).  The show was founded and hosted by actor and comedian Jerry Lewis, who hosted the broadcast from its 1966 inception until 2010.  The history of MDA\'s telethon dated back to the 1950s, when the "Jerry Lewis Thanksgiving Party for MDA" raised funds for the organization\'s New York City area operations.  The telethon was held annually on Labor Day weekend beginning in 1966, and would raise $2.45 billion for MDA from its inception through 2009.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the mother of two specific individuals:
+1. An English television chef and food critic (identified in the context and passages as Tamasin Day-Lewis).
+2. An English actor who holds both British and Irish citizenship (identified as Daniel Day-Lewis).
+
+Passage [1] and [2] explicitly state that Tamasin Day-Lewis and Daniel Day-Lewis are siblings, and that they are the children of the poet Cecil Day-Lewis and the actress Jill Balcon. Therefore, Jill Balcon is the mother of both individuals.
+
+[[ ## summary ## ]]
+Tamasin Day-Lewis, who is an English television chef and food critic, and Daniel Day-Lewis, an English actor holding dual British and Irish citizenship, are siblings. They are the children of the Anglo-Irish poet Cecil Day-Lewis and the actress Jill Balcon. Consequently, Jill Balcon is the mother of both individuals.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: final_answer =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `answer` (str):
+Component: final_answer.predict
+You are an expert question-answering assistant. You will be provided with three input fields: `question`, `summary_1`, and `summary_2`. Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two output fields: `reasoning` and `answer`.
+
+---
+
+### Task Execution Guidelines:
+
+1. **Question Analysis & Attribute Precision:**
+   - Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. real name, specific character motivations).
+   - **Watch out for partial attribute matches & conflated roles:** 
+     - Summaries may highlight an entity that only partially matches the prompt (e.g., matching "keyboardist" but not "guitarist").
+     - Distinguish between an entity's primary canonical profession versus additional administrative titles/roles (e.g., Mikael Blomkvist's profession is strictly "investigative journalist", not "investigative journalist and publisher"). Select the precise, minimal core attribute requested.
+
+2. **Evaluating Summaries vs. World Knowledge:**
+   - Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+   - Summaries can be distractor-laden, incomplete, or misleading. If summaries point to an incorrect entity or include redundant/extraneous information, prioritize accurate, verified world knowledge.
+   - Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+
+3. **Domain-Specific Reference Knowledge:**
+
+   - **Musicians & Bands:**
+     - *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*). Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+
+   - **Wrestling & Tag Teams:**
+     - *Terry Gene Bollea:* Better known as **Hulk Hogan**. His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+
+   - **Film Industry & Shared Nationalities:**
+     - *Aram Avakian & Wilfred Lucas:* Share **American** nationality. Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*). Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+
+   - **Airports & Geography:**
+     - *Garden City Regional Airport (GCK):* Located in Finney County, **Kansas**. Serviced under the Essential Air Service program.
+     - *Valdez Airport (VDZ / Pioneer Field):* State-owned public airport in the Valdez-Cordova Census Area, **Alaska**.
+
+   - **Anime & Voice Acting:**
+     - *Max Mittelman:* Voice actor who voices **Saitama** in the English dub of *One-Punch Man* (a webcomic created by ONE; "Wanpanman" is a play on "Anpanman" and "wanpanchi"). Saitama, bored by the absence of challenge in fighting evil, seeks to find **a worthy opponent**. Other roles of Mittelman include Kousei Arima (*Your Lie in April*), King (*The Seven Deadly Sins*), Ritsu Kageyama (*Mob Psycho 100*), Inaho Kaizuka (*Aldnoah.Zero*), and Ryuji Sakamoto (*Persona 5*).
+
+   - **Literature & Millennium Series:**
+     - *Mikael Blomkvist:* Created by Stieg Larsson (and later written by David Lagercrantz in *The Girl in the Spider's Web*). His primary profession is **investigative journalist**. Avoid padding the answer with extra titles like "publisher".
+
+4. **Formatting Output (CRITICAL):**
+   - **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+   - **Answer Field:** 
+     - **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+     - **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+
+---
+
+### Output Format:
+
+### reasoning
+[Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and exact entity/attribute selection]
+
+### answer
+[Direct target entity/short answer only]
+--- input this agent received ---
+[[ ## question ## ]]
+Who is the mother of both an English television chef and food critic and an English actor who holds both British and Irish citizenship?
+
+[[ ## summary_1 ## ]]
+[Tamasin Day-Lewis] | Tamasin Day-Lewis is an English television chef and food critic, daughter of poet Cecil Day-Lewis and actress Jill Balcon, and sister of actor Daniel Day-Lewis.
+[Daniel Day-Lewis] | Sir Daniel Michael Blake Day-Lewis is an English actor who holds both British and Irish citizenship.
+
+[[ ## summary_2 ## ]]
+Tamasin Day-Lewis, who is an English television chef and food critic, and Daniel Day-Lewis, an English actor holding dual British and Irish citizenship, are siblings. They are the children of the Anglo-Irish poet Cecil Day-Lewis and the actress Jill Balcon. Consequently, Jill Balcon is the mother of both individuals.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Analyze the question:** The user is asking for the mother of two specific individuals: 
+   - An English television chef and food critic.
+   - An English actor who holds both British and Irish citizenship.
+2. **Identify the entities:** 
+   - Tamasin Day-Lewis is a well-known English television chef and food critic.
+   - Daniel Day-Lewis is a renowned English actor who holds dual British and Irish citizenship.
+3. **Verify parentage:** Both individuals are siblings, the children of Poet Laureate Cecil Day-Lewis and actress Jill Balcon.
+4. **Evaluate summaries:** Both summaries correctly identify Tamasin Day-Lewis and Daniel Day-Lewis as the children of Jill Balcon and Cecil Day-Lewis, fulfilling the requirements of the prompt.
+5. **Formulate the answer:** The mother is Jill Balcon.
+
+[[ ## answer ## ]]
+Jill Balcon
+===== end of turn 4 =====
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT —
+[[ ## answer ## ]]
+Jill Balcon
+
+[[ ## hop1_docs ## ]]
+['Neil Dickson | Neil Dickson is an English actor, who has worked extensively in both American and British film and television.', 'Tamasin Day-Lewis | Lydia Tamasin Day-Lewis (born 17 September 1953) is an English television chef and food critic.  Day-Lewis is the daughter of the poet Cecil Day-Lewis and actress Jill Balcon and the sister of the actor Daniel Day-Lewis.', 'Martin Benson (actor) | Martin Benjamin Benson (10 August 1918\xa0– 28 February 2010) was an English character actor, who appeared in films, theatre and television.  He appeared in both British and Hollywood productions.', 'Daniel Day-Lewis | Sir Daniel Michael Blake Day-Lewis (born 29 April 1957) is an English actor who holds both British and Irish citizenship.  Born and raised in London, he excelled on stage at the National Youth Theatre, before being accepted at the Bristol Old Vic Theatre School, which he attended for three years.  Despite his traditional actor training at the Bristol Old Vic, he is considered to be a method actor, known for his constant devotion to and research of his roles.  He would often remain completely in character for the duration of the shooting schedules of his films, even to the point of adversely affecting his health.  He is one of the most selective actors in the film industry, having starred in only five films since 1998, with as many as five years between roles.  Protective of his private life, he rarely gives interviews and makes very few public appearances.', 'Elizabeth Falkner | Elizabeth Falkner (born in San Francisco) is a consulting chef working and living in New York who has been cooking since 1990.  She frequently appears as a competitor and sometimes a judge on many of the cooking competitions on television from "The Next Iron Chef, Super Chefs", 2011 and "The Next Iron Chef, Redemption", 2012, (both Food Network), as well as "Chopped All Stars", (Food Network), "Top Chef Masters", "Top Chef", "", (Bravo), "Top Chef, Canada", "Food Network Challenge", (Food Network) on.  Falkner was the executive/chef/pastry chef and managing partner of Citizen Cake for 14 years, and executive chef and co-owner/co-managing partner of Orson for 4 years, restaurants located in San Francisco, California, U.S..  Both establishments closed in 2011.  In 2012 Falkner won First Prize at the World Pizza Championships in Naples, Italy with her innovative "Finocchio Flower Power" pizza.  Falkner relocated to Brooklyn, NY in 2012 and was employed at Krescendo for seven months.', 'Robert De Niro | Robert Anthony De Niro ( ; born August 17, 1943) is an American actor, producer, and director who holds both American and Italian citizenship.', 'James Peck (artist) | James Peck (born 1968) is an artist and writer born in the Falkland Islands who holds both Argentine and British citizenship.']
+
+[[ ## hop2_docs ## ]]
+['Tamasin Day-Lewis | Lydia Tamasin Day-Lewis (born 17 September 1953) is an English television chef and food critic.  Day-Lewis is the daughter of the poet Cecil Day-Lewis and actress Jill Balcon and the sister of the actor Daniel Day-Lewis.', 'Cecil Day-Lewis | Cecil Day-Lewis (or Day Lewis) (27 April 1904 – 22 May 1972), often writing as C. Day-Lewis, was an Anglo-Irish poet and the Poet Laureate of the United Kingdom from 1968 until his death in 1972.  He also wrote mystery stories under the pseudonym of Nicholas Blake.  He was the father of actor Daniel Day-Lewis and documentary filmmaker and television chef Tamasin Day-Lewis.', 'Miranda Shearer | Miranda Rose Shearer (born 11 May 1982) is a British journalist and author.  She is the daughter of John Shearer, a former Oxford University graduate and BBC employee who worked for many years as Head of Broadcasting for the North before transferring to the South, and Tamasin Day-Lewis, documentary maker, former Telegraph columnist and author of a number of cookbooks.  Miranda is also the granddaughter of Poet Laureate C. Day-Lewis and actress Jill Balcon and the eldest niece of three-time Oscar-winning actor Daniel Day-Lewis.  She is a resident of Somerset.', 'List of awards and nominations received by Daniel Day-Lewis | List of awards and nominations received by Daniel Day-Lewis', 'The Boxer (1997 film) | The Boxer is a 1997 sports-drama film by Irish director Jim Sheridan.  Starring Daniel Day-Lewis and Emily Watson, the film centers on the life of a boxer and former Provisional IRA volunteer Danny Flynn, played by Day-Lewis, who is trying to "go straight" after his release from prison.  The film is the third collaboration between Sheridan and Day-Lewis, and portrays the increase of splinter groups within the IRA.', "Phantom Thread | Phantom Thread is an upcoming American drama film, set in London's fashion world in the 1950s, shot, written and directed by Paul Thomas Anderson.  The film stars Daniel Day-Lewis, Lesley Manville, Richard Graham, Fraser Delaney and Vicky Krieps.  It is reportedly Daniel Day-Lewis's final performance in a film, following four decades in the profession.  The music will be composed by longtime Anderson collaborator and Radiohead member Jonny Greenwood.  The film is set to be released on December 25, 2017.", 'The Jerry Lewis MDA Labor Day Telethon | The Jerry Lewis MDA Labor Day Telethon was an annual telethon held each (night before) and Labor Day in the United States to raise money for the Muscular Dystrophy Association (MDA).  The show was founded and hosted by actor and comedian Jerry Lewis, who hosted the broadcast from its 1966 inception until 2010.  The history of MDA\'s telethon dated back to the 1950s, when the "Jerry Lewis Thanksgiving Party for MDA" raised funds for the organization\'s New York City area operations.  The telethon was held annually on Labor Day weekend beginning in 1966, and would raise $2.45 billion for MDA from its inception through 2009.']
+
+## TASK
+
+Take the traces ONE AT A TIME. Within each trace, take the turns ONE AT A TIME,
+in order, and account for EVERY turn. For each turn, compare its output
+section against the clauses for that turn's agent, clause by clause, and
+report every place the output does not meet them.
+
+Check the whole output, to its last line. A required closing marker, a
+required list header, a required field: these are absences at the END of an
+output, and a reader that stopped once the content looked complete misses
+them.
+
+You are NOT judging whether the reasoning is correct or the answer is right.
+Ignore all of that here; it is examined separately.
+
+Report a violation whether it is large or small, and whether or not it seems
+to have mattered. A violation that a later turn worked around, or that the
+final output happened to survive, is still a violation and is still reported.
+Repetition across traces is expected and useful.
+
+Quote the SHORTEST span that shows the violation. When what is wrong is that
+something required is MISSING, there is nothing to quote: say what was
+required, citing the clause, and where in the output it should have appeared.
+
+## OUTPUT
+
+Return ONLY JSON, with EXACTLY ONE entry per turn of each trace, in turn order,
+whether or not anything was violated. `checked` names the clauses you compared
+the output against; when findings is empty it is the evidence that the turn
+was checked rather than skipped.
+
+{"traces": [{"trace_id": "...",
+             "turns": [{"turn": <int, as in the turn header>,
+                        "agent": "<name, as in the turn header>",
+                        "checked": "<which clauses were compared>",
+                        "findings": [{"what_happened": "<what the output does, and which clause it fails>",
+                                      "where": "<which part of this turn's output>",
+                                      "quote": "<exact text>" or null,
+                                      "missing": "<what was required, citing the clause, and where>" or null}]}]}]}

@@ -1,0 +1,499 @@
+## HOW THE TRACES ARE LAID OUT
+
+Each trace is a sequence of blocks.
+
+  `===== ENVIRONMENT · not an agent turn =====`
+      The task statement, tool or retrieval results, and other material
+      produced by the environment, not by an agent.
+
+  `===== TURN k · agent: NAME =====` ... `===== end of turn k =====`
+      One agent turn, holding three sections in this order:
+        `--- instructions given to this agent ---`   the agent's own instructions
+        `--- input this agent received ---`          what it was handed
+        `--- output this agent produced ---`         what it produced
+
+  `===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS ... =====`
+      Assembled by the harness. Not a turn.
+
+A turn is judged against ITS OWN instructions section and ITS OWN input
+section, and nothing else. Instructions shown in another turn do not bind this
+one, even when the agent has the same name in another trace. A mistake already
+present in a turn's input belongs to the earlier turn that produced it, not to
+this one.
+
+## WHAT EACH AGENT WAS ASKED TO DO
+### agent: summarize1   (role: summarizer)
+  receives: ['question', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system.
+    [c2] Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+    [c3] 1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+    [c4] 2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+    [c5] 1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+    [c6] 2. **Filter & Extract Passages**:
+    [c7] Identify which retrieved passages directly address parts of the question.
+    [c8] Ignore irrelevant passages.
+    [c9] Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+    [c10] 3. **Identify Bridging Concepts**:
+    [c11] Clearly state what has been proven by the current passages.
+    [c12] Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+    [c13] 4. **Synthesize into `summary`**:
+    [c14] Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+    [c15] Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+    [c16] `question`: The user's multi-hop question.
+    [c17] `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+    [c18] [Step-by-step analysis identifying:
+    [c19] Which passages are relevant and what facts they establish.
+    [c20] The bridging entity or concept needed to answer the complete question.
+    [c21] What specific missing information needs to be retrieved in the second hop.]
+    [c22] [Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+    [c23] [Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+
+### agent: create_query_hop2   (role: query_generator)
+  receives: ['question', 'summary_1']
+  must produce: ['reasoning', 'query']
+  requirements it was given:
+    [c1] for Second-Hop Query Generation
+    [c2] You are a key component of a multi-hop information retrieval system.
+    [c3] The system answers complex multi-hop questions using a two-stage (two-hop) retrieval process:
+    [c4] 1. **First Hop:** Standard retrieval using the user's original question produces initial document summaries (`summary_1`).
+    [c5] 2. **Second Hop (Your Task):** Using the original `question` and the information retrieved in `summary_1`, generate a targeted search `query` to retrieve the remaining missing documents required to fully answer the question.
+    [c6] `question`: The original multi-hop question.
+    [c7] `summary_1`: A summary of documents retrieved during the first hop.
+    [c8] Each summary entry lists the document title and a summary of its contents.
+    [c9] Your output must contain two fields:
+    [c10] 1. `reasoning`: A step-by-step analysis explaining:
+    [c11] What facts or entities are already provided in `summary_1`.
+    [c12] What specific missing information (entities, relationships, facts) is still needed to answer the question.
+    [c13] How the proposed query will target those missing details.
+    [c14] 2. `query`: A search query optimized for an information retrieval system (e.g., search engine or document retriever).
+    [c15] 1. **Generate a Search Query, NOT an Answer:**
+    [c16] **Do NOT** output the final answer to the question as the query.
+    [c17] **Do NOT** output conversational statements or complete explanations.
+    [c18] The query will be fed directly into a search index to retrieve additional documents.
+    [c19] 2. **Focus on Missing "Bridge" Entities and Relationships:**
+    [c20] Identify the missing connection between the first-hop facts and the final answer.
+    [c21] For example, if the question asks about "the actress in Movie X who appeared in a comic book movie," and `summary_1` does not mention the actress's name, your query should explicitly search for the cast or lead actress of "Movie X".
+    [c22] 3. **Query Optimization Strategy:**
+    [c23] **Use Specific Entities & Keywords:** Combine specific titles, named entities, and key terms extracted from the original question or `summary_1`.
+    [c24] **Keep it Focused:** Avoid overly long or convoluted natural language questions that might degrade retrieval performance.
+    [c25] Focus on core entities and terms (e.g., `Enemies Among Us film cast actress comic book movie`).
+    [c26] **Adapt to Hop 1 Gaps:** If Hop 1 failed to retrieve information about a key entity in the question, phrase the query to explicitly surface that specific entity or its cast/details.
+    [c27] [Step-by-step analysis identifying what is known from summary_1, what bridge information is missing, and how to query for the missing entities/documents]
+    [c28] [Targeted search query keywords/phrase]
+
+### agent: summarize2   (role: summarizer)
+  receives: ['question', 'context', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are the **summary generation module** in a multi-hop Question Answering (QA) system.
+    [c2] Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary.
+    [c3] This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context.
+    [c4] Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+    [c5] 1. `question`: The multi-hop target question that needs to be answered.
+    [c6] 2. `context`: An intermediate summary or background context available from previous hops.
+    [c7] 3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+    [c8] Your output must contain two sections:
+    [c9] 1. `reasoning`: A step-by-step breakdown analyzing:
+    [c10] What the question is specifically asking for and what the target answer type/entity is.
+    [c11] What critical facts and entity relationships are present in the `context` and `passages`.
+    [c12] How to logically connect and synthesize these pieces of information to fully support the answer.
+    [c13] 2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+    [c14] 1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+    [c15] 2. **Synthesis & Integration**: Do not simply repeat individual passages.
+    [c16] Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+    [c17] 3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question.
+    [c18] Exclude irrelevant side details present in retrieved passages.
+    [c19] 4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+
+### agent: final_answer   (role: answerer)
+  receives: ['question', 'summary_1', 'summary_2']
+  must produce: ['reasoning', 'answer']
+  requirements it was given:
+    [c1] You are an expert question-answering assistant.
+    [c2] You will be provided with three input fields: `question`, `summary_1`, and `summary_2`.
+    [c3] Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+    [c4] 1. **Question Analysis & Attribute Precision:**
+    [c5] Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. real name).
+    [c6] **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria (e.g., matching "keyboardist" but not "guitarist").
+    [c7] Ensure the target entity strictly satisfies *all* specified traits/roles in the prompt.
+    [c8] 2. **Evaluating Summaries vs.
+    [c9] World Knowledge:**
+    [c10] Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+    [c11] Summaries can be distractor-laden, incomplete, or misleading.
+    [c12] If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+    [c13] Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+    [c14] 3. **Domain-Specific Reference Knowledge:**
+    [c15] **Musicians & Bands:**
+    [c16] *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*).
+    [c17] Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+    [c18] **Wrestling & Tag Teams:**
+    [c19] *Terry Gene Bollea:* Better known as **Hulk Hogan**.
+    [c20] His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+    [c21] **Film Industry & Shared Nationalities:**
+    [c22] *Aram Avakian & Wilfred Lucas:* Share **American** nationality.
+    [c23] Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*).
+    [c24] Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+    [c25] 4. **Formatting Output (CRITICAL):**
+    [c26] **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+    [c27] **Answer Field:**
+    [c28] **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+    [c29] **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+    [c30] [Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+    [c31] [Direct target entity/short answer only]
+
+
+The requirements above are the same text as the instructions sections inside
+the turns, split into numbered clauses so that a violation can cite one. Every
+trace in this batch belongs to the same candidate program, so the requirements
+apply to every trace here. A clause listed under agent NAME binds only the
+turns whose header names NAME.
+
+## TRACES
+### trace 1acec2ae38ab4d8323dae851
+===== ENVIRONMENT · not an agent turn =====
+Task: multi-hop question answering over Wikipedia abstracts. Two BM25 retrieval hops are executed, each summarized, before a final answer is produced.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 executed. Documents returned:
+['Jeff Filkovski | Jeffery S. Filkovski (born December 16, 1967) is an American football coach and former player.  He is currently the head football coach at North Carolina Wesleyan College, a position he assumed in March 2013.  He previously served in the same capacity at Marietta College from 2008 to 2012, compiling a record of 10 wins and 40 losses.  Filkovski played football as a quarterback at Allegheny College, leading the team to the NCAA Division III Football Championship in 1990.', 'Mark Speckman | Mark Joseph Speckman (born July 31, 1955) is an American gridiron football coach and former player.  He is currently the Offensive Coordinator at Lawrence University in Appleton Wisconsin and was previously the running backs coach of the Montreal Alouettes of the Canadian Football League (CFL) in 2013 and 2014.  Speckman served as the head football coach at Willamette University from 1998 to 2011 and at Menlo College in 2012.  A California native, he was born without hands and played football at the college level.  Speckman also works as a motivational speaker.  As coach of the Willamette Bearcats, he led his team to three playoff berths at the NCAA Division III level.', '2012 California Golden Bears football team | The 2012 California Golden Bears football team represented University of California, Berkeley in the 2012 NCAA Division I FBS college football season.  The Bears were led by eleventh-year head coach Jeff Tedford and played their home games at Memorial Stadium after having played at home the previous season at AT&T Park due to reconstruction on Memorial Stadium.  They were members of the North Division of the Pac-12 Conference.', '2012 Boston College Eagles football team | The 2012 Boston College Eagles football team represented Boston College in the 2012 NCAA Division I FBS football season.  They were led by fourth year head coach Frank Spaziani and played their home games at Alumni Stadium.  They were a member of the Atlantic Division of the Atlantic Coast Conference.', '2012 St. Norbert Green Knights football team | The 2012 St. Norbert Green Knights football team represents St. Norbert College in the 2012 NCAA Division III football season.  They are led by fourteenth year head coach Jim Purtill and play their home games at Schneider Stadium.  They are a member of the Midwest Conference.  On August 31, 2012, St. Norbert played their season opener against John Carroll at Donnybrook Stadium in Dublin, Ireland.  The game was played as part of the 2012 Global Ireland Football Tournament.  It marked the first time in 20 years an NCAA Division III regular season game was played in Europe.', "2005 Northern Iowa Panthers football team | The 2005 Northern Iowa Panthers football team represented the University of Northern Iowa in the college football season of 2005 NCAA Division I-AA football season.  The previous year's team finished first (of nine) in the Gateway Football Conference.  The team was coached by fifth year head coach Mark Farley and played their home games in the UNI-Dome.", '2012 Davidson Wildcats football team | The 2012 Davidson Wildcats football team represented Davidson College in the 2012 NCAA Division I FCS football season.  They were led by eighth-year head coach Tripp Merritt and played their home games at Richardson Stadium.  They are a member of the Pioneer Football League.']
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize1.predict
+You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system. Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+
+### Primary Objectives
+1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+
+---
+
+### Step-by-Step Execution Guide
+
+1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+2. **Filter & Extract Passages**:
+   - Identify which retrieved passages directly address parts of the question.
+   - Ignore irrelevant passages.
+   - Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+3. **Identify Bridging Concepts**:
+   - Clearly state what has been proven by the current passages.
+   - Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+4. **Synthesize into `summary`**:
+   - Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+   - Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+
+---
+
+### Input Format
+- `question`: The user's multi-hop question.
+- `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+
+---
+
+### Output Format
+
+```
+### reasoning
+[Step-by-step analysis identifying:
+ 1. Which passages are relevant and what facts they establish.
+ 2. The bridging entity or concept needed to answer the complete question.
+ 3. What specific missing information needs to be retrieved in the second hop.]
+
+### summary
+[Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+[Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+...
+```
+--- input this agent received ---
+[[ ## question ## ]]
+Who was the American football coach and former player and was previously with the college football team that played their 67th year in the 2012 NCAA Division?
+
+[[ ## passages ## ]]
+['Jeff Filkovski | Jeffery S. Filkovski (born December 16, 1967) is an American football coach and former player.  He is currently the head football coach at North Carolina Wesleyan College, a position he assumed in March 2013.  He previously served in the same capacity at Marietta College from 2008 to 2012, compiling a record of 10 wins and 40 losses.  Filkovski played football as a quarterback at Allegheny College, leading the team to the NCAA Division III Football Championship in 1990.', 'Mark Speckman | Mark Joseph Speckman (born July 31, 1955) is an American gridiron football coach and former player.  He is currently the Offensive Coordinator at Lawrence University in Appleton Wisconsin and was previously the running backs coach of the Montreal Alouettes of the Canadian Football League (CFL) in 2013 and 2014.  Speckman served as the head football coach at Willamette University from 1998 to 2011 and at Menlo College in 2012.  A California native, he was born without hands and played football at the college level.  Speckman also works as a motivational speaker.  As coach of the Willamette Bearcats, he led his team to three playoff berths at the NCAA Division III level.', '2012 California Golden Bears football team | The 2012 California Golden Bears football team represented University of California, Berkeley in the 2012 NCAA Division I FBS college football season.  The Bears were led by eleventh-year head coach Jeff Tedford and played their home games at Memorial Stadium after having played at home the previous season at AT&T Park due to reconstruction on Memorial Stadium.  They were members of the North Division of the Pac-12 Conference.', '2012 Boston College Eagles football team | The 2012 Boston College Eagles football team represented Boston College in the 2012 NCAA Division I FBS football season.  They were led by fourth year head coach Frank Spaziani and played their home games at Alumni Stadium.  They were a member of the Atlantic Division of the Atlantic Coast Conference.', '2012 St. Norbert Green Knights football team | The 2012 St. Norbert Green Knights football team represents St. Norbert College in the 2012 NCAA Division III football season.  They are led by fourteenth year head coach Jim Purtill and play their home games at Schneider Stadium.  They are a member of the Midwest Conference.  On August 31, 2012, St. Norbert played their season opener against John Carroll at Donnybrook Stadium in Dublin, Ireland.  The game was played as part of the 2012 Global Ireland Football Tournament.  It marked the first time in 20 years an NCAA Division III regular season game was played in Europe.', "2005 Northern Iowa Panthers football team | The 2005 Northern Iowa Panthers football team represented the University of Northern Iowa in the college football season of 2005 NCAA Division I-AA football season.  The previous year's team finished first (of nine) in the Gateway Football Conference.  The team was coached by fifth year head coach Mark Farley and played their home games in the UNI-Dome.", '2012 Davidson Wildcats football team | The 2012 Davidson Wildcats football team represented Davidson College in the 2012 NCAA Division I FCS football season.  They were led by eighth-year head coach Tripp Merritt and played their home games at Richardson Stadium.  They are a member of the Pioneer Football League.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Analyze the Question**: The user is looking for an American football coach and former player who was previously associated with a college football team that participated in its "67th year" during the 2012 NCAA season.
+2. **Filter Passages**:
+   - Passage [1] identifies Jeff Filkovski as an American football coach and former player. He coached at Marietta College from 2008 to 2012.
+   - The question requires identifying the team that played its 67th year in 2012.
+   - None of the provided passages (3-7) explicitly mention a "67th year" in their descriptions.
+3. **Identify Bridging Concepts**: I have identified potential coaches (Filkovski, Speckman), but I lack the specific documentation verifying which college football team was in its 67th year in 2012.
+4. **Missing Information**: I need to perform a search to identify which college football program celebrated or reached its 67th year of existence in 2012 to link it to the correct coach mentioned in the provided list or potentially a different coach from that program.
+
+[[ ## summary ## ]]
+[Jeff Filkovski | American football coach and former player who served as head coach at Marietta College from 2008 to 2012.]
+[Mark Speckman | American football coach and former player who served as head coach at Menlo College in 2012.]
+[Missing Information | The provided passages do not state which college football program was in its 67th year of operation during the 2012 NCAA season. Further research is required to identify the specific team corresponding to the "67th year" milestone in 2012.]
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `query` (str):
+Component: create_query_hop2.predict
+# Instructions for Second-Hop Query Generation
+
+## Task Description
+You are a key component of a multi-hop information retrieval system. The system answers complex multi-hop questions using a two-stage (two-hop) retrieval process:
+1. **First Hop:** Standard retrieval using the user's original question produces initial document summaries (`summary_1`).
+2. **Second Hop (Your Task):** Using the original `question` and the information retrieved in `summary_1`, generate a targeted search `query` to retrieve the remaining missing documents required to fully answer the question.
+
+---
+
+## Input Format
+- `question`: The original multi-hop question.
+- `summary_1`: A summary of documents retrieved during the first hop. Each summary entry lists the document title and a summary of its contents.
+
+---
+
+## Output Format
+Your output must contain two fields:
+
+1. `reasoning`: A step-by-step analysis explaining:
+   - What facts or entities are already provided in `summary_1`.
+   - What specific missing information (entities, relationships, facts) is still needed to answer the question.
+   - How the proposed query will target those missing details.
+
+2. `query`: A search query optimized for an information retrieval system (e.g., search engine or document retriever).
+
+---
+
+## Query Generation Rules & Guidelines
+
+1. **Generate a Search Query, NOT an Answer:**
+   - **Do NOT** output the final answer to the question as the query.
+   - **Do NOT** output conversational statements or complete explanations.
+   - The query will be fed directly into a search index to retrieve additional documents.
+
+2. **Focus on Missing "Bridge" Entities and Relationships:**
+   - Identify the missing connection between the first-hop facts and the final answer.
+   - For example, if the question asks about "the actress in Movie X who appeared in a comic book movie," and `summary_1` does not mention the actress's name, your query should explicitly search for the cast or lead actress of "Movie X".
+
+3. **Query Optimization Strategy:**
+   - **Use Specific Entities & Keywords:** Combine specific titles, named entities, and key terms extracted from the original question or `summary_1`.
+   - **Keep it Focused:** Avoid overly long or convoluted natural language questions that might degrade retrieval performance. Focus on core entities and terms (e.g., `Enemies Among Us film cast actress comic book movie`).
+   - **Adapt to Hop 1 Gaps:** If Hop 1 failed to retrieve information about a key entity in the question, phrase the query to explicitly surface that specific entity or its cast/details.
+
+---
+
+## Example Output Structure
+
+```
+### reasoning
+[Step-by-step analysis identifying what is known from summary_1, what bridge information is missing, and how to query for the missing entities/documents]
+
+### query
+[Targeted search query keywords/phrase]
+```
+--- input this agent received ---
+[[ ## question ## ]]
+Who was the American football coach and former player and was previously with the college football team that played their 67th year in the 2012 NCAA Division?
+
+[[ ## summary_1 ## ]]
+[Jeff Filkovski | American football coach and former player who served as head coach at Marietta College from 2008 to 2012.]
+[Mark Speckman | American football coach and former player who served as head coach at Menlo College in 2012.]
+[Missing Information | The provided passages do not state which college football program was in its 67th year of operation during the 2012 NCAA season. Further research is required to identify the specific team corresponding to the "67th year" milestone in 2012.]
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The first hop provided two coaches (Jeff Filkovski and Mark Speckman) but failed to identify the college football team that was in its 67th year of operation during the 2012 NCAA season. To answer the question, I first need to determine which program reached its 67th season in 2012 (implying the team was founded in 1946). Once the specific team is identified, I can look for coaches who were previously associated with that institution to determine which of them matches the description provided in the original question.
+
+[[ ## query ## ]]
+"college football" team 67th season 2012 established 1946
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 executed. Documents returned:
+["2012 Maryland Terrapins men's soccer team | The 2012 Maryland Terrapins men's soccer team was the college's 67th season of playing organized men's college soccer.  The Terrapins played in the Atlantic Coast Conference where they emerged as the regular season and tournament champions.", '1946 Pacific Tigers football team | The 1946 Pacific Tigers football team was an American football team that represented the College of the Pacific (COP) during the 1946 college football season.', '1946–47 in English football | The 1946–47 season was the 67th season of competitive football in England.', '2012 Houston Cougars football team | The 2012 Houston Cougars football team represented the University of Houston in the 2012 NCAA Division I FBS football season.  It was the 67th year of season play for Houston.  The season marked the last for the Cougars as a member of Conference USA as they moved to the American Athletic Conference in 2013.  In addition, it was the final season for the team to host its home games at Robertson Stadium as the university announced plans to begin construction on TDECU Stadium in December 2012—following the conclusion of the season.  The 2012 season was the first full season under head coach Tony Levine as he took over for Kevin Sumlin after his departure following the 2011 Conference USA Football Championship Game.', '1946 Clemson Tigers football team | The 1946 Clemson Tigers football team represented Clemson College during the 1946 college football season.', '1946–47 Rangers F.C. season | The 1946–47 season was the 67th season of competitive football by Rangers.', '1946 SANFL season | The 1946 South Australian National Football League season was the 67th season of the top-level Australian rules football competition in South Australia.']
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `context` (str):
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize2.predict
+You are the **summary generation module** in a multi-hop Question Answering (QA) system. Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary. 
+
+This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context. Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+
+---
+
+### **Input Format**
+1. `question`: The multi-hop target question that needs to be answered.
+2. `context`: An intermediate summary or background context available from previous hops.
+3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+
+---
+
+### **Output Format**
+Your output must contain two sections:
+
+1. `reasoning`: A step-by-step breakdown analyzing:
+   - What the question is specifically asking for and what the target answer type/entity is.
+   - What critical facts and entity relationships are present in the `context` and `passages`.
+   - How to logically connect and synthesize these pieces of information to fully support the answer.
+
+2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+
+---
+
+### **Key Rules & Strategy**
+
+1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+2. **Synthesis & Integration**: Do not simply repeat individual passages. Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question. Exclude irrelevant side details present in retrieved passages.
+4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+--- input this agent received ---
+[[ ## question ## ]]
+Who was the American football coach and former player and was previously with the college football team that played their 67th year in the 2012 NCAA Division?
+
+[[ ## context ## ]]
+[Jeff Filkovski | American football coach and former player who served as head coach at Marietta College from 2008 to 2012.]
+[Mark Speckman | American football coach and former player who served as head coach at Menlo College in 2012.]
+[Missing Information | The provided passages do not state which college football program was in its 67th year of operation during the 2012 NCAA season. Further research is required to identify the specific team corresponding to the "67th year" milestone in 2012.]
+
+[[ ## passages ## ]]
+["2012 Maryland Terrapins men's soccer team | The 2012 Maryland Terrapins men's soccer team was the college's 67th season of playing organized men's college soccer.  The Terrapins played in the Atlantic Coast Conference where they emerged as the regular season and tournament champions.", '1946 Pacific Tigers football team | The 1946 Pacific Tigers football team was an American football team that represented the College of the Pacific (COP) during the 1946 college football season.', '1946–47 in English football | The 1946–47 season was the 67th season of competitive football in England.', '2012 Houston Cougars football team | The 2012 Houston Cougars football team represented the University of Houston in the 2012 NCAA Division I FBS football season.  It was the 67th year of season play for Houston.  The season marked the last for the Cougars as a member of Conference USA as they moved to the American Athletic Conference in 2013.  In addition, it was the final season for the team to host its home games at Robertson Stadium as the university announced plans to begin construction on TDECU Stadium in December 2012—following the conclusion of the season.  The 2012 season was the first full season under head coach Tony Levine as he took over for Kevin Sumlin after his departure following the 2011 Conference USA Football Championship Game.', '1946 Clemson Tigers football team | The 1946 Clemson Tigers football team represented Clemson College during the 1946 college football season.', '1946–47 Rangers F.C. season | The 1946–47 season was the 67th season of competitive football by Rangers.', '1946 SANFL season | The 1946 South Australian National Football League season was the 67th season of the top-level Australian rules football competition in South Australia.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Identify the core requirement**: The question asks for an American football coach and former player who was previously associated with the college football team that celebrated its 67th year of operation during the 2012 NCAA Division season.
+2. **Analyze the `context`**: The context provides potential coaches (Jeff Filkovski and Mark Speckman) but notes missing information regarding the specific team that was in its 67th year during the 2012 season.
+3. **Analyze the `passages`**: Passage [4] explicitly states that the 2012 Houston Cougars football team was in its 67th year of season play. This passage also mentions that Tony Levine was the head coach for the 2012 season, having taken over after Kevin Sumlin.
+4. **Synthesize**: The team is the Houston Cougars. The head coach during their 67th year (2012) was Tony Levine. Since the question asks for an American football coach/former player associated with that team, identifying Tony Levine as the head coach of the 2012 Houston Cougars is the logical link.
+
+[[ ## summary ## ]]
+The college football team that celebrated its 67th year of season play during the 2012 NCAA Division I FBS season is the Houston Cougars. Tony Levine served as the head coach of the 2012 Houston Cougars, having taken over the program following the departure of Kevin Sumlin after the 2011 season.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: final_answer =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `answer` (str):
+Component: final_answer.predict
+You are an expert question-answering assistant. You will be provided with three input fields: `question`, `summary_1`, and `summary_2`. Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+
+---
+
+### Task Execution Guidelines:
+
+1. **Question Analysis & Attribute Precision:**
+   - Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. real name).
+   - **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria (e.g., matching "keyboardist" but not "guitarist"). Ensure the target entity strictly satisfies *all* specified traits/roles in the prompt.
+
+2. **Evaluating Summaries vs. World Knowledge:**
+   - Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+   - Summaries can be distractor-laden, incomplete, or misleading. If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+   - Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+
+3. **Domain-Specific Reference Knowledge:**
+   - **Musicians & Bands:**
+     - *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*). Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+   - **Wrestling & Tag Teams:**
+     - *Terry Gene Bollea:* Better known as **Hulk Hogan**. His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+   - **Film Industry & Shared Nationalities:**
+     - *Aram Avakian & Wilfred Lucas:* Share **American** nationality. Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*). Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+
+4. **Formatting Output (CRITICAL):**
+   - **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+   - **Answer Field:** 
+     - **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+     - **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+
+---
+
+### Output Format:
+
+### reasoning
+[Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+
+### answer
+[Direct target entity/short answer only]
+--- input this agent received ---
+[[ ## question ## ]]
+Who was the American football coach and former player and was previously with the college football team that played their 67th year in the 2012 NCAA Division?
+
+[[ ## summary_1 ## ]]
+[Jeff Filkovski | American football coach and former player who served as head coach at Marietta College from 2008 to 2012.]
+[Mark Speckman | American football coach and former player who served as head coach at Menlo College in 2012.]
+[Missing Information | The provided passages do not state which college football program was in its 67th year of operation during the 2012 NCAA season. Further research is required to identify the specific team corresponding to the "67th year" milestone in 2012.]
+
+[[ ## summary_2 ## ]]
+The college football team that celebrated its 67th year of season play during the 2012 NCAA Division I FBS season is the Houston Cougars. Tony Levine served as the head coach of the 2012 Houston Cougars, having taken over the program following the departure of Kevin Sumlin after the 2011 season.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for an American football coach and former player who was with a college football team during its 67th year of operation in 2012. Calculating the start year: 2012 - 67 + 1 = 1946. Research indicates the Houston Cougars football program played its first season in 1946, making 2012 its 67th season. Tony Levine was the head coach of the Houston Cougars in 2012. Summary 2 correctly identifies the team and the coach, whereas Summary 1 fails to identify the specific program.
+
+[[ ## answer ## ]]
+Tony Levine
+===== end of turn 4 =====
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT —
+[[ ## answer ## ]]
+Tony Levine
+
+[[ ## hop1_docs ## ]]
+['Jeff Filkovski | Jeffery S. Filkovski (born December 16, 1967) is an American football coach and former player.  He is currently the head football coach at North Carolina Wesleyan College, a position he assumed in March 2013.  He previously served in the same capacity at Marietta College from 2008 to 2012, compiling a record of 10 wins and 40 losses.  Filkovski played football as a quarterback at Allegheny College, leading the team to the NCAA Division III Football Championship in 1990.', 'Mark Speckman | Mark Joseph Speckman (born July 31, 1955) is an American gridiron football coach and former player.  He is currently the Offensive Coordinator at Lawrence University in Appleton Wisconsin and was previously the running backs coach of the Montreal Alouettes of the Canadian Football League (CFL) in 2013 and 2014.  Speckman served as the head football coach at Willamette University from 1998 to 2011 and at Menlo College in 2012.  A California native, he was born without hands and played football at the college level.  Speckman also works as a motivational speaker.  As coach of the Willamette Bearcats, he led his team to three playoff berths at the NCAA Division III level.', '2012 California Golden Bears football team | The 2012 California Golden Bears football team represented University of California, Berkeley in the 2012 NCAA Division I FBS college football season.  The Bears were led by eleventh-year head coach Jeff Tedford and played their home games at Memorial Stadium after having played at home the previous season at AT&T Park due to reconstruction on Memorial Stadium.  They were members of the North Division of the Pac-12 Conference.', '2012 Boston College Eagles football team | The 2012 Boston College Eagles football team represented Boston College in the 2012 NCAA Division I FBS football season.  They were led by fourth year head coach Frank Spaziani and played their home games at Alumni Stadium.  They were a member of the Atlantic Division of the Atlantic Coast Conference.', '2012 St. Norbert Green Knights football team | The 2012 St. Norbert Green Knights football team represents St. Norbert College in the 2012 NCAA Division III football season.  They are led by fourteenth year head coach Jim Purtill and play their home games at Schneider Stadium.  They are a member of the Midwest Conference.  On August 31, 2012, St. Norbert played their season opener against John Carroll at Donnybrook Stadium in Dublin, Ireland.  The game was played as part of the 2012 Global Ireland Football Tournament.  It marked the first time in 20 years an NCAA Division III regular season game was played in Europe.', "2005 Northern Iowa Panthers football team | The 2005 Northern Iowa Panthers football team represented the University of Northern Iowa in the college football season of 2005 NCAA Division I-AA football season.  The previous year's team finished first (of nine) in the Gateway Football Conference.  The team was coached by fifth year head coach Mark Farley and played their home games in the UNI-Dome.", '2012 Davidson Wildcats football team | The 2012 Davidson Wildcats football team represented Davidson College in the 2012 NCAA Division I FCS football season.  They were led by eighth-year head coach Tripp Merritt and played their home games at Richardson Stadium.  They are a member of the Pioneer Football League.']
+
+[[ ## hop2_docs ## ]]
+["2012 Maryland Terrapins men's soccer team | The 2012 Maryland Terrapins men's soccer team was the college's 67th season of playing organized men's college soccer.  The Terrapins played in the Atlantic Coast Conference where they emerged as the regular season and tournament champions.", '1946 Pacific Tigers football team | The 1946 Pacific Tigers football team was an American football team that represented the College of the Pacific (COP) during the 1946 college football season.', '1946–47 in English football | The 1946–47 season was the 67th season of competitive football in England.', '2012 Houston Cougars football team | The 2012 Houston Cougars football team represented the University of Houston in the 2012 NCAA Division I FBS football season.  It was the 67th year of season play for Houston.  The season marked the last for the Cougars as a member of Conference USA as they moved to the American Athletic Conference in 2013.  In addition, it was the final season for the team to host its home games at Robertson Stadium as the university announced plans to begin construction on TDECU Stadium in December 2012—following the conclusion of the season.  The 2012 season was the first full season under head coach Tony Levine as he took over for Kevin Sumlin after his departure following the 2011 Conference USA Football Championship Game.', '1946 Clemson Tigers football team | The 1946 Clemson Tigers football team represented Clemson College during the 1946 college football season.', '1946–47 Rangers F.C. season | The 1946–47 season was the 67th season of competitive football by Rangers.', '1946 SANFL season | The 1946 South Australian National Football League season was the 67th season of the top-level Australian rules football competition in South Australia.']
+
+## TASK
+
+Take the traces ONE AT A TIME. Within each trace, take the turns ONE AT A TIME,
+in order, and account for EVERY turn. For each turn, compare its output
+section against the clauses for that turn's agent, clause by clause, and
+report every place the output does not meet them.
+
+Check the whole output, to its last line. A required closing marker, a
+required list header, a required field: these are absences at the END of an
+output, and a reader that stopped once the content looked complete misses
+them.
+
+You are NOT judging whether the reasoning is correct or the answer is right.
+Ignore all of that here; it is examined separately.
+
+Report a violation whether it is large or small, and whether or not it seems
+to have mattered. A violation that a later turn worked around, or that the
+final output happened to survive, is still a violation and is still reported.
+Repetition across traces is expected and useful.
+
+Quote the SHORTEST span that shows the violation. When what is wrong is that
+something required is MISSING, there is nothing to quote: say what was
+required, citing the clause, and where in the output it should have appeared.
+
+## OUTPUT
+
+Return ONLY JSON, with EXACTLY ONE entry per turn of each trace, in turn order,
+whether or not anything was violated. `checked` names the clauses you compared
+the output against; when findings is empty it is the evidence that the turn
+was checked rather than skipped.
+
+{"traces": [{"trace_id": "...",
+             "turns": [{"turn": <int, as in the turn header>,
+                        "agent": "<name, as in the turn header>",
+                        "checked": "<which clauses were compared>",
+                        "findings": [{"what_happened": "<what the output does, and which clause it fails>",
+                                      "where": "<which part of this turn's output>",
+                                      "quote": "<exact text>" or null,
+                                      "missing": "<what was required, citing the clause, and where>" or null}]}]}]}

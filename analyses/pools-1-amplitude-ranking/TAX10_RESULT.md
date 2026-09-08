@@ -2,7 +2,8 @@
 
 `map-5`, 2026-09-08: the 50 judged tasks × 12 candidates judged under `tax-10`, one trace per call
 (no batching, so no instruction can leak between traces), 2 panel readers plus the open reader.
-599 of 600 judged, 1 lost to a provider outage. 4 hours 14 minutes.
+600 of 600 judged: 599 on the first pass (4 h 14 m) and the last on 2026-09-08 after a run of
+provider 503s. Archived as `data/hover/mappings/map-5`, all audits passing.
 
 ## The headline is unchanged
 
@@ -10,6 +11,8 @@
 |---|---:|---:|
 | tax-18, 18 codes (map-3) | +0.12 | +0.02 |
 | tax-10, 10 codes (map-5) | +0.05 | +0.06 |
+
+On the complete 600: domain codes +0.23, general codes −0.31, all ten +0.06.
 | ceiling: gold 50 vs gold generalization | | +0.78 |
 
 A plain sum of codes still carries no ranking signal.
@@ -21,7 +24,7 @@ A plain sum of codes still carries no ranking signal.
 | scored over | gold generalization |
 |---|---:|
 | the 6 domain codes (the work itself) | **+0.23** |
-| the 4 general codes (intake and output edges) | **−0.29** |
+| the 4 general codes (intake and output edges) | **−0.31** |
 | all 10 | +0.06 |
 
 **8 of 10 codes now point the right way**, where under tax-18 six of the eleven frequent codes

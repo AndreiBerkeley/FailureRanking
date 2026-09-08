@@ -1,0 +1,86 @@
+{
+  "trace_format": {
+    "description": "DSPy four-module pipeline trace with three external BM25 retrieval events interleaved. Each module appears as a system message declaring its signature, a user message with its inputs, and an assistant message with its outputs. 'RETRIEVAL EVENT' user messages are produced by the harness, not by an LLM. The final assistant message is a harness-assembled concatenation of every retrieved document, not a generated answer.",
+    "agent_markers": [
+      "Your input fields are",
+      "RETRIEVAL EVENT",
+      "FINAL OUTPUT",
+      "[[ ## summary ## ]]",
+      "[[ ## query ## ]]",
+      "[[ ## reasoning ## ]]"
+    ],
+    "key_fields": [
+      {"field_name": "summary", "description": "hop-1 summary written by summarize1 from the hop-1 passages"},
+      {"field_name": "summary_1", "description": "the hop-1 summary as consumed downstream"},
+      {"field_name": "query", "description": "the retrieval query written for the next hop"},
+      {"field_name": "summary_2", "description": "hop-2 summary written by summarize2 from claim, prior context and hop-2 passages"},
+      {"field_name": "reasoning", "description": "each module's reasoning before its output field"}
+    ]
+  },
+  "architecture": {
+    "topology": "linear_pipeline",
+    "topology_details": "retrieve_hop1 (harness) -> summarize1 -> create_query_hop2 -> retrieve_hop2 (harness) -> summarize2 -> create_query_hop3 -> retrieve_hop3 (harness). Four LLM modules around three retrievals. Retrieval is an external harness step, never an agent. The program's output is the union of documents returned by the three hops; no module writes an answer. Manually specified; not inferred.",
+    "verification_pattern": "none",
+    "verification_details": "No module checks another module's output. Each consumes the previous output as given, and nothing re-reads the retrieved passages to confirm a summary preserved what the claim needs.",
+    "termination_owner": "harness (exactly three hops, fixed)",
+    "critical_handoffs": [
+      {
+        "from_agent": "retrieval hop 1 (harness)",
+        "to_agent": "summarize1",
+        "what_is_passed": "hop-1 passages, retrieved using the claim itself",
+        "failure_risk": "the candidate does not author the hop-1 query, so a hop-1 miss is not itself a candidate act; what is attributable is whether hops 2 and 3 recover from it"
+      },
+      {
+        "from_agent": "summarize1",
+        "to_agent": "create_query_hop2",
+        "what_is_passed": "summary_1",
+        "failure_risk": "a summary that drops an entity the claim depends on makes the gap invisible to every later hop; the passages are not re-read"
+      },
+      {
+        "from_agent": "create_query_hop2",
+        "to_agent": "retrieval hop 2 (harness)",
+        "what_is_passed": "the hop-2 query",
+        "failure_risk": "a query restating what hop 1 already retrieved spends the hop and returns nothing new"
+      },
+      {
+        "from_agent": "retrieval hop 2 (harness)",
+        "to_agent": "summarize2",
+        "what_is_passed": "hop-2 passages plus prior context",
+        "failure_risk": "summarizing around the retrieved evidence rather than from it"
+      },
+      {
+        "from_agent": "summarize2",
+        "to_agent": "create_query_hop3",
+        "what_is_passed": "summary_1 and summary_2",
+        "failure_risk": "the last chance to name the still-missing entity; a query aimed at an already-retrieved fact ends the run short of the required documents"
+      }
+    ]
+  },
+  "discovered_agents": {
+    "agents": ["summarize1", "create_query_hop2", "summarize2", "create_query_hop3"],
+    "agent_to_role": {
+      "summarize1": "summarizer",
+      "create_query_hop2": "query_generator",
+      "summarize2": "summarizer",
+      "create_query_hop3": "query_generator"
+    },
+    "role_details": {
+      "summarizer": {
+        "agents": ["summarize1", "summarize2"],
+        "purpose": "Compress retrieved passages into a summary that preserves what the claim still needs verified",
+        "definition": "Reads the claim and the passages just retrieved (and, at hop 2, the prior summary) and writes a summary that every later module depends on entirely. The passages are never re-read, so anything the summary drops is unrecoverable.",
+        "key_behavior": "Produces summary_1 / summary_2 from retrieved documents."
+      },
+      "query_generator": {
+        "agents": ["create_query_hop2", "create_query_hop3"],
+        "purpose": "Write the next retrieval query so the hop reaches a required document not yet retrieved",
+        "definition": "Reads the claim and the summaries so far and must identify which supporting entity is still missing, producing a query that targets it. There are only two authored queries in the whole run, so each one spent on an already-retrieved fact is a hop the program cannot get back.",
+        "key_behavior": "Produces the query consumed by the next external BM25 retrieval."
+      }
+    }
+  },
+  "capabilities": {
+    "interaction_style": "direct_reasoning",
+    "tool_names_seen": []
+  }
+}

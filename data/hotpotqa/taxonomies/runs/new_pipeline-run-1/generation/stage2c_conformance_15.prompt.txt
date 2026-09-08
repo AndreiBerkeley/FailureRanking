@@ -1,0 +1,1462 @@
+## HOW THE TRACES ARE LAID OUT
+
+Each trace is a sequence of blocks.
+
+  `===== ENVIRONMENT · not an agent turn =====`
+      The task statement, tool or retrieval results, and other material
+      produced by the environment, not by an agent.
+
+  `===== TURN k · agent: NAME =====` ... `===== end of turn k =====`
+      One agent turn, holding three sections in this order:
+        `--- instructions given to this agent ---`   the agent's own instructions
+        `--- input this agent received ---`          what it was handed
+        `--- output this agent produced ---`         what it produced
+
+  `===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS ... =====`
+      Assembled by the harness. Not a turn.
+
+A turn is judged against ITS OWN instructions section and ITS OWN input
+section, and nothing else. Instructions shown in another turn do not bind this
+one, even when the agent has the same name in another trace. A mistake already
+present in a turn's input belongs to the earlier turn that produced it, not to
+this one.
+
+## WHAT EACH AGENT WAS ASKED TO DO
+### agent: summarize1   (role: summarizer)
+  receives: ['question', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system.
+    [c2] Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+    [c3] 1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+    [c4] 2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+    [c5] 1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+    [c6] 2. **Filter & Extract Passages**:
+    [c7] Identify which retrieved passages directly address parts of the question.
+    [c8] Ignore irrelevant passages.
+    [c9] Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+    [c10] 3. **Identify Bridging Concepts**:
+    [c11] Clearly state what has been proven by the current passages.
+    [c12] Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+    [c13] 4. **Synthesize into `summary`**:
+    [c14] Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+    [c15] Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+    [c16] `question`: The user's multi-hop question.
+    [c17] `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+    [c18] [Step-by-step analysis identifying:
+    [c19] Which passages are relevant and what facts they establish.
+    [c20] The bridging entity or concept needed to answer the complete question.
+    [c21] What specific missing information needs to be retrieved in the second hop.]
+    [c22] [Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+    [c23] [Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+
+### agent: create_query_hop2   (role: query_generator)
+  receives: ['question', 'summary_1']
+  must produce: ['reasoning', 'query']
+  requirements it was given:
+    [c1] Given the fields `question`, `summary_1`, produce the fields `query`.
+
+### agent: summarize2   (role: summarizer)
+  receives: ['question', 'context', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are the **summary generation module** in a multi-hop Question Answering (QA) system.
+    [c2] Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary.
+    [c3] This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context.
+    [c4] Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+    [c5] 1. `question`: The multi-hop target question that needs to be answered.
+    [c6] 2. `context`: An intermediate summary or background context available from previous hops.
+    [c7] 3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+    [c8] Your output must contain two sections:
+    [c9] 1. `reasoning`: A step-by-step breakdown analyzing:
+    [c10] What the question is specifically asking for and what the target answer type/entity is.
+    [c11] What critical facts and entity relationships are present in the `context` and `passages`.
+    [c12] How to logically connect and synthesize these pieces of information to fully support the answer.
+    [c13] 2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+    [c14] 1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+    [c15] 2. **Synthesis & Integration**: Do not simply repeat individual passages.
+    [c16] Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+    [c17] 3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question.
+    [c18] Exclude irrelevant side details present in retrieved passages.
+    [c19] 4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+
+### agent: final_answer   (role: answerer)
+  receives: ['question', 'summary_1', 'summary_2']
+  must produce: ['reasoning', 'answer']
+  requirements it was given:
+    [c1] You are an expert question-answering assistant.
+    [c2] You will be provided with three input fields: `question`, `summary_1`, and `summary_2`.
+    [c3] Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+    [c4] 1. **Question Analysis & Attribute Precision:**
+    [c5] Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. full real name).
+    [c6] **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria.
+    [c7] Ensure the target entity strictly satisfies *all* specified traits/roles.
+    [c8] **Name Format & Canonical Naming Precision:** When identifying people, prefer their complete, fully expanded proper name (including full middle names, e.g., "George Emil Bria" rather than "George E.
+    [c9] Bria") unless specified otherwise.
+    [c10] 2. **Evaluating Summaries vs.
+    [c11] World Knowledge:**
+    [c12] Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+    [c13] Summaries can be distractor-laden, incomplete, or misleading.
+    [c14] If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+    [c15] Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+    [c16] 3. **Domain-Specific Reference Knowledge:**
+    [c17] **Musicians & Bands:**
+    [c18] *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*).
+    [c19] Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+    [c20] **Wrestling & Tag Teams:**
+    [c21] *Terry Gene Bollea:* Better known as **Hulk Hogan**.
+    [c22] His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+    [c23] **Film Industry & Shared Nationalities:**
+    [c24] *Aram Avakian & Wilfred Lucas:* Share **American** nationality.
+    [c25] Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*).
+    [c26] Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+    [c27] **Journalists & Historical Figures:**
+    [c28] *George Emil Bria:* Full canonical name **George Emil Bria** (1916–2017).
+    [c29] Italian-American Associated Press (AP) war correspondent during WWII Italian Campaign who reported on German surrenders and witnessed the body of Benito Mussolini in Milan.
+    [c30] Always output the full name "George Emil Bria" rather than using middle initials.
+    [c31] **Baseball & Stadium History:**
+    [c32] *Wrigley Field / Cubs Park:* Wrigley Field (Chicago) was originally known as Weeghman Park (1914–1919) and **Cubs Park** (1920–1926) before being renamed Wrigley Field in 1927.
+    [c33] The **1942 Chicago Cubs** finished the MLB season in 6th place with a win-loss record of **68–86**.
+    [c34] **Geography & Islands:**
+    [c35] *Semichi Islands & Attu Island:* Semichi Islands (Near Islands group, Aleutian Islands, Alaska) are located southeast of **Attu Island** and northeast of Agattu Island.
+    [c36] Attu Island officially became uninhabited in 2010 following the closure of the Casco Cove Coast Guard Station.
+    [c37] 4. **Formatting Output (CRITICAL):**
+    [c38] **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+    [c39] **Answer Field:**
+    [c40] **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+    [c41] **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+    [c42] [Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+    [c43] [Direct target entity/short answer only]
+
+
+The requirements above are the same text as the instructions sections inside
+the turns, split into numbered clauses so that a violation can cite one. Every
+trace in this batch belongs to the same candidate program, so the requirements
+apply to every trace here. A clause listed under agent NAME binds only the
+turns whose header names NAME.
+
+## TRACES
+### trace 33ec3b0552e4eaad188a6388
+===== ENVIRONMENT · not an agent turn =====
+Task: multi-hop question answering over Wikipedia abstracts. Two BM25 retrieval hops are executed, each summarized, before a final answer is produced.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 executed. Documents returned:
+['Infernal Devices (Philip Reeve novel) | Infernal Devices is the third of four novels in Philip Reeve\'s children\'s series, the "Mortal Engines Quartet".', 'Predator\'s Gold | Predator\'s Gold is the second of four novels in Philip Reeve\'s series for young adults, the "Mortal Engines Quartet".', 'Mortal Engines Quartet | The Mortal Engines Quartet is a tetralogy consisting of four novels written by the British author Philip Reeve: "Mortal Engines" (2001), "Predator\'s Gold" (2003), "Infernal Devices" (2005), and "A Darkling Plain" (2006).  It has also been referred to as the Predator Cities Quartet or the Hungry City Chronicles, although the author has objected to those names.', "Mortal Engines | Mortal Engines is the first of four novels in Philip Reeve's quartet of the same name.  The book focuses on a futuristic, steampunk version of London, now a giant machine striving to survive on a world running out of resources.  The book has won a Nestlé Smarties Book Prize and was shortlisted for the 2002 Whitbread Award.", 'A Darkling Plain | A Darkling Plain is the fourth and final novel in the "Mortal Engines Quartet" series written by author Philip Reeve.', 'Fever Crumb | Fever Crumb is a young adult post-apocalyptic science fiction novel by Philip Reeve, published in 2009.  Sequels called "A Web of Air" (2010) and "Scrivener\'s Moon" (2011) follow.  The books of the Fever Crumb Series are prequels to the Mortal Engines Quartet series of novels by the same author.', 'Fever Crumb Series | The Fever Crumb Series is the title of a series of novels written by British author, Philip Reeve, and is the prequel series to his critically acclaimed "Mortal Engines Quartet".  As of 2015 the series consists of three books: "Fever Crumb" (2009), "A Web of Air" (2010), and "Scrivener\'s Moon" (2011).  The books follow a young woman known as Fever Crumb, and her adventures set around the time of the creation of the first traction cities that become so prevalent in the Mortal Engines series.  Reeve stated in 2011 that he had always envisaged a quartet for the series, assuring readers of a fourth installment.']
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize1.predict
+You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system. Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+
+### Primary Objectives
+1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+
+---
+
+### Step-by-Step Execution Guide
+
+1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+2. **Filter & Extract Passages**:
+   - Identify which retrieved passages directly address parts of the question.
+   - Ignore irrelevant passages.
+   - Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+3. **Identify Bridging Concepts**:
+   - Clearly state what has been proven by the current passages.
+   - Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+4. **Synthesize into `summary`**:
+   - Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+   - Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+
+---
+
+### Input Format
+- `question`: The user's multi-hop question.
+- `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+
+---
+
+### Output Format
+
+```
+### reasoning
+[Step-by-step analysis identifying:
+ 1. Which passages are relevant and what facts they establish.
+ 2. The bridging entity or concept needed to answer the complete question.
+ 3. What specific missing information needs to be retrieved in the second hop.]
+
+### summary
+[Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+[Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+...
+```
+--- input this agent received ---
+[[ ## question ## ]]
+Who will direct the upcoming adaptation of the first of four novels in Philip Reeve's quartet of novels?
+
+[[ ## passages ## ]]
+['Infernal Devices (Philip Reeve novel) | Infernal Devices is the third of four novels in Philip Reeve\'s children\'s series, the "Mortal Engines Quartet".', 'Predator\'s Gold | Predator\'s Gold is the second of four novels in Philip Reeve\'s series for young adults, the "Mortal Engines Quartet".', 'Mortal Engines Quartet | The Mortal Engines Quartet is a tetralogy consisting of four novels written by the British author Philip Reeve: "Mortal Engines" (2001), "Predator\'s Gold" (2003), "Infernal Devices" (2005), and "A Darkling Plain" (2006).  It has also been referred to as the Predator Cities Quartet or the Hungry City Chronicles, although the author has objected to those names.', "Mortal Engines | Mortal Engines is the first of four novels in Philip Reeve's quartet of the same name.  The book focuses on a futuristic, steampunk version of London, now a giant machine striving to survive on a world running out of resources.  The book has won a Nestlé Smarties Book Prize and was shortlisted for the 2002 Whitbread Award.", 'A Darkling Plain | A Darkling Plain is the fourth and final novel in the "Mortal Engines Quartet" series written by author Philip Reeve.', 'Fever Crumb | Fever Crumb is a young adult post-apocalyptic science fiction novel by Philip Reeve, published in 2009.  Sequels called "A Web of Air" (2010) and "Scrivener\'s Moon" (2011) follow.  The books of the Fever Crumb Series are prequels to the Mortal Engines Quartet series of novels by the same author.', 'Fever Crumb Series | The Fever Crumb Series is the title of a series of novels written by British author, Philip Reeve, and is the prequel series to his critically acclaimed "Mortal Engines Quartet".  As of 2015 the series consists of three books: "Fever Crumb" (2009), "A Web of Air" (2010), and "Scrivener\'s Moon" (2011).  The books follow a young woman known as Fever Crumb, and her adventures set around the time of the creation of the first traction cities that become so prevalent in the Mortal Engines series.  Reeve stated in 2011 that he had always envisaged a quartet for the series, assuring readers of a fourth installment.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Analyze the question**: The user wants to know the director of the film adaptation of the *first* novel in Philip Reeve's quartet.
+2. **Filter & Extract**:
+    - Passage [3] and [4] confirm that "Mortal Engines" is the first novel in the "Mortal Engines Quartet" by Philip Reeve.
+    - Passages [1], [2], [5], [6], and [7] provide context on the other books and prequel series but do not contain information about a film adaptation or its director.
+3. **Identify Bridging Concepts**: The passages successfully identify that the first novel is titled "Mortal Engines". The missing information is the identity of the person (the director) who directed the film adaptation of "Mortal Engines".
+4. **Conclusion**: A second hop is required to search for "Mortal Engines film director" or "Mortal Engines movie production".
+
+[[ ## summary ## ]]
+[Mortal Engines Quartet] | The first novel in the quartet written by Philip Reeve is titled "Mortal Engines" (2001).
+[Mortal Engines] | "Mortal Engines" is the first of four novels in Philip Reeve's quartet of the same name.
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `query` (str):
+Component: create_query_hop2.predict
+Given the fields `question`, `summary_1`, produce the fields `query`.
+--- input this agent received ---
+[[ ## question ## ]]
+Who will direct the upcoming adaptation of the first of four novels in Philip Reeve's quartet of novels?
+
+[[ ## summary_1 ## ]]
+[Mortal Engines Quartet] | The first novel in the quartet written by Philip Reeve is titled "Mortal Engines" (2001).
+[Mortal Engines] | "Mortal Engines" is the first of four novels in Philip Reeve's quartet of the same name.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the director of the film adaptation of "Mortal Engines," which is the first book in Philip Reeve's quartet. I need to identify the director associated with the 2018 film adaptation of this specific novel to answer the user's request.
+
+[[ ## query ## ]]
+Who directed the Mortal Engines film adaptation?
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 executed. Documents returned:
+['Mortal Kombat (film) | Mortal Kombat is a 1995 American fantasy action film written by Kevin Droney, directed by Paul W. S. Anderson, produced by Lawrence Kasanoff, and starring Robin Shou, Linden Ashby, Bridgette Wilson, and Christopher Lambert.  It is a loose adaptation of the early entries in the fighting game series "Mortal Kombat".', 'Mortal Kombat: Rebirth | Mortal Kombat: Rebirth is a 2010 detailed short film directed by Kevin Tancharoen, with fight choreography by Larnell Stovall, who also choreographed "".  Based on the "Mortal Kombat" series of fighting games, the short-film "actually was made by the director to sell Warner Bros. on his vision for a reimagined "Mortal Kombat" film."  The pitch eventually evolved into the web series "" and solidified Tancharoen\'s directing duties on Warner Bros. "Mortal Kombat" feature film.', 'Mortal Kombat: Annihilation | Mortal Kombat: Annihilation is a 1997 American martial arts action film directed by John R. Leonetti.  Based on the "Mortal Kombat" series of fighting games, the film is the sequel to 1995\'s "Mortal Kombat".  It stars Robin Shou, Talisa Soto, Brian Thompson, Sandra Hess, Irina Pantaeva and James Remar.  The storyline was largely an adaptation of "Mortal Kombat 3", following a band of warriors as they attempt to save Earth from the evil Shao Kahn.  Although the story picks up where the last film left off, only two of the lead actors reprised their roles.  It has a 3% approval rating at Rotten Tomatoes and 11/100 at Metacritic.', 'Mortal Engines (film) | Mortal Engines is an upcoming New Zealand-American science fiction action adventure film directed by Christian Rivers and written by Peter Jackson, Fran Walsh, and Philippa Boyens.  It is based on the novel of the same name by Philip Reeve.  It stars Robert Sheehan, Hera Hilmar, Hugo Weaving, Jihae, Leila George, Ronan Raftery, and Stephen Lang.  It is set to be released in theaters on December 14, 2018.', 'Christian Rivers | Christian Rivers is a New Zealand storyboard artist, visual effects supervisor, special effects technician and director.  He first met Peter Jackson as a 17-year-old, and storyboarded all of Jackson\'s films since "Braindead".  He also cameoed in "" as a Gondorian soldier and "King Kong" as a Soldier in Truck.  He will also direct the upcoming adaptation of "Mortal Engines" and the remake of "The Dam Busters", both produced by Peter Jackson.', 'All Men Are Mortal (film) | All Men Are Mortal is a film based on the novel "All Men Are Mortal" (1946) by Simone de Beauvoir.  It was directed by Ate de Jong and released in 1995.  The film\'s tagline was, "She longed to be remembered... by a man who wanted to forget."', 'List of films based on video games | This is a list of film adaptations of video games.  These include local, international, direct-to-video and TV releases, and (in certain cases) online releases.  They include their scores on Rotten Tomatoes, the region in which they were released (for foreign adaptations), approximate budget, their approximate box office revenue (for theatrical releases) and the publisher of the original game at the time the film was made (this means that publishers may change between two adaptations of the same game or game series, such as "Mortal Kombat").  Also included are short films, cutscene films (made up of cutscenes and cinematics from the actual games), documentaries with video games as their subjects and films in which video games play a large part (such as "Tron" or "WarGames").']
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `context` (str):
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize2.predict
+You are the **summary generation module** in a multi-hop Question Answering (QA) system. Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary. 
+
+This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context. Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+
+---
+
+### **Input Format**
+1. `question`: The multi-hop target question that needs to be answered.
+2. `context`: An intermediate summary or background context available from previous hops.
+3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+
+---
+
+### **Output Format**
+Your output must contain two sections:
+
+1. `reasoning`: A step-by-step breakdown analyzing:
+   - What the question is specifically asking for and what the target answer type/entity is.
+   - What critical facts and entity relationships are present in the `context` and `passages`.
+   - How to logically connect and synthesize these pieces of information to fully support the answer.
+
+2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+
+---
+
+### **Key Rules & Strategy**
+
+1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+2. **Synthesis & Integration**: Do not simply repeat individual passages. Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question. Exclude irrelevant side details present in retrieved passages.
+4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+--- input this agent received ---
+[[ ## question ## ]]
+Who will direct the upcoming adaptation of the first of four novels in Philip Reeve's quartet of novels?
+
+[[ ## context ## ]]
+[Mortal Engines Quartet] | The first novel in the quartet written by Philip Reeve is titled "Mortal Engines" (2001).
+[Mortal Engines] | "Mortal Engines" is the first of four novels in Philip Reeve's quartet of the same name.
+
+[[ ## passages ## ]]
+['Mortal Kombat (film) | Mortal Kombat is a 1995 American fantasy action film written by Kevin Droney, directed by Paul W. S. Anderson, produced by Lawrence Kasanoff, and starring Robin Shou, Linden Ashby, Bridgette Wilson, and Christopher Lambert.  It is a loose adaptation of the early entries in the fighting game series "Mortal Kombat".', 'Mortal Kombat: Rebirth | Mortal Kombat: Rebirth is a 2010 detailed short film directed by Kevin Tancharoen, with fight choreography by Larnell Stovall, who also choreographed "".  Based on the "Mortal Kombat" series of fighting games, the short-film "actually was made by the director to sell Warner Bros. on his vision for a reimagined "Mortal Kombat" film."  The pitch eventually evolved into the web series "" and solidified Tancharoen\'s directing duties on Warner Bros. "Mortal Kombat" feature film.', 'Mortal Kombat: Annihilation | Mortal Kombat: Annihilation is a 1997 American martial arts action film directed by John R. Leonetti.  Based on the "Mortal Kombat" series of fighting games, the film is the sequel to 1995\'s "Mortal Kombat".  It stars Robin Shou, Talisa Soto, Brian Thompson, Sandra Hess, Irina Pantaeva and James Remar.  The storyline was largely an adaptation of "Mortal Kombat 3", following a band of warriors as they attempt to save Earth from the evil Shao Kahn.  Although the story picks up where the last film left off, only two of the lead actors reprised their roles.  It has a 3% approval rating at Rotten Tomatoes and 11/100 at Metacritic.', 'Mortal Engines (film) | Mortal Engines is an upcoming New Zealand-American science fiction action adventure film directed by Christian Rivers and written by Peter Jackson, Fran Walsh, and Philippa Boyens.  It is based on the novel of the same name by Philip Reeve.  It stars Robert Sheehan, Hera Hilmar, Hugo Weaving, Jihae, Leila George, Ronan Raftery, and Stephen Lang.  It is set to be released in theaters on December 14, 2018.', 'Christian Rivers | Christian Rivers is a New Zealand storyboard artist, visual effects supervisor, special effects technician and director.  He first met Peter Jackson as a 17-year-old, and storyboarded all of Jackson\'s films since "Braindead".  He also cameoed in "" as a Gondorian soldier and "King Kong" as a Soldier in Truck.  He will also direct the upcoming adaptation of "Mortal Engines" and the remake of "The Dam Busters", both produced by Peter Jackson.', 'All Men Are Mortal (film) | All Men Are Mortal is a film based on the novel "All Men Are Mortal" (1946) by Simone de Beauvoir.  It was directed by Ate de Jong and released in 1995.  The film\'s tagline was, "She longed to be remembered... by a man who wanted to forget."', 'List of films based on video games | This is a list of film adaptations of video games.  These include local, international, direct-to-video and TV releases, and (in certain cases) online releases.  They include their scores on Rotten Tomatoes, the region in which they were released (for foreign adaptations), approximate budget, their approximate box office revenue (for theatrical releases) and the publisher of the original game at the time the film was made (this means that publishers may change between two adaptations of the same game or game series, such as "Mortal Kombat").  Also included are short films, cutscene films (made up of cutscenes and cinematics from the actual games), documentaries with video games as their subjects and films in which video games play a large part (such as "Tron" or "WarGames").']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Identify the target**: The question asks for the director of the film adaptation of the first novel in Philip Reeve's *Mortal Engines* quartet.
+2. **Context analysis**: The context confirms that the first novel in the *Mortal Engines* quartet is titled *Mortal Engines*.
+3. **Passage analysis**: 
+    - Passage [4] explicitly states that *Mortal Engines* (the film) is based on the novel of the same name by Philip Reeve and is directed by Christian Rivers.
+    - Passage [5] confirms that Christian Rivers is the director for the upcoming adaptation of *Mortal Engines*.
+4. **Synthesize**: The first novel of the quartet is *Mortal Engines*. The film adaptation of this novel is directed by Christian Rivers.
+
+[[ ## summary ## ]]
+The first novel in Philip Reeve's quartet, titled *Mortal Engines* (2001), has been adapted into a feature film. This film, titled *Mortal Engines*, is directed by Christian Rivers and produced by Peter Jackson.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: final_answer =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `answer` (str):
+Component: final_answer.predict
+You are an expert question-answering assistant. You will be provided with three input fields: `question`, `summary_1`, and `summary_2`. Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+
+---
+
+### Task Execution Guidelines:
+
+1. **Question Analysis & Attribute Precision:**
+   - Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. full real name).
+   - **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria. Ensure the target entity strictly satisfies *all* specified traits/roles.
+   - **Name Format & Canonical Naming Precision:** When identifying people, prefer their complete, fully expanded proper name (including full middle names, e.g., "George Emil Bria" rather than "George E. Bria") unless specified otherwise.
+
+2. **Evaluating Summaries vs. World Knowledge:**
+   - Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+   - Summaries can be distractor-laden, incomplete, or misleading. If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+   - Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+
+3. **Domain-Specific Reference Knowledge:**
+   - **Musicians & Bands:**
+     - *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*). Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+   - **Wrestling & Tag Teams:**
+     - *Terry Gene Bollea:* Better known as **Hulk Hogan**. His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+   - **Film Industry & Shared Nationalities:**
+     - *Aram Avakian & Wilfred Lucas:* Share **American** nationality. Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*). Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+   - **Journalists & Historical Figures:**
+     - *George Emil Bria:* Full canonical name **George Emil Bria** (1916–2017). Italian-American Associated Press (AP) war correspondent during WWII Italian Campaign who reported on German surrenders and witnessed the body of Benito Mussolini in Milan. Always output the full name "George Emil Bria" rather than using middle initials.
+   - **Baseball & Stadium History:**
+     - *Wrigley Field / Cubs Park:* Wrigley Field (Chicago) was originally known as Weeghman Park (1914–1919) and **Cubs Park** (1920–1926) before being renamed Wrigley Field in 1927. The **1942 Chicago Cubs** finished the MLB season in 6th place with a win-loss record of **68–86**.
+   - **Geography & Islands:**
+     - *Semichi Islands & Attu Island:* Semichi Islands (Near Islands group, Aleutian Islands, Alaska) are located southeast of **Attu Island** and northeast of Agattu Island. Attu Island officially became uninhabited in 2010 following the closure of the Casco Cove Coast Guard Station.
+
+4. **Formatting Output (CRITICAL):**
+   - **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+   - **Answer Field:** 
+     - **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+     - **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+
+---
+
+### Output Format:
+
+### reasoning
+[Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+
+### answer
+[Direct target entity/short answer only]
+--- input this agent received ---
+[[ ## question ## ]]
+Who will direct the upcoming adaptation of the first of four novels in Philip Reeve's quartet of novels?
+
+[[ ## summary_1 ## ]]
+[Mortal Engines Quartet] | The first novel in the quartet written by Philip Reeve is titled "Mortal Engines" (2001).
+[Mortal Engines] | "Mortal Engines" is the first of four novels in Philip Reeve's quartet of the same name.
+
+[[ ## summary_2 ## ]]
+The first novel in Philip Reeve's quartet, titled *Mortal Engines* (2001), has been adapted into a feature film. This film, titled *Mortal Engines*, is directed by Christian Rivers and produced by Peter Jackson.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the director of the upcoming (in context of the novel's adaptation) film version of the first book in Philip Reeve's quartet. Philip Reeve's quartet is the *Mortal Engines Quartet*. The first novel is *Mortal Engines* (2001). The film adaptation of *Mortal Engines* was directed by Christian Rivers, who worked as a long-time collaborator of Peter Jackson (who produced the film).
+
+[[ ## answer ## ]]
+Christian Rivers
+===== end of turn 4 =====
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT —
+[[ ## answer ## ]]
+Christian Rivers
+
+[[ ## hop1_docs ## ]]
+['Infernal Devices (Philip Reeve novel) | Infernal Devices is the third of four novels in Philip Reeve\'s children\'s series, the "Mortal Engines Quartet".', 'Predator\'s Gold | Predator\'s Gold is the second of four novels in Philip Reeve\'s series for young adults, the "Mortal Engines Quartet".', 'Mortal Engines Quartet | The Mortal Engines Quartet is a tetralogy consisting of four novels written by the British author Philip Reeve: "Mortal Engines" (2001), "Predator\'s Gold" (2003), "Infernal Devices" (2005), and "A Darkling Plain" (2006).  It has also been referred to as the Predator Cities Quartet or the Hungry City Chronicles, although the author has objected to those names.', "Mortal Engines | Mortal Engines is the first of four novels in Philip Reeve's quartet of the same name.  The book focuses on a futuristic, steampunk version of London, now a giant machine striving to survive on a world running out of resources.  The book has won a Nestlé Smarties Book Prize and was shortlisted for the 2002 Whitbread Award.", 'A Darkling Plain | A Darkling Plain is the fourth and final novel in the "Mortal Engines Quartet" series written by author Philip Reeve.', 'Fever Crumb | Fever Crumb is a young adult post-apocalyptic science fiction novel by Philip Reeve, published in 2009.  Sequels called "A Web of Air" (2010) and "Scrivener\'s Moon" (2011) follow.  The books of the Fever Crumb Series are prequels to the Mortal Engines Quartet series of novels by the same author.', 'Fever Crumb Series | The Fever Crumb Series is the title of a series of novels written by British author, Philip Reeve, and is the prequel series to his critically acclaimed "Mortal Engines Quartet".  As of 2015 the series consists of three books: "Fever Crumb" (2009), "A Web of Air" (2010), and "Scrivener\'s Moon" (2011).  The books follow a young woman known as Fever Crumb, and her adventures set around the time of the creation of the first traction cities that become so prevalent in the Mortal Engines series.  Reeve stated in 2011 that he had always envisaged a quartet for the series, assuring readers of a fourth installment.']
+
+[[ ## hop2_docs ## ]]
+['Mortal Kombat (film) | Mortal Kombat is a 1995 American fantasy action film written by Kevin Droney, directed by Paul W. S. Anderson, produced by Lawrence Kasanoff, and starring Robin Shou, Linden Ashby, Bridgette Wilson, and Christopher Lambert.  It is a loose adaptation of the early entries in the fighting game series "Mortal Kombat".', 'Mortal Kombat: Rebirth | Mortal Kombat: Rebirth is a 2010 detailed short film directed by Kevin Tancharoen, with fight choreography by Larnell Stovall, who also choreographed "".  Based on the "Mortal Kombat" series of fighting games, the short-film "actually was made by the director to sell Warner Bros. on his vision for a reimagined "Mortal Kombat" film."  The pitch eventually evolved into the web series "" and solidified Tancharoen\'s directing duties on Warner Bros. "Mortal Kombat" feature film.', 'Mortal Kombat: Annihilation | Mortal Kombat: Annihilation is a 1997 American martial arts action film directed by John R. Leonetti.  Based on the "Mortal Kombat" series of fighting games, the film is the sequel to 1995\'s "Mortal Kombat".  It stars Robin Shou, Talisa Soto, Brian Thompson, Sandra Hess, Irina Pantaeva and James Remar.  The storyline was largely an adaptation of "Mortal Kombat 3", following a band of warriors as they attempt to save Earth from the evil Shao Kahn.  Although the story picks up where the last film left off, only two of the lead actors reprised their roles.  It has a 3% approval rating at Rotten Tomatoes and 11/100 at Metacritic.', 'Mortal Engines (film) | Mortal Engines is an upcoming New Zealand-American science fiction action adventure film directed by Christian Rivers and written by Peter Jackson, Fran Walsh, and Philippa Boyens.  It is based on the novel of the same name by Philip Reeve.  It stars Robert Sheehan, Hera Hilmar, Hugo Weaving, Jihae, Leila George, Ronan Raftery, and Stephen Lang.  It is set to be released in theaters on December 14, 2018.', 'Christian Rivers | Christian Rivers is a New Zealand storyboard artist, visual effects supervisor, special effects technician and director.  He first met Peter Jackson as a 17-year-old, and storyboarded all of Jackson\'s films since "Braindead".  He also cameoed in "" as a Gondorian soldier and "King Kong" as a Soldier in Truck.  He will also direct the upcoming adaptation of "Mortal Engines" and the remake of "The Dam Busters", both produced by Peter Jackson.', 'All Men Are Mortal (film) | All Men Are Mortal is a film based on the novel "All Men Are Mortal" (1946) by Simone de Beauvoir.  It was directed by Ate de Jong and released in 1995.  The film\'s tagline was, "She longed to be remembered... by a man who wanted to forget."', 'List of films based on video games | This is a list of film adaptations of video games.  These include local, international, direct-to-video and TV releases, and (in certain cases) online releases.  They include their scores on Rotten Tomatoes, the region in which they were released (for foreign adaptations), approximate budget, their approximate box office revenue (for theatrical releases) and the publisher of the original game at the time the film was made (this means that publishers may change between two adaptations of the same game or game series, such as "Mortal Kombat").  Also included are short films, cutscene films (made up of cutscenes and cinematics from the actual games), documentaries with video games as their subjects and films in which video games play a large part (such as "Tron" or "WarGames").']
+
+### trace 378d97a6244b091351f136f7
+===== ENVIRONMENT · not an agent turn =====
+Task: multi-hop question answering over Wikipedia abstracts. Two BM25 retrieval hops are executed, each summarized, before a final answer is produced.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 executed. Documents returned:
+['Maybe I\'m Amazed | "Maybe I\'m Amazed" is a song written by Paul McCartney that was first released on his 1970 album "McCartney".  McCartney dedicated the song to his wife, Linda, who had helped him get through the break-up of the Beatles.', 'Just a Ride | "Just a Ride" is the second single released by Jem from her debut album "Finally Woken".  The song was featured on "", along with "Maybe I\'m Amazed" (a cover of the Paul McCartney song).', 'Long Player (album) | Long Player, from 1971, was the second album by the British rock group Faces.  Among the highlights are a live cover version of Paul McCartney\'s "Maybe I\'m Amazed", the wistful "Richmond" and "Sweet Lady Mary", the rave-up "Had Me a Real Good Time" and the opening "Bad \'n\' Ruin".  "Maybe I\'m Amazed" and "I Feel So Good" were recorded live at the Fillmore East, New York on the 11th of October 1970.', 'What You\'re Doing | "What You\'re Doing" is a song by the English rock band the Beatles from their album "Beatles for Sale", released in December 1964.  It was written by Paul McCartney, although credited to Lennon–McCartney.  The song was one of eight original compositions on "Beatles for Sale".  In North America, where Capitol Records typically altered the content of the band\'s albums, "What You\'re Doing" instead appeared on the 1965 US release "Beatles VI".', 'Tell Me What You See | "Tell Me What You See" is a song by the Beatles that first appeared in 1965 on their album "Help! " in the United Kingdom and on "Beatles VI" in the United States.  As with all Beatles compositions by either of the two, the song is credited to Lennon–McCartney.  Regarding the song\'s authorship, Paul McCartney said, "I seem to remember it as mine.  I would claim it as a 60-40 but it might have been totally me."  Lennon said, in his interviews with "Playboy" (1980) and "Hit Parader" (1972), that "Tell Me What You See" was written completely by McCartney.', 'Angel in Disguise (McCartney–Starr song) | "Angel in Disguise" is a song co-written by Paul McCartney and Ringo Starr that has never been released.  The song was intended for Ringo\'s 1992 "Time Takes Time" album; however, it did not make it onto the album, and therefore remains an intriguing, publicly unheard song.  Had it been released in 1992 it would have been the first McCartney-Starkey composition on record, although there were Beatles songs that were credited to Lennon–McCartney–Starkey and Lennon–McCartney–Harrison–Starkey.', 'Run Devil Run (Paul McCartney song) | "Run Devil Run" is a 1999 original Paul McCartney composition written in a Chuck Berry style as the title track of his 1999 covers album "Run Devil Run".  It is one of three original songs on the 15-song album, along with "Try Not to Cry", and "What It Is", and was also released as a promotional 7" vinyl single.']
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize1.predict
+You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system. Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+
+### Primary Objectives
+1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+
+---
+
+### Step-by-Step Execution Guide
+
+1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+2. **Filter & Extract Passages**:
+   - Identify which retrieved passages directly address parts of the question.
+   - Ignore irrelevant passages.
+   - Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+3. **Identify Bridging Concepts**:
+   - Clearly state what has been proven by the current passages.
+   - Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+4. **Synthesize into `summary`**:
+   - Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+   - Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+
+---
+
+### Input Format
+- `question`: The user's multi-hop question.
+- `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+
+---
+
+### Output Format
+
+```
+### reasoning
+[Step-by-step analysis identifying:
+ 1. Which passages are relevant and what facts they establish.
+ 2. The bridging entity or concept needed to answer the complete question.
+ 3. What specific missing information needs to be retrieved in the second hop.]
+
+### summary
+[Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+[Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+...
+```
+--- input this agent received ---
+[[ ## question ## ]]
+What album from Paul McCartney did the song Maybe I'm Amazed appear in?
+
+[[ ## passages ## ]]
+['Maybe I\'m Amazed | "Maybe I\'m Amazed" is a song written by Paul McCartney that was first released on his 1970 album "McCartney".  McCartney dedicated the song to his wife, Linda, who had helped him get through the break-up of the Beatles.', 'Just a Ride | "Just a Ride" is the second single released by Jem from her debut album "Finally Woken".  The song was featured on "", along with "Maybe I\'m Amazed" (a cover of the Paul McCartney song).', 'Long Player (album) | Long Player, from 1971, was the second album by the British rock group Faces.  Among the highlights are a live cover version of Paul McCartney\'s "Maybe I\'m Amazed", the wistful "Richmond" and "Sweet Lady Mary", the rave-up "Had Me a Real Good Time" and the opening "Bad \'n\' Ruin".  "Maybe I\'m Amazed" and "I Feel So Good" were recorded live at the Fillmore East, New York on the 11th of October 1970.', 'What You\'re Doing | "What You\'re Doing" is a song by the English rock band the Beatles from their album "Beatles for Sale", released in December 1964.  It was written by Paul McCartney, although credited to Lennon–McCartney.  The song was one of eight original compositions on "Beatles for Sale".  In North America, where Capitol Records typically altered the content of the band\'s albums, "What You\'re Doing" instead appeared on the 1965 US release "Beatles VI".', 'Tell Me What You See | "Tell Me What You See" is a song by the Beatles that first appeared in 1965 on their album "Help! " in the United Kingdom and on "Beatles VI" in the United States.  As with all Beatles compositions by either of the two, the song is credited to Lennon–McCartney.  Regarding the song\'s authorship, Paul McCartney said, "I seem to remember it as mine.  I would claim it as a 60-40 but it might have been totally me."  Lennon said, in his interviews with "Playboy" (1980) and "Hit Parader" (1972), that "Tell Me What You See" was written completely by McCartney.', 'Angel in Disguise (McCartney–Starr song) | "Angel in Disguise" is a song co-written by Paul McCartney and Ringo Starr that has never been released.  The song was intended for Ringo\'s 1992 "Time Takes Time" album; however, it did not make it onto the album, and therefore remains an intriguing, publicly unheard song.  Had it been released in 1992 it would have been the first McCartney-Starkey composition on record, although there were Beatles songs that were credited to Lennon–McCartney–Starkey and Lennon–McCartney–Harrison–Starkey.', 'Run Devil Run (Paul McCartney song) | "Run Devil Run" is a 1999 original Paul McCartney composition written in a Chuck Berry style as the title track of his 1999 covers album "Run Devil Run".  It is one of three original songs on the 15-song album, along with "Try Not to Cry", and "What It Is", and was also released as a promotional 7" vinyl single.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. Analyze the Question: The user is asking for the album on which Paul McCartney's song "Maybe I'm Amazed" was released.
+2. Filter & Extract: Passage [1] directly addresses the question, stating that "Maybe I'm Amazed" was first released on Paul McCartney's 1970 album titled "McCartney". Passages [2] and [3] discuss covers of the song by other artists (Jem and Faces, respectively), which are irrelevant to identifying the original Paul McCartney album. Passages [4], [5], [6], and [7] discuss other songs or albums not related to the specific question.
+3. Bridging Concepts: The information is fully contained within passage [1]. No further retrieval is necessary.
+
+[[ ## summary ## ]]
+[Maybe I'm Amazed] | "Maybe I'm Amazed" is a song written by Paul McCartney that was first released on his 1970 album "McCartney".
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `query` (str):
+Component: create_query_hop2.predict
+Given the fields `question`, `summary_1`, produce the fields `query`.
+--- input this agent received ---
+[[ ## question ## ]]
+What album from Paul McCartney did the song Maybe I'm Amazed appear in?
+
+[[ ## summary_1 ## ]]
+[Maybe I'm Amazed] | "Maybe I'm Amazed" is a song written by Paul McCartney that was first released on his 1970 album "McCartney".
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the specific album on which the song "Maybe I'm Amazed" was released. The provided summary explicitly states that the song was first released on Paul McCartney's 1970 album "McCartney". No further search is required as the summary contains the answer.
+
+[[ ## query ## ]]
+Maybe I'm Amazed album
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 executed. Documents returned:
+['Maybe I\'m Amazed | "Maybe I\'m Amazed" is a song written by Paul McCartney that was first released on his 1970 album "McCartney".  McCartney dedicated the song to his wife, Linda, who had helped him get through the break-up of the Beatles.', 'Long Player (album) | Long Player, from 1971, was the second album by the British rock group Faces.  Among the highlights are a live cover version of Paul McCartney\'s "Maybe I\'m Amazed", the wistful "Richmond" and "Sweet Lady Mary", the rave-up "Had Me a Real Good Time" and the opening "Bad \'n\' Ruin".  "Maybe I\'m Amazed" and "I Feel So Good" were recorded live at the Fillmore East, New York on the 11th of October 1970.', 'Just a Ride | "Just a Ride" is the second single released by Jem from her debut album "Finally Woken".  The song was featured on "", along with "Maybe I\'m Amazed" (a cover of the Paul McCartney song).', 'Maybe Tomorrow (The Jackson 5 album) | Maybe Tomorrow was the fifth studio album by The Jackson 5 released in 1971.  Released after the success of the hit ballad "I\'ll Be There", most of the tracks on the album are ballads, with few dance numbers.  "Maybe Tomorrow" includes the hit singles "Never Can Say Goodbye" and "Maybe Tomorrow".  While not as financially successful as the Jackson 5\'s first three outings, selling over 3.5 million copies worldwide, "Maybe Tomorrow" contains some of the most often-sampled and covered material in the group\'s catalogue.  It spent six weeks at #1 on the Soul albums chart.', 'Maybe (Sharon O\'Neill album) | Maybe is the third studio album by New Zealand singer and songwriter Sharon O\'Neill.  "Maybe" peaked at No. 7 in New Zealand in November 1981.', 'Maybe Today, Maybe Tomorrow | Maybe Today, Maybe Tomorrow is the third full-length album by English rock band We Are the Ocean.  It was released on 17 September 2012 through Hassle Records in the United Kingdom and through SideOneDummy the next day, 18 September in the United States.  The album is the first to be done by the band without their original lead vocalist Dan Brown, who was removed out of the band despite recording all his vocals for the album.  The music featured on the album is seen as being a massive jump since the last album, "Go Now and Live", marking the beginning of their decline from hardcore, to a more fluid alternative rock sound.', 'Maybe Tomorrow (The Iveys song) | "Maybe Tomorrow" is a song composed and sung by guitarist Tom Evans of The Iveys, which was released as the group\'s first worldwide single on Apple Records.  It also served as the title track for the album "Maybe Tomorrow", and it was also included on the Badfinger album "Magic Christian Music" released in 1970.']
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `context` (str):
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize2.predict
+You are the **summary generation module** in a multi-hop Question Answering (QA) system. Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary. 
+
+This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context. Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+
+---
+
+### **Input Format**
+1. `question`: The multi-hop target question that needs to be answered.
+2. `context`: An intermediate summary or background context available from previous hops.
+3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+
+---
+
+### **Output Format**
+Your output must contain two sections:
+
+1. `reasoning`: A step-by-step breakdown analyzing:
+   - What the question is specifically asking for and what the target answer type/entity is.
+   - What critical facts and entity relationships are present in the `context` and `passages`.
+   - How to logically connect and synthesize these pieces of information to fully support the answer.
+
+2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+
+---
+
+### **Key Rules & Strategy**
+
+1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+2. **Synthesis & Integration**: Do not simply repeat individual passages. Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question. Exclude irrelevant side details present in retrieved passages.
+4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+--- input this agent received ---
+[[ ## question ## ]]
+What album from Paul McCartney did the song Maybe I'm Amazed appear in?
+
+[[ ## context ## ]]
+[Maybe I'm Amazed] | "Maybe I'm Amazed" is a song written by Paul McCartney that was first released on his 1970 album "McCartney".
+
+[[ ## passages ## ]]
+['Maybe I\'m Amazed | "Maybe I\'m Amazed" is a song written by Paul McCartney that was first released on his 1970 album "McCartney".  McCartney dedicated the song to his wife, Linda, who had helped him get through the break-up of the Beatles.', 'Long Player (album) | Long Player, from 1971, was the second album by the British rock group Faces.  Among the highlights are a live cover version of Paul McCartney\'s "Maybe I\'m Amazed", the wistful "Richmond" and "Sweet Lady Mary", the rave-up "Had Me a Real Good Time" and the opening "Bad \'n\' Ruin".  "Maybe I\'m Amazed" and "I Feel So Good" were recorded live at the Fillmore East, New York on the 11th of October 1970.', 'Just a Ride | "Just a Ride" is the second single released by Jem from her debut album "Finally Woken".  The song was featured on "", along with "Maybe I\'m Amazed" (a cover of the Paul McCartney song).', 'Maybe Tomorrow (The Jackson 5 album) | Maybe Tomorrow was the fifth studio album by The Jackson 5 released in 1971.  Released after the success of the hit ballad "I\'ll Be There", most of the tracks on the album are ballads, with few dance numbers.  "Maybe Tomorrow" includes the hit singles "Never Can Say Goodbye" and "Maybe Tomorrow".  While not as financially successful as the Jackson 5\'s first three outings, selling over 3.5 million copies worldwide, "Maybe Tomorrow" contains some of the most often-sampled and covered material in the group\'s catalogue.  It spent six weeks at #1 on the Soul albums chart.', 'Maybe (Sharon O\'Neill album) | Maybe is the third studio album by New Zealand singer and songwriter Sharon O\'Neill.  "Maybe" peaked at No. 7 in New Zealand in November 1981.', 'Maybe Today, Maybe Tomorrow | Maybe Today, Maybe Tomorrow is the third full-length album by English rock band We Are the Ocean.  It was released on 17 September 2012 through Hassle Records in the United Kingdom and through SideOneDummy the next day, 18 September in the United States.  The album is the first to be done by the band without their original lead vocalist Dan Brown, who was removed out of the band despite recording all his vocals for the album.  The music featured on the album is seen as being a massive jump since the last album, "Go Now and Live", marking the beginning of their decline from hardcore, to a more fluid alternative rock sound.', 'Maybe Tomorrow (The Iveys song) | "Maybe Tomorrow" is a song composed and sung by guitarist Tom Evans of The Iveys, which was released as the group\'s first worldwide single on Apple Records.  It also served as the title track for the album "Maybe Tomorrow", and it was also included on the Badfinger album "Magic Christian Music" released in 1970.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the specific Paul McCartney album that features the song "Maybe I'm Amazed." The provided context and the first passage both explicitly state that "Maybe I'm Amazed" is a song written by Paul McCartney that was first released on his 1970 debut solo album titled "McCartney." Other passages discuss covers of the song (by Faces or Jem) or unrelated albums with similar titles, but these are not the primary source requested. Therefore, the answer is the album titled "McCartney."
+
+[[ ## summary ## ]]
+"Maybe I'm Amazed" is a song written and recorded by Paul McCartney. It was first released in 1970 on his debut solo studio album, which is titled "McCartney."
+===== end of turn 3 =====
+
+===== TURN 4 · agent: final_answer =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `answer` (str):
+Component: final_answer.predict
+You are an expert question-answering assistant. You will be provided with three input fields: `question`, `summary_1`, and `summary_2`. Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+
+---
+
+### Task Execution Guidelines:
+
+1. **Question Analysis & Attribute Precision:**
+   - Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. full real name).
+   - **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria. Ensure the target entity strictly satisfies *all* specified traits/roles.
+   - **Name Format & Canonical Naming Precision:** When identifying people, prefer their complete, fully expanded proper name (including full middle names, e.g., "George Emil Bria" rather than "George E. Bria") unless specified otherwise.
+
+2. **Evaluating Summaries vs. World Knowledge:**
+   - Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+   - Summaries can be distractor-laden, incomplete, or misleading. If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+   - Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+
+3. **Domain-Specific Reference Knowledge:**
+   - **Musicians & Bands:**
+     - *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*). Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+   - **Wrestling & Tag Teams:**
+     - *Terry Gene Bollea:* Better known as **Hulk Hogan**. His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+   - **Film Industry & Shared Nationalities:**
+     - *Aram Avakian & Wilfred Lucas:* Share **American** nationality. Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*). Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+   - **Journalists & Historical Figures:**
+     - *George Emil Bria:* Full canonical name **George Emil Bria** (1916–2017). Italian-American Associated Press (AP) war correspondent during WWII Italian Campaign who reported on German surrenders and witnessed the body of Benito Mussolini in Milan. Always output the full name "George Emil Bria" rather than using middle initials.
+   - **Baseball & Stadium History:**
+     - *Wrigley Field / Cubs Park:* Wrigley Field (Chicago) was originally known as Weeghman Park (1914–1919) and **Cubs Park** (1920–1926) before being renamed Wrigley Field in 1927. The **1942 Chicago Cubs** finished the MLB season in 6th place with a win-loss record of **68–86**.
+   - **Geography & Islands:**
+     - *Semichi Islands & Attu Island:* Semichi Islands (Near Islands group, Aleutian Islands, Alaska) are located southeast of **Attu Island** and northeast of Agattu Island. Attu Island officially became uninhabited in 2010 following the closure of the Casco Cove Coast Guard Station.
+
+4. **Formatting Output (CRITICAL):**
+   - **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+   - **Answer Field:** 
+     - **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+     - **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+
+---
+
+### Output Format:
+
+### reasoning
+[Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+
+### answer
+[Direct target entity/short answer only]
+--- input this agent received ---
+[[ ## question ## ]]
+What album from Paul McCartney did the song Maybe I'm Amazed appear in?
+
+[[ ## summary_1 ## ]]
+[Maybe I'm Amazed] | "Maybe I'm Amazed" is a song written by Paul McCartney that was first released on his 1970 album "McCartney".
+
+[[ ## summary_2 ## ]]
+"Maybe I'm Amazed" is a song written and recorded by Paul McCartney. It was first released in 1970 on his debut solo studio album, which is titled "McCartney."
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the debut solo album by Paul McCartney that features the song "Maybe I'm Amazed". Both summaries correctly identify that "Maybe I'm Amazed" was released in 1970 on Paul McCartney's debut studio album, which is self-titled "McCartney". World knowledge confirms this fact.
+
+[[ ## answer ## ]]
+McCartney
+===== end of turn 4 =====
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT —
+[[ ## answer ## ]]
+McCartney
+
+[[ ## hop1_docs ## ]]
+['Maybe I\'m Amazed | "Maybe I\'m Amazed" is a song written by Paul McCartney that was first released on his 1970 album "McCartney".  McCartney dedicated the song to his wife, Linda, who had helped him get through the break-up of the Beatles.', 'Just a Ride | "Just a Ride" is the second single released by Jem from her debut album "Finally Woken".  The song was featured on "", along with "Maybe I\'m Amazed" (a cover of the Paul McCartney song).', 'Long Player (album) | Long Player, from 1971, was the second album by the British rock group Faces.  Among the highlights are a live cover version of Paul McCartney\'s "Maybe I\'m Amazed", the wistful "Richmond" and "Sweet Lady Mary", the rave-up "Had Me a Real Good Time" and the opening "Bad \'n\' Ruin".  "Maybe I\'m Amazed" and "I Feel So Good" were recorded live at the Fillmore East, New York on the 11th of October 1970.', 'What You\'re Doing | "What You\'re Doing" is a song by the English rock band the Beatles from their album "Beatles for Sale", released in December 1964.  It was written by Paul McCartney, although credited to Lennon–McCartney.  The song was one of eight original compositions on "Beatles for Sale".  In North America, where Capitol Records typically altered the content of the band\'s albums, "What You\'re Doing" instead appeared on the 1965 US release "Beatles VI".', 'Tell Me What You See | "Tell Me What You See" is a song by the Beatles that first appeared in 1965 on their album "Help! " in the United Kingdom and on "Beatles VI" in the United States.  As with all Beatles compositions by either of the two, the song is credited to Lennon–McCartney.  Regarding the song\'s authorship, Paul McCartney said, "I seem to remember it as mine.  I would claim it as a 60-40 but it might have been totally me."  Lennon said, in his interviews with "Playboy" (1980) and "Hit Parader" (1972), that "Tell Me What You See" was written completely by McCartney.', 'Angel in Disguise (McCartney–Starr song) | "Angel in Disguise" is a song co-written by Paul McCartney and Ringo Starr that has never been released.  The song was intended for Ringo\'s 1992 "Time Takes Time" album; however, it did not make it onto the album, and therefore remains an intriguing, publicly unheard song.  Had it been released in 1992 it would have been the first McCartney-Starkey composition on record, although there were Beatles songs that were credited to Lennon–McCartney–Starkey and Lennon–McCartney–Harrison–Starkey.', 'Run Devil Run (Paul McCartney song) | "Run Devil Run" is a 1999 original Paul McCartney composition written in a Chuck Berry style as the title track of his 1999 covers album "Run Devil Run".  It is one of three original songs on the 15-song album, along with "Try Not to Cry", and "What It Is", and was also released as a promotional 7" vinyl single.']
+
+[[ ## hop2_docs ## ]]
+['Maybe I\'m Amazed | "Maybe I\'m Amazed" is a song written by Paul McCartney that was first released on his 1970 album "McCartney".  McCartney dedicated the song to his wife, Linda, who had helped him get through the break-up of the Beatles.', 'Long Player (album) | Long Player, from 1971, was the second album by the British rock group Faces.  Among the highlights are a live cover version of Paul McCartney\'s "Maybe I\'m Amazed", the wistful "Richmond" and "Sweet Lady Mary", the rave-up "Had Me a Real Good Time" and the opening "Bad \'n\' Ruin".  "Maybe I\'m Amazed" and "I Feel So Good" were recorded live at the Fillmore East, New York on the 11th of October 1970.', 'Just a Ride | "Just a Ride" is the second single released by Jem from her debut album "Finally Woken".  The song was featured on "", along with "Maybe I\'m Amazed" (a cover of the Paul McCartney song).', 'Maybe Tomorrow (The Jackson 5 album) | Maybe Tomorrow was the fifth studio album by The Jackson 5 released in 1971.  Released after the success of the hit ballad "I\'ll Be There", most of the tracks on the album are ballads, with few dance numbers.  "Maybe Tomorrow" includes the hit singles "Never Can Say Goodbye" and "Maybe Tomorrow".  While not as financially successful as the Jackson 5\'s first three outings, selling over 3.5 million copies worldwide, "Maybe Tomorrow" contains some of the most often-sampled and covered material in the group\'s catalogue.  It spent six weeks at #1 on the Soul albums chart.', 'Maybe (Sharon O\'Neill album) | Maybe is the third studio album by New Zealand singer and songwriter Sharon O\'Neill.  "Maybe" peaked at No. 7 in New Zealand in November 1981.', 'Maybe Today, Maybe Tomorrow | Maybe Today, Maybe Tomorrow is the third full-length album by English rock band We Are the Ocean.  It was released on 17 September 2012 through Hassle Records in the United Kingdom and through SideOneDummy the next day, 18 September in the United States.  The album is the first to be done by the band without their original lead vocalist Dan Brown, who was removed out of the band despite recording all his vocals for the album.  The music featured on the album is seen as being a massive jump since the last album, "Go Now and Live", marking the beginning of their decline from hardcore, to a more fluid alternative rock sound.', 'Maybe Tomorrow (The Iveys song) | "Maybe Tomorrow" is a song composed and sung by guitarist Tom Evans of The Iveys, which was released as the group\'s first worldwide single on Apple Records.  It also served as the title track for the album "Maybe Tomorrow", and it was also included on the Badfinger album "Magic Christian Music" released in 1970.']
+
+### trace 4e5f1611075716b3b42b8556
+===== ENVIRONMENT · not an agent turn =====
+Task: multi-hop question answering over Wikipedia abstracts. Two BM25 retrieval hops are executed, each summarized, before a final answer is produced.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 executed. Documents returned:
+['Salammbô (Mussorgsky) | Salammbô (Russian: Саламбо, "Salambo" [alternative title: The Libyan (Russian: Ливиец, "Liviyets" )]) is an unfinished opera in 4 acts by Modest Mussorgsky.  The fragmentary Russian language libretto was written by the composer, and is based on the novel "Salammbô" (1862) by Gustave Flaubert, but includes verses taken from poems by Vasiliy Zhukovsky, Apollon Maykov, Aleksandr Polezhayev, and other Russian poets.', 'Khovanshchina | Khovanshchina (Russian: Хованщина , "Hovánščina", sometimes rendered The Khovansky Affair; since the ending -ščina is pejorative) is an opera (subtitled a \'national music drama\') in five acts by Modest Mussorgsky.  The work was written between 1872 and 1880 in St. Petersburg, Russia.  The composer wrote the libretto based on historical sources.  The opera was unfinished and unperformed when the composer died in 1881.', 'The Fair at Sorochyntsi | The Fair at Sorochyntsi (Russian: Сорочинская ярмарка , "Sorochinskaya yarmarka", "Sorochyntsi Fair") is a comic opera in three acts by Modest Mussorgsky, composed between 1874 and 1880 in St. Petersburg, Russia.  The composer wrote the libretto, which is based on Nikolai Gogol\'s short story of the same name, from his early (1832) collection of Ukrainian stories "Evenings on a Farm near Dikanka".  The opera remained unfinished and unperformed at Mussorgsky\'s death in 1881.', 'Zhenitba | Zhenitba (Russian: Женитьба , "Zhenit\'ba", "Marriage") is an unfinished opera begun in 1868 by Modest Mussorgsky to his own libretto based on Nikolai Gogol\'s comedy "Marriage".  This 1842 play is a satire of courtship and cowardice, which centres on a young woman, Agafya, who is wooed by four bachelors, each with his own idiosyncrasies.', 'The Fair at Sorochyntsi (short story) | "The Fair at Sorochyntsi" is the first story in the collection "Evenings on a Farm Near Dikanka" by Ukrainian-born writer Nikolai Gogol.  Later in the 19th-century the story was adapted as an opera of the same name by Modest Mussorgsky (left unfinished by the composer, and completed by other hands).', 'Boris Godunov (opera) | Boris Godunov (Russian: Борис Годунов , "Borís Godunóv") is an opera by Modest Mussorgsky (1839–1881).  The work was composed between 1868 and 1873 in Saint Petersburg, Russia.  It is Mussorgsky\'s only completed opera and is considered his masterpiece.  Its subjects are the Russian ruler Boris Godunov, who reigned as Tsar (1598 to 1605) during the Time of Troubles, and his nemesis, the False Dmitriy (reigned 1605 to 1606).  The Russian-language libretto was written by the composer, and is based on the drama "Boris Godunov" by Aleksandr Pushkin, and, in the Revised Version of 1872, on Nikolay Karamzin\'s "History of the Russian State".', 'Vyacheslav Nagovitsin | Vyacheslav Lavrent\'yevich Nagovitsin (Russian: Вячеслав Лаврентьевич Наговицин ) is a Russian composer born in Magnitogorsk (21 December 1939).  He was a student of Dmitri Shostakovich at the Leningrad Conservatory that he graduated in 1966 (postgraduate school, he graduated from the undergraduate school of the Conservatory in 1963).  In 1963-1964 he worked in "Ulan-Ude Opera and Ballet Theater".  In 1966-1970 he was a lecturer at the Mussorgsky Musical School in Leningrad.  In 1968-1970 he also worked as the Music Director of the Leningrad Comedy Theatre.  Since 1970 he became a professor at the Leningrad Conservatory.  He orchestrated two unfinished operas of Modest Mussorgsky: Zhenitba and Salammbô.  His orchestration of Salammbô was used by Valery Gergiev at the Mérida festival in 1991.']
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize1.predict
+You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system. Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+
+### Primary Objectives
+1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+
+---
+
+### Step-by-Step Execution Guide
+
+1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+2. **Filter & Extract Passages**:
+   - Identify which retrieved passages directly address parts of the question.
+   - Ignore irrelevant passages.
+   - Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+3. **Identify Bridging Concepts**:
+   - Clearly state what has been proven by the current passages.
+   - Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+4. **Synthesize into `summary`**:
+   - Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+   - Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+
+---
+
+### Input Format
+- `question`: The user's multi-hop question.
+- `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+
+---
+
+### Output Format
+
+```
+### reasoning
+[Step-by-step analysis identifying:
+ 1. Which passages are relevant and what facts they establish.
+ 2. The bridging entity or concept needed to answer the complete question.
+ 3. What specific missing information needs to be retrieved in the second hop.]
+
+### summary
+[Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+[Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+...
+```
+--- input this agent received ---
+[[ ## question ## ]]
+The unfinished opera Modest Mussorgsky was written by a man who was a member of numeric group.
+
+[[ ## passages ## ]]
+['Salammbô (Mussorgsky) | Salammbô (Russian: Саламбо, "Salambo" [alternative title: The Libyan (Russian: Ливиец, "Liviyets" )]) is an unfinished opera in 4 acts by Modest Mussorgsky.  The fragmentary Russian language libretto was written by the composer, and is based on the novel "Salammbô" (1862) by Gustave Flaubert, but includes verses taken from poems by Vasiliy Zhukovsky, Apollon Maykov, Aleksandr Polezhayev, and other Russian poets.', 'Khovanshchina | Khovanshchina (Russian: Хованщина , "Hovánščina", sometimes rendered The Khovansky Affair; since the ending -ščina is pejorative) is an opera (subtitled a \'national music drama\') in five acts by Modest Mussorgsky.  The work was written between 1872 and 1880 in St. Petersburg, Russia.  The composer wrote the libretto based on historical sources.  The opera was unfinished and unperformed when the composer died in 1881.', 'The Fair at Sorochyntsi | The Fair at Sorochyntsi (Russian: Сорочинская ярмарка , "Sorochinskaya yarmarka", "Sorochyntsi Fair") is a comic opera in three acts by Modest Mussorgsky, composed between 1874 and 1880 in St. Petersburg, Russia.  The composer wrote the libretto, which is based on Nikolai Gogol\'s short story of the same name, from his early (1832) collection of Ukrainian stories "Evenings on a Farm near Dikanka".  The opera remained unfinished and unperformed at Mussorgsky\'s death in 1881.', 'Zhenitba | Zhenitba (Russian: Женитьба , "Zhenit\'ba", "Marriage") is an unfinished opera begun in 1868 by Modest Mussorgsky to his own libretto based on Nikolai Gogol\'s comedy "Marriage".  This 1842 play is a satire of courtship and cowardice, which centres on a young woman, Agafya, who is wooed by four bachelors, each with his own idiosyncrasies.', 'The Fair at Sorochyntsi (short story) | "The Fair at Sorochyntsi" is the first story in the collection "Evenings on a Farm Near Dikanka" by Ukrainian-born writer Nikolai Gogol.  Later in the 19th-century the story was adapted as an opera of the same name by Modest Mussorgsky (left unfinished by the composer, and completed by other hands).', 'Boris Godunov (opera) | Boris Godunov (Russian: Борис Годунов , "Borís Godunóv") is an opera by Modest Mussorgsky (1839–1881).  The work was composed between 1868 and 1873 in Saint Petersburg, Russia.  It is Mussorgsky\'s only completed opera and is considered his masterpiece.  Its subjects are the Russian ruler Boris Godunov, who reigned as Tsar (1598 to 1605) during the Time of Troubles, and his nemesis, the False Dmitriy (reigned 1605 to 1606).  The Russian-language libretto was written by the composer, and is based on the drama "Boris Godunov" by Aleksandr Pushkin, and, in the Revised Version of 1872, on Nikolay Karamzin\'s "History of the Russian State".', 'Vyacheslav Nagovitsin | Vyacheslav Lavrent\'yevich Nagovitsin (Russian: Вячеслав Лаврентьевич Наговицин ) is a Russian composer born in Magnitogorsk (21 December 1939).  He was a student of Dmitri Shostakovich at the Leningrad Conservatory that he graduated in 1966 (postgraduate school, he graduated from the undergraduate school of the Conservatory in 1963).  In 1963-1964 he worked in "Ulan-Ude Opera and Ballet Theater".  In 1966-1970 he was a lecturer at the Mussorgsky Musical School in Leningrad.  In 1968-1970 he also worked as the Music Director of the Leningrad Comedy Theatre.  Since 1970 he became a professor at the Leningrad Conservatory.  He orchestrated two unfinished operas of Modest Mussorgsky: Zhenitba and Salammbô.  His orchestration of Salammbô was used by Valery Gergiev at the Mérida festival in 1991.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Analyze the Question**: The user is looking for an unfinished opera by Modest Mussorgsky, which was completed (or associated with) a man who belonged to a "numeric group."
+2. **Filter & Extract Passages**:
+   - Mussorgsky wrote several unfinished operas: *Salammbô* [1], *Khovanshchina* [2], *The Fair at Sorochyntsi* [3], and *Zhenitba* [4].
+   - Passage [7] mentions that Vyacheslav Nagovitsin orchestrated *Zhenitba* and *Salammbô*, but he is not widely known for being in a "numeric group."
+   - The phrase "numeric group" is a strong indicator of a famous Russian composer group like "The Five" (also known as "The Mighty Handful" or "The Mighty Five"), which included Modest Mussorgsky himself.
+   - However, the question implies an external person completed the work. Nikolai Rimsky-Korsakov, a member of "The Five," famously completed/edited *Khovanshchina* and *The Fair at Sorochyntsi*.
+3. **Identify Bridging Concepts**: The bridging concept is the "numeric group" (The Five). I need to confirm which specific unfinished opera was completed by a member of this group, as several of his unfinished works were completed by others.
+4. **Missing Information**: Need to verify which specific opera (often *Khovanshchina* or *The Fair at Sorochyntsi*) is most associated with being completed by a member of the "Mighty Handful" (e.g., Rimsky-Korsakov).
+
+[[ ## summary ## ]]
+[Salammbô (Mussorgsky)] | An unfinished opera by Modest Mussorgsky based on a novel by Gustave Flaubert.
+[Khovanshchina] | An unfinished opera by Modest Mussorgsky, left unperformed at his death in 1881.
+[The Fair at Sorochyntsi] | A comic opera by Modest Mussorgsky based on Nikolai Gogol's story; it remained unfinished at the composer's death.
+[Zhenitba] | An unfinished opera begun by Mussorgsky in 1868.
+[The Fair at Sorochyntsi (short story)] | Notes that this opera was left unfinished by Mussorgsky and completed by other hands.
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `query` (str):
+Component: create_query_hop2.predict
+Given the fields `question`, `summary_1`, produce the fields `query`.
+--- input this agent received ---
+[[ ## question ## ]]
+The unfinished opera Modest Mussorgsky was written by a man who was a member of numeric group.
+
+[[ ## summary_1 ## ]]
+[Salammbô (Mussorgsky)] | An unfinished opera by Modest Mussorgsky based on a novel by Gustave Flaubert.
+[Khovanshchina] | An unfinished opera by Modest Mussorgsky, left unperformed at his death in 1881.
+[The Fair at Sorochyntsi] | A comic opera by Modest Mussorgsky based on Nikolai Gogol's story; it remained unfinished at the composer's death.
+[Zhenitba] | An unfinished opera begun by Mussorgsky in 1868.
+[The Fair at Sorochyntsi (short story)] | Notes that this opera was left unfinished by Mussorgsky and completed by other hands.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question refers to Modest Mussorgsky being a member of a "numeric group." Historically, Mussorgsky was a prominent member of "The Five" (also known as "The Mighty Handful" or "The Mighty Five"), a circle of Russian composers. The question implies that one of his unfinished operas is the key to identifying this specific group context.
+
+[[ ## query ## ]]
+What is the name of the group of five Russian composers that included Modest Mussorgsky?
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 executed. Documents returned:
+['Modest Mussorgsky | Modest Petrovich Mussorgsky (Russian: Моде́ст Петро́вич Му́соргский ; ] ; 21 March\xa0[O.S. 9 March]\xa01839 – 28 March\xa0[O.S. 16 March]\xa01881 ) was a Russian composer, one of the group known as "The Five".  He was an innovator of Russian music in the romantic period.  He strove to achieve a uniquely Russian musical identity, often in deliberate defiance of the established conventions of Western music.', 'Russian Easter Festival Overture | Russian Easter Festival Overture: Overture on Liturgical Themes (Russian: Светлый праздник, "Svetliy prazdnik" ), Op.  36, also known as the Great Russian Easter Overture, is a concert overture written by the Russian composer Nikolai Rimsky-Korsakov between August 1887 and April 1888.  It was dedicated to the memories of Modest Mussorgsky and Alexander Borodin, two members of the group of composers known in English as "The Five".  It is the last of what many call his three most exceptionally brilliant orchestral works, preceded by "Capriccio Espagnol" and "Scheherazade".  The work received its premiere at a Russian symphony concert in St. Petersburg in late December 1888.', 'Mussorgsky family | Mussorgsky (Russian: Му́соргские ), the name of an old Russian noble family, which is one of the branches of rich boyar family of Monastyrev, descendants of princes of Smolensk from Rurikid stock.  The family traces its name to Roman Vasilyevich Monastyrev, nicknamed Mussorga (18th generation from Rurik).  Peter Ivanovich Mussorgsky governed Staritsa in 1620.  One representative of this family is the great composer Modest Petrovich Mussorgsky.', 'Mussorgsky (film) | Mussorgsky (Russian: Мусоргский , "Musorgskiy " ) is a 1950 Soviet biopic film directed by Grigori Roshal, about the emergence of Russian composer Modest Mussorgsky.  It was entered into the 1951 Cannes Film Festival.', 'Mussorgsky Peaks | Mussorgsky Peaks ( ) are two rocky peaks rising to about 500 m lying northwest of Mount Grieg on the base of the Derocher Peninsula, a minor, ice-covered peninsula that protrudes out from the Beethoven Peninsula into the Wilkins Ice Shelf in the southwest portion of Alexander Island, Antarctica.  A number of peaks in this vicinity first appear on maps by the Ronne Antarctic Research Expedition (RARE), 1947-48.  These peaks, apparently included within that group, were mapped from RARE air photos by Searle of the Falkland Islands Dependencies Survey (FIDS) in 1960.  Named by the United Kingdom Antarctic Place-Names Committee (UK-APC) after Modeste Mussorgsky (1839–81), Russian composer.', 'Salammbô (Mussorgsky) | Salammbô (Russian: Саламбо, "Salambo" [alternative title: The Libyan (Russian: Ливиец, "Liviyets" )]) is an unfinished opera in 4 acts by Modest Mussorgsky.  The fragmentary Russian language libretto was written by the composer, and is based on the novel "Salammbô" (1862) by Gustave Flaubert, but includes verses taken from poems by Vasiliy Zhukovsky, Apollon Maykov, Aleksandr Polezhayev, and other Russian poets.', 'The Mighty Handful | The Mighty Handful (Russian: Могучая кучка ), also known as The Five and The New Russian School, were five prominent 19th-century Russian composers who worked together to create a distinctly Russian classical music.  Mily Balakirev (the leader), César Cui, Modest Mussorgsky, Nikolai Rimsky-Korsakov and Alexander Borodin all lived in Saint Petersburg, and collaborated from 1856 to 1870.']
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `context` (str):
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize2.predict
+You are the **summary generation module** in a multi-hop Question Answering (QA) system. Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary. 
+
+This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context. Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+
+---
+
+### **Input Format**
+1. `question`: The multi-hop target question that needs to be answered.
+2. `context`: An intermediate summary or background context available from previous hops.
+3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+
+---
+
+### **Output Format**
+Your output must contain two sections:
+
+1. `reasoning`: A step-by-step breakdown analyzing:
+   - What the question is specifically asking for and what the target answer type/entity is.
+   - What critical facts and entity relationships are present in the `context` and `passages`.
+   - How to logically connect and synthesize these pieces of information to fully support the answer.
+
+2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+
+---
+
+### **Key Rules & Strategy**
+
+1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+2. **Synthesis & Integration**: Do not simply repeat individual passages. Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question. Exclude irrelevant side details present in retrieved passages.
+4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+--- input this agent received ---
+[[ ## question ## ]]
+The unfinished opera Modest Mussorgsky was written by a man who was a member of numeric group.
+
+[[ ## context ## ]]
+[Salammbô (Mussorgsky)] | An unfinished opera by Modest Mussorgsky based on a novel by Gustave Flaubert.
+[Khovanshchina] | An unfinished opera by Modest Mussorgsky, left unperformed at his death in 1881.
+[The Fair at Sorochyntsi] | A comic opera by Modest Mussorgsky based on Nikolai Gogol's story; it remained unfinished at the composer's death.
+[Zhenitba] | An unfinished opera begun by Mussorgsky in 1868.
+[The Fair at Sorochyntsi (short story)] | Notes that this opera was left unfinished by Mussorgsky and completed by other hands.
+
+[[ ## passages ## ]]
+['Modest Mussorgsky | Modest Petrovich Mussorgsky (Russian: Моде́ст Петро́вич Му́соргский ; ] ; 21 March\xa0[O.S. 9 March]\xa01839 – 28 March\xa0[O.S. 16 March]\xa01881 ) was a Russian composer, one of the group known as "The Five".  He was an innovator of Russian music in the romantic period.  He strove to achieve a uniquely Russian musical identity, often in deliberate defiance of the established conventions of Western music.', 'Russian Easter Festival Overture | Russian Easter Festival Overture: Overture on Liturgical Themes (Russian: Светлый праздник, "Svetliy prazdnik" ), Op.  36, also known as the Great Russian Easter Overture, is a concert overture written by the Russian composer Nikolai Rimsky-Korsakov between August 1887 and April 1888.  It was dedicated to the memories of Modest Mussorgsky and Alexander Borodin, two members of the group of composers known in English as "The Five".  It is the last of what many call his three most exceptionally brilliant orchestral works, preceded by "Capriccio Espagnol" and "Scheherazade".  The work received its premiere at a Russian symphony concert in St. Petersburg in late December 1888.', 'Mussorgsky family | Mussorgsky (Russian: Му́соргские ), the name of an old Russian noble family, which is one of the branches of rich boyar family of Monastyrev, descendants of princes of Smolensk from Rurikid stock.  The family traces its name to Roman Vasilyevich Monastyrev, nicknamed Mussorga (18th generation from Rurik).  Peter Ivanovich Mussorgsky governed Staritsa in 1620.  One representative of this family is the great composer Modest Petrovich Mussorgsky.', 'Mussorgsky (film) | Mussorgsky (Russian: Мусоргский , "Musorgskiy " ) is a 1950 Soviet biopic film directed by Grigori Roshal, about the emergence of Russian composer Modest Mussorgsky.  It was entered into the 1951 Cannes Film Festival.', 'Mussorgsky Peaks | Mussorgsky Peaks ( ) are two rocky peaks rising to about 500 m lying northwest of Mount Grieg on the base of the Derocher Peninsula, a minor, ice-covered peninsula that protrudes out from the Beethoven Peninsula into the Wilkins Ice Shelf in the southwest portion of Alexander Island, Antarctica.  A number of peaks in this vicinity first appear on maps by the Ronne Antarctic Research Expedition (RARE), 1947-48.  These peaks, apparently included within that group, were mapped from RARE air photos by Searle of the Falkland Islands Dependencies Survey (FIDS) in 1960.  Named by the United Kingdom Antarctic Place-Names Committee (UK-APC) after Modeste Mussorgsky (1839–81), Russian composer.', 'Salammbô (Mussorgsky) | Salammbô (Russian: Саламбо, "Salambo" [alternative title: The Libyan (Russian: Ливиец, "Liviyets" )]) is an unfinished opera in 4 acts by Modest Mussorgsky.  The fragmentary Russian language libretto was written by the composer, and is based on the novel "Salammbô" (1862) by Gustave Flaubert, but includes verses taken from poems by Vasiliy Zhukovsky, Apollon Maykov, Aleksandr Polezhayev, and other Russian poets.', 'The Mighty Handful | The Mighty Handful (Russian: Могучая кучка ), also known as The Five and The New Russian School, were five prominent 19th-century Russian composers who worked together to create a distinctly Russian classical music.  Mily Balakirev (the leader), César Cui, Modest Mussorgsky, Nikolai Rimsky-Korsakov and Alexander Borodin all lived in Saint Petersburg, and collaborated from 1856 to 1870.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks to identify the "numeric group" to which the composer of several unfinished operas belongs. The provided context identifies Modest Mussorgsky as the composer of several unfinished operas, including *Salammbô*, *Khovanshchina*, *The Fair at Sorochyntsi*, and *Zhenitba*. Passages [1], [2], and [7] explicitly state that Modest Mussorgsky was a member of a group of Russian composers known as "The Five" (also referred to as "The Mighty Handful" or "The New Russian School"). This group consists of five prominent 19th-century composers: Mily Balakirev, César Cui, Modest Mussorgsky, Nikolai Rimsky-Korsakov, and Alexander Borodin. The name "The Five" fits the description of a "numeric group."
+
+[[ ## summary ## ]]
+Modest Mussorgsky was a Russian composer noted for several unfinished operas, including *Salammbô*, *Khovanshchina*, *The Fair at Sorochyntsi*, and *Zhenitba*. Mussorgsky was a prominent member of a group of five influential 19th-century Russian composers who sought to establish a unique Russian musical identity. This group, which collaborated in Saint Petersburg between 1856 and 1870, is widely known as "The Five" (also called "The Mighty Handful" or "The New Russian School"). The other members of this group were Mily Balakirev, César Cui, Nikolai Rimsky-Korsakov, and Alexander Borodin.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: final_answer =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `answer` (str):
+Component: final_answer.predict
+You are an expert question-answering assistant. You will be provided with three input fields: `question`, `summary_1`, and `summary_2`. Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+
+---
+
+### Task Execution Guidelines:
+
+1. **Question Analysis & Attribute Precision:**
+   - Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. full real name).
+   - **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria. Ensure the target entity strictly satisfies *all* specified traits/roles.
+   - **Name Format & Canonical Naming Precision:** When identifying people, prefer their complete, fully expanded proper name (including full middle names, e.g., "George Emil Bria" rather than "George E. Bria") unless specified otherwise.
+
+2. **Evaluating Summaries vs. World Knowledge:**
+   - Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+   - Summaries can be distractor-laden, incomplete, or misleading. If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+   - Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+
+3. **Domain-Specific Reference Knowledge:**
+   - **Musicians & Bands:**
+     - *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*). Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+   - **Wrestling & Tag Teams:**
+     - *Terry Gene Bollea:* Better known as **Hulk Hogan**. His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+   - **Film Industry & Shared Nationalities:**
+     - *Aram Avakian & Wilfred Lucas:* Share **American** nationality. Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*). Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+   - **Journalists & Historical Figures:**
+     - *George Emil Bria:* Full canonical name **George Emil Bria** (1916–2017). Italian-American Associated Press (AP) war correspondent during WWII Italian Campaign who reported on German surrenders and witnessed the body of Benito Mussolini in Milan. Always output the full name "George Emil Bria" rather than using middle initials.
+   - **Baseball & Stadium History:**
+     - *Wrigley Field / Cubs Park:* Wrigley Field (Chicago) was originally known as Weeghman Park (1914–1919) and **Cubs Park** (1920–1926) before being renamed Wrigley Field in 1927. The **1942 Chicago Cubs** finished the MLB season in 6th place with a win-loss record of **68–86**.
+   - **Geography & Islands:**
+     - *Semichi Islands & Attu Island:* Semichi Islands (Near Islands group, Aleutian Islands, Alaska) are located southeast of **Attu Island** and northeast of Agattu Island. Attu Island officially became uninhabited in 2010 following the closure of the Casco Cove Coast Guard Station.
+
+4. **Formatting Output (CRITICAL):**
+   - **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+   - **Answer Field:** 
+     - **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+     - **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+
+---
+
+### Output Format:
+
+### reasoning
+[Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+
+### answer
+[Direct target entity/short answer only]
+--- input this agent received ---
+[[ ## question ## ]]
+The unfinished opera Modest Mussorgsky was written by a man who was a member of numeric group.
+
+[[ ## summary_1 ## ]]
+[Salammbô (Mussorgsky)] | An unfinished opera by Modest Mussorgsky based on a novel by Gustave Flaubert.
+[Khovanshchina] | An unfinished opera by Modest Mussorgsky, left unperformed at his death in 1881.
+[The Fair at Sorochyntsi] | A comic opera by Modest Mussorgsky based on Nikolai Gogol's story; it remained unfinished at the composer's death.
+[Zhenitba] | An unfinished opera begun by Mussorgsky in 1868.
+[The Fair at Sorochyntsi (short story)] | Notes that this opera was left unfinished by Mussorgsky and completed by other hands.
+
+[[ ## summary_2 ## ]]
+Modest Mussorgsky was a Russian composer noted for several unfinished operas, including *Salammbô*, *Khovanshchina*, *The Fair at Sorochyntsi*, and *Zhenitba*. Mussorgsky was a prominent member of a group of five influential 19th-century Russian composers who sought to establish a unique Russian musical identity. This group, which collaborated in Saint Petersburg between 1856 and 1870, is widely known as "The Five" (also called "The Mighty Handful" or "The New Russian School"). The other members of this group were Mily Balakirev, César Cui, Nikolai Rimsky-Korsakov, and Alexander Borodin.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the name of the numeric group to which the composer of several unfinished operas (Modest Mussorgsky) belonged. Summary 1 lists several of his unfinished works, such as *Khovanshchina* and *The Fair at Sorochyntsi*. Summary 2 correctly identifies that Modest Mussorgsky was a member of the influential group of five Russian composers known as "The Five," also referred to as "The Mighty Handful." The "numeric group" mentioned in the prompt refers to this group.
+
+[[ ## answer ## ]]
+The Five
+===== end of turn 4 =====
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT —
+[[ ## answer ## ]]
+The Five
+
+[[ ## hop1_docs ## ]]
+['Salammbô (Mussorgsky) | Salammbô (Russian: Саламбо, "Salambo" [alternative title: The Libyan (Russian: Ливиец, "Liviyets" )]) is an unfinished opera in 4 acts by Modest Mussorgsky.  The fragmentary Russian language libretto was written by the composer, and is based on the novel "Salammbô" (1862) by Gustave Flaubert, but includes verses taken from poems by Vasiliy Zhukovsky, Apollon Maykov, Aleksandr Polezhayev, and other Russian poets.', 'Khovanshchina | Khovanshchina (Russian: Хованщина , "Hovánščina", sometimes rendered The Khovansky Affair; since the ending -ščina is pejorative) is an opera (subtitled a \'national music drama\') in five acts by Modest Mussorgsky.  The work was written between 1872 and 1880 in St. Petersburg, Russia.  The composer wrote the libretto based on historical sources.  The opera was unfinished and unperformed when the composer died in 1881.', 'The Fair at Sorochyntsi | The Fair at Sorochyntsi (Russian: Сорочинская ярмарка , "Sorochinskaya yarmarka", "Sorochyntsi Fair") is a comic opera in three acts by Modest Mussorgsky, composed between 1874 and 1880 in St. Petersburg, Russia.  The composer wrote the libretto, which is based on Nikolai Gogol\'s short story of the same name, from his early (1832) collection of Ukrainian stories "Evenings on a Farm near Dikanka".  The opera remained unfinished and unperformed at Mussorgsky\'s death in 1881.', 'Zhenitba | Zhenitba (Russian: Женитьба , "Zhenit\'ba", "Marriage") is an unfinished opera begun in 1868 by Modest Mussorgsky to his own libretto based on Nikolai Gogol\'s comedy "Marriage".  This 1842 play is a satire of courtship and cowardice, which centres on a young woman, Agafya, who is wooed by four bachelors, each with his own idiosyncrasies.', 'The Fair at Sorochyntsi (short story) | "The Fair at Sorochyntsi" is the first story in the collection "Evenings on a Farm Near Dikanka" by Ukrainian-born writer Nikolai Gogol.  Later in the 19th-century the story was adapted as an opera of the same name by Modest Mussorgsky (left unfinished by the composer, and completed by other hands).', 'Boris Godunov (opera) | Boris Godunov (Russian: Борис Годунов , "Borís Godunóv") is an opera by Modest Mussorgsky (1839–1881).  The work was composed between 1868 and 1873 in Saint Petersburg, Russia.  It is Mussorgsky\'s only completed opera and is considered his masterpiece.  Its subjects are the Russian ruler Boris Godunov, who reigned as Tsar (1598 to 1605) during the Time of Troubles, and his nemesis, the False Dmitriy (reigned 1605 to 1606).  The Russian-language libretto was written by the composer, and is based on the drama "Boris Godunov" by Aleksandr Pushkin, and, in the Revised Version of 1872, on Nikolay Karamzin\'s "History of the Russian State".', 'Vyacheslav Nagovitsin | Vyacheslav Lavrent\'yevich Nagovitsin (Russian: Вячеслав Лаврентьевич Наговицин ) is a Russian composer born in Magnitogorsk (21 December 1939).  He was a student of Dmitri Shostakovich at the Leningrad Conservatory that he graduated in 1966 (postgraduate school, he graduated from the undergraduate school of the Conservatory in 1963).  In 1963-1964 he worked in "Ulan-Ude Opera and Ballet Theater".  In 1966-1970 he was a lecturer at the Mussorgsky Musical School in Leningrad.  In 1968-1970 he also worked as the Music Director of the Leningrad Comedy Theatre.  Since 1970 he became a professor at the Leningrad Conservatory.  He orchestrated two unfinished operas of Modest Mussorgsky: Zhenitba and Salammbô.  His orchestration of Salammbô was used by Valery Gergiev at the Mérida festival in 1991.']
+
+[[ ## hop2_docs ## ]]
+['Modest Mussorgsky | Modest Petrovich Mussorgsky (Russian: Моде́ст Петро́вич Му́соргский ; ] ; 21 March\xa0[O.S. 9 March]\xa01839 – 28 March\xa0[O.S. 16 March]\xa01881 ) was a Russian composer, one of the group known as "The Five".  He was an innovator of Russian music in the romantic period.  He strove to achieve a uniquely Russian musical identity, often in deliberate defiance of the established conventions of Western music.', 'Russian Easter Festival Overture | Russian Easter Festival Overture: Overture on Liturgical Themes (Russian: Светлый праздник, "Svetliy prazdnik" ), Op.  36, also known as the Great Russian Easter Overture, is a concert overture written by the Russian composer Nikolai Rimsky-Korsakov between August 1887 and April 1888.  It was dedicated to the memories of Modest Mussorgsky and Alexander Borodin, two members of the group of composers known in English as "The Five".  It is the last of what many call his three most exceptionally brilliant orchestral works, preceded by "Capriccio Espagnol" and "Scheherazade".  The work received its premiere at a Russian symphony concert in St. Petersburg in late December 1888.', 'Mussorgsky family | Mussorgsky (Russian: Му́соргские ), the name of an old Russian noble family, which is one of the branches of rich boyar family of Monastyrev, descendants of princes of Smolensk from Rurikid stock.  The family traces its name to Roman Vasilyevich Monastyrev, nicknamed Mussorga (18th generation from Rurik).  Peter Ivanovich Mussorgsky governed Staritsa in 1620.  One representative of this family is the great composer Modest Petrovich Mussorgsky.', 'Mussorgsky (film) | Mussorgsky (Russian: Мусоргский , "Musorgskiy " ) is a 1950 Soviet biopic film directed by Grigori Roshal, about the emergence of Russian composer Modest Mussorgsky.  It was entered into the 1951 Cannes Film Festival.', 'Mussorgsky Peaks | Mussorgsky Peaks ( ) are two rocky peaks rising to about 500 m lying northwest of Mount Grieg on the base of the Derocher Peninsula, a minor, ice-covered peninsula that protrudes out from the Beethoven Peninsula into the Wilkins Ice Shelf in the southwest portion of Alexander Island, Antarctica.  A number of peaks in this vicinity first appear on maps by the Ronne Antarctic Research Expedition (RARE), 1947-48.  These peaks, apparently included within that group, were mapped from RARE air photos by Searle of the Falkland Islands Dependencies Survey (FIDS) in 1960.  Named by the United Kingdom Antarctic Place-Names Committee (UK-APC) after Modeste Mussorgsky (1839–81), Russian composer.', 'Salammbô (Mussorgsky) | Salammbô (Russian: Саламбо, "Salambo" [alternative title: The Libyan (Russian: Ливиец, "Liviyets" )]) is an unfinished opera in 4 acts by Modest Mussorgsky.  The fragmentary Russian language libretto was written by the composer, and is based on the novel "Salammbô" (1862) by Gustave Flaubert, but includes verses taken from poems by Vasiliy Zhukovsky, Apollon Maykov, Aleksandr Polezhayev, and other Russian poets.', 'The Mighty Handful | The Mighty Handful (Russian: Могучая кучка ), also known as The Five and The New Russian School, were five prominent 19th-century Russian composers who worked together to create a distinctly Russian classical music.  Mily Balakirev (the leader), César Cui, Modest Mussorgsky, Nikolai Rimsky-Korsakov and Alexander Borodin all lived in Saint Petersburg, and collaborated from 1856 to 1870.']
+
+### trace 64a6b36205abf1d6cac2bbe7
+===== ENVIRONMENT · not an agent turn =====
+Task: multi-hop question answering over Wikipedia abstracts. Two BM25 retrieval hops are executed, each summarized, before a final answer is produced.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 executed. Documents returned:
+['Bart the Daredevil | "Bart the Daredevil" is the eighth episode of "The Simpsons"\' second season.  It originally aired on the Fox network in the United States on December 6, 1990.  It was written by Jay Kogen and Wallace Wolodarsky and directed by Wes Archer.  In the episode, the Simpsons go to a monster truck rally that features famous daredevil Lance Murdock.  Bart immediately becomes enamored and decides that he wants to become a daredevil as well.  Bart\'s first stunt ends in injury, and despite the family and Dr. Hibbert\'s best efforts, he continues to attempt stunts.', 'Dr. Hibbert | Dr. Julius M. Hibbert, usually referred to as Dr. Hibbert, is a recurring character on the animated series "The Simpsons".  His speaking voice is provided by Harry Shearer and his singing voice was by Thurl Ravenscroft, and he first appeared in the episode "Bart the Daredevil".  Dr. Hibbert is Springfield\'s most prominent and competent doctor, though he sometimes makes no effort to hide or makes light of his high prices.  Dr. Hibbert is very good-natured, and is known for finding a reason to laugh at nearly every situation.', 'Homer\'s Triple Bypass | "Homer\'s Triple Bypass" is the eleventh episode in the fourth season of "The Simpsons".  It originally aired on the Fox network in the United States on December 17, 1992.  In the episode, Homer Simpson suffers a heart attack when Mr. Burns shouts at him at work.  Dr. Hibbert tells Homer that he needs a triple bypass, but the Simpson family resorts to a discount surgeon after learning how expensive the operation would be in a regular hospital.  The episode was written by Gary Apple and Michael Carrington and directed by David Silverman.', 'Nuke (Marvel Comics) | Nuke (real name Frank Simpson) is a fictional supervillain appearing in American comic books published by Marvel Comics.  Created by writer Frank Miller and artist David Mazzucchelli, the character first appeared in "Daredevil" #232 (July 1986).  Nuke\'s most distinguishing feature is an American Flag tattooed on his face.', 'Grampa Simpson | Abraham Jedediah Simpson II, often known as Grampa, is a fictional character in the animated television series "The Simpsons".  He made his first appearance in the episode entitled "Grampa and the Kids", a Simpsons short on "The Tracey Ullman Show".  Voiced by Dan Castellaneta, he is the father of Homer Simpson and the grandfather of Bart, Lisa and Maggie Simpson.  In the 1000th issue of "Entertainment Weekly", Grampa was selected as the Grandpa for "The Perfect TV Family".', 'The Simpsons Spin-Off Showcase | "The Simpsons Spin-Off Showcase" is the twenty-fourth episode of the eighth season of "The Simpsons".  It originally aired on the Fox network in the United States on May 11, 1997.  The episode centers on fictional pilot episodes of non-existent television series derived from "The Simpsons", and is a parody of the tendency of networks to spin off characters from a hit series.  As such it includes references to many different TV series.  The first fictional spin-off is "Chief Wiggum P.I.", a cop-drama featuring Chief Wiggum and Seymour Skinner.  The second is "The Love-matic Grampa", a sitcom featuring Moe Szyslak who receives dating advice from Abraham Simpson, whose ghost is possessing a love testing machine.  The final segment is "The Simpson Family Smile-Time Variety Hour", a variety show featuring the Simpson family except for Lisa, who has been replaced.', 'The Itchy &amp; Scratchy Show | The Itchy & Scratchy Show (often shortened as Itchy & Scratchy) is a running gag and fictional animated television series featured in the American animated television series "The Simpsons".  It usually appears as a part of "The Krusty the Clown Show", watched regularly by Bart Simpson and Lisa Simpson.  Itself an animated cartoon, "The Itchy & Scratchy Show" depicts a sadistic anthropomorphic blue mouse, Itchy (voiced by Dan Castellaneta), who repeatedly maims and kills an anthropomorphic, hapless threadbare black cat, Scratchy (voiced by Harry Shearer).  The cartoon first appeared in "The Tracey Ullman Show" short "The Bart Simpson Show", which originally aired November 20, 1988.  The cartoon\'s first appearance in "The Simpsons" was in the 1990 episode "There\'s No Disgrace Like Home".  Typically presented as 15-to-60-second-long cartoons, the show is filled with gratuitous violence.  "The Simpsons" also occasionally features characters who are involved with the production of "The Itchy & Scratchy Show", including Roger Meyers Jr. (voiced by Alex Rocco, and, later, Hank Azaria), who runs the studio and produces the show.']
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize1.predict
+You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system. Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+
+### Primary Objectives
+1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+
+---
+
+### Step-by-Step Execution Guide
+
+1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+2. **Filter & Extract Passages**:
+   - Identify which retrieved passages directly address parts of the question.
+   - Ignore irrelevant passages.
+   - Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+3. **Identify Bridging Concepts**:
+   - Clearly state what has been proven by the current passages.
+   - Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+4. **Synthesize into `summary`**:
+   - Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+   - Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+
+---
+
+### Input Format
+- `question`: The user's multi-hop question.
+- `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+
+---
+
+### Output Format
+
+```
+### reasoning
+[Step-by-step analysis identifying:
+ 1. Which passages are relevant and what facts they establish.
+ 2. The bridging entity or concept needed to answer the complete question.
+ 3. What specific missing information needs to be retrieved in the second hop.]
+
+### summary
+[Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+[Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+...
+```
+--- input this agent received ---
+[[ ## question ## ]]
+In the Simpson's episode where the character Dr. Hibbert first appeared, the Simpsons go to a Monster Truck rally that features what daredevil?
+
+[[ ## passages ## ]]
+['Bart the Daredevil | "Bart the Daredevil" is the eighth episode of "The Simpsons"\' second season.  It originally aired on the Fox network in the United States on December 6, 1990.  It was written by Jay Kogen and Wallace Wolodarsky and directed by Wes Archer.  In the episode, the Simpsons go to a monster truck rally that features famous daredevil Lance Murdock.  Bart immediately becomes enamored and decides that he wants to become a daredevil as well.  Bart\'s first stunt ends in injury, and despite the family and Dr. Hibbert\'s best efforts, he continues to attempt stunts.', 'Dr. Hibbert | Dr. Julius M. Hibbert, usually referred to as Dr. Hibbert, is a recurring character on the animated series "The Simpsons".  His speaking voice is provided by Harry Shearer and his singing voice was by Thurl Ravenscroft, and he first appeared in the episode "Bart the Daredevil".  Dr. Hibbert is Springfield\'s most prominent and competent doctor, though he sometimes makes no effort to hide or makes light of his high prices.  Dr. Hibbert is very good-natured, and is known for finding a reason to laugh at nearly every situation.', 'Homer\'s Triple Bypass | "Homer\'s Triple Bypass" is the eleventh episode in the fourth season of "The Simpsons".  It originally aired on the Fox network in the United States on December 17, 1992.  In the episode, Homer Simpson suffers a heart attack when Mr. Burns shouts at him at work.  Dr. Hibbert tells Homer that he needs a triple bypass, but the Simpson family resorts to a discount surgeon after learning how expensive the operation would be in a regular hospital.  The episode was written by Gary Apple and Michael Carrington and directed by David Silverman.', 'Nuke (Marvel Comics) | Nuke (real name Frank Simpson) is a fictional supervillain appearing in American comic books published by Marvel Comics.  Created by writer Frank Miller and artist David Mazzucchelli, the character first appeared in "Daredevil" #232 (July 1986).  Nuke\'s most distinguishing feature is an American Flag tattooed on his face.', 'Grampa Simpson | Abraham Jedediah Simpson II, often known as Grampa, is a fictional character in the animated television series "The Simpsons".  He made his first appearance in the episode entitled "Grampa and the Kids", a Simpsons short on "The Tracey Ullman Show".  Voiced by Dan Castellaneta, he is the father of Homer Simpson and the grandfather of Bart, Lisa and Maggie Simpson.  In the 1000th issue of "Entertainment Weekly", Grampa was selected as the Grandpa for "The Perfect TV Family".', 'The Simpsons Spin-Off Showcase | "The Simpsons Spin-Off Showcase" is the twenty-fourth episode of the eighth season of "The Simpsons".  It originally aired on the Fox network in the United States on May 11, 1997.  The episode centers on fictional pilot episodes of non-existent television series derived from "The Simpsons", and is a parody of the tendency of networks to spin off characters from a hit series.  As such it includes references to many different TV series.  The first fictional spin-off is "Chief Wiggum P.I.", a cop-drama featuring Chief Wiggum and Seymour Skinner.  The second is "The Love-matic Grampa", a sitcom featuring Moe Szyslak who receives dating advice from Abraham Simpson, whose ghost is possessing a love testing machine.  The final segment is "The Simpson Family Smile-Time Variety Hour", a variety show featuring the Simpson family except for Lisa, who has been replaced.', 'The Itchy &amp; Scratchy Show | The Itchy & Scratchy Show (often shortened as Itchy & Scratchy) is a running gag and fictional animated television series featured in the American animated television series "The Simpsons".  It usually appears as a part of "The Krusty the Clown Show", watched regularly by Bart Simpson and Lisa Simpson.  Itself an animated cartoon, "The Itchy & Scratchy Show" depicts a sadistic anthropomorphic blue mouse, Itchy (voiced by Dan Castellaneta), who repeatedly maims and kills an anthropomorphic, hapless threadbare black cat, Scratchy (voiced by Harry Shearer).  The cartoon first appeared in "The Tracey Ullman Show" short "The Bart Simpson Show", which originally aired November 20, 1988.  The cartoon\'s first appearance in "The Simpsons" was in the 1990 episode "There\'s No Disgrace Like Home".  Typically presented as 15-to-60-second-long cartoons, the show is filled with gratuitous violence.  "The Simpsons" also occasionally features characters who are involved with the production of "The Itchy & Scratchy Show", including Roger Meyers Jr. (voiced by Alex Rocco, and, later, Hank Azaria), who runs the studio and produces the show.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Analyze the Question**: The user asks for the name of a daredevil featured in a monster truck rally in the same Simpsons episode where the character Dr. Hibbert made his debut appearance.
+2. **Filter & Extract Passages**: 
+   - Passage [2] confirms that Dr. Hibbert's first appearance was in the episode "Bart the Daredevil".
+   - Passage [1] confirms that in the episode "Bart the Daredevil", the Simpsons attend a monster truck rally that features the famous daredevil "Lance Murdock".
+3. **Identify Bridging Concepts**: The bridge between the two pieces of information is the episode title "Bart the Daredevil". The query is fully answered by the retrieved passages.
+4. **Synthesize**: No further retrieval is necessary as the specific daredevil is explicitly mentioned in the context of the episode where Dr. Hibbert first appeared.
+
+[[ ## summary ## ]]
+[Dr. Hibbert] | Dr. Julius M. Hibbert first appeared in the episode titled "Bart the Daredevil".
+[Bart the Daredevil] | In the episode "Bart the Daredevil", the Simpsons go to a monster truck rally that features famous daredevil Lance Murdock.
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `query` (str):
+Component: create_query_hop2.predict
+Given the fields `question`, `summary_1`, produce the fields `query`.
+--- input this agent received ---
+[[ ## question ## ]]
+In the Simpson's episode where the character Dr. Hibbert first appeared, the Simpsons go to a Monster Truck rally that features what daredevil?
+
+[[ ## summary_1 ## ]]
+[Dr. Hibbert] | Dr. Julius M. Hibbert first appeared in the episode titled "Bart the Daredevil".
+[Bart the Daredevil] | In the episode "Bart the Daredevil", the Simpsons go to a monster truck rally that features famous daredevil Lance Murdock.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the name of the daredevil featured at the monster truck rally in the episode where Dr. Hibbert first appears. The provided summary confirms that Dr. Hibbert's first appearance is in "Bart the Daredevil," and that same episode features a monster truck rally with the daredevil Lance Murdock.
+
+[[ ## query ## ]]
+Lance Murdock
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 executed. Documents returned:
+['Murdock, Kansas | Murdock is an unincorporated community in Kingman County, Kansas, United States.  Murdock is 10 mi east-southeast of Kingman.  Murdock has a post office with ZIP code 67111.', 'Jack Murdock (comics) | Jack Murdock is a fictional character appearing in American comic books published by Marvel Comics.  He is the father of Matt Murdock known as the superhero Daredevil and the ex-husband of Maggie Murdock.', 'Maggie Murdock | Margaret Grace "Maggie" Murdock is a fictional character appearing in American comic books published by Marvel Comics.  She is the ex-wife of Jack Murdock and the mother of Matt Murdock who grew up to become the superhero known as Daredevil.  Maggie Murdock was created by writer-editor Frank Miller and artist David Mazzucchelli.  The character first appeared in "Daredevil" #229 (April 1986).', 'Bart the Daredevil | "Bart the Daredevil" is the eighth episode of "The Simpsons"\' second season.  It originally aired on the Fox network in the United States on December 6, 1990.  It was written by Jay Kogen and Wallace Wolodarsky and directed by Wes Archer.  In the episode, the Simpsons go to a monster truck rally that features famous daredevil Lance Murdock.  Bart immediately becomes enamored and decides that he wants to become a daredevil as well.  Bart\'s first stunt ends in injury, and despite the family and Dr. Hibbert\'s best efforts, he continues to attempt stunts.', 'Murdock River | The Murdock River (French: Rivière Murdock) is a river in Sudbury District in Northeastern Ontario, Canada.  It is in the Lake Huron drainage basin and is a right tributary of the French River.', 'Murdock, Minnesota | Murdock is a city in Swift County, Minnesota, United States.  The population was 278 at the 2010 census.  The city is part of the Kerhoven-Murdock-Sunburg (KMS) school district.', 'Ann Murdock | Ann Murdock (November 10, 1890 – April 22, 1939) was a stage and silent film actress popular during the 1910s.  She is sometimes billed as Anna Murdock.']
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `context` (str):
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize2.predict
+You are the **summary generation module** in a multi-hop Question Answering (QA) system. Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary. 
+
+This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context. Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+
+---
+
+### **Input Format**
+1. `question`: The multi-hop target question that needs to be answered.
+2. `context`: An intermediate summary or background context available from previous hops.
+3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+
+---
+
+### **Output Format**
+Your output must contain two sections:
+
+1. `reasoning`: A step-by-step breakdown analyzing:
+   - What the question is specifically asking for and what the target answer type/entity is.
+   - What critical facts and entity relationships are present in the `context` and `passages`.
+   - How to logically connect and synthesize these pieces of information to fully support the answer.
+
+2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+
+---
+
+### **Key Rules & Strategy**
+
+1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+2. **Synthesis & Integration**: Do not simply repeat individual passages. Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question. Exclude irrelevant side details present in retrieved passages.
+4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+--- input this agent received ---
+[[ ## question ## ]]
+In the Simpson's episode where the character Dr. Hibbert first appeared, the Simpsons go to a Monster Truck rally that features what daredevil?
+
+[[ ## context ## ]]
+[Dr. Hibbert] | Dr. Julius M. Hibbert first appeared in the episode titled "Bart the Daredevil".
+[Bart the Daredevil] | In the episode "Bart the Daredevil", the Simpsons go to a monster truck rally that features famous daredevil Lance Murdock.
+
+[[ ## passages ## ]]
+['Murdock, Kansas | Murdock is an unincorporated community in Kingman County, Kansas, United States.  Murdock is 10 mi east-southeast of Kingman.  Murdock has a post office with ZIP code 67111.', 'Jack Murdock (comics) | Jack Murdock is a fictional character appearing in American comic books published by Marvel Comics.  He is the father of Matt Murdock known as the superhero Daredevil and the ex-husband of Maggie Murdock.', 'Maggie Murdock | Margaret Grace "Maggie" Murdock is a fictional character appearing in American comic books published by Marvel Comics.  She is the ex-wife of Jack Murdock and the mother of Matt Murdock who grew up to become the superhero known as Daredevil.  Maggie Murdock was created by writer-editor Frank Miller and artist David Mazzucchelli.  The character first appeared in "Daredevil" #229 (April 1986).', 'Bart the Daredevil | "Bart the Daredevil" is the eighth episode of "The Simpsons"\' second season.  It originally aired on the Fox network in the United States on December 6, 1990.  It was written by Jay Kogen and Wallace Wolodarsky and directed by Wes Archer.  In the episode, the Simpsons go to a monster truck rally that features famous daredevil Lance Murdock.  Bart immediately becomes enamored and decides that he wants to become a daredevil as well.  Bart\'s first stunt ends in injury, and despite the family and Dr. Hibbert\'s best efforts, he continues to attempt stunts.', 'Murdock River | The Murdock River (French: Rivière Murdock) is a river in Sudbury District in Northeastern Ontario, Canada.  It is in the Lake Huron drainage basin and is a right tributary of the French River.', 'Murdock, Minnesota | Murdock is a city in Swift County, Minnesota, United States.  The population was 278 at the 2010 census.  The city is part of the Kerhoven-Murdock-Sunburg (KMS) school district.', 'Ann Murdock | Ann Murdock (November 10, 1890 – April 22, 1939) was a stage and silent film actress popular during the 1910s.  She is sometimes billed as Anna Murdock.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Identify the core requirement:** The question asks for the name of the daredevil featured at the monster truck rally in the Simpsons episode where Dr. Hibbert makes his first appearance.
+2. **Analyze context and passages:** The context confirms that Dr. Hibbert's first appearance is in the episode "Bart the Daredevil". Passage [4] corroborates this, stating that "Bart the Daredevil" is the eighth episode of season two and explicitly mentions that the Simpsons attend a monster truck rally featuring the daredevil "Lance Murdock".
+3. **Synthesize information:** The context identifies the episode, and passage [4] provides the specific name of the daredevil. Other passages regarding various "Murdock" entities (locations, Marvel characters) are irrelevant and can be discarded.
+4. **Draft the summary:** Combine the episode title, the fact that it is Dr. Hibbert's first appearance, and the identify of the daredevil (Lance Murdock) to provide a complete answer.
+
+[[ ## summary ## ]]
+Dr. Julius M. Hibbert made his first appearance in the eighth episode of the second season of *The Simpsons*, titled "Bart the Daredevil." In this episode, the Simpson family attends a monster truck rally that features a performance by the famous daredevil Lance Murdock. Bart Simpson becomes inspired to pursue stunts after witnessing Murdock's performance.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: final_answer =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `answer` (str):
+Component: final_answer.predict
+You are an expert question-answering assistant. You will be provided with three input fields: `question`, `summary_1`, and `summary_2`. Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+
+---
+
+### Task Execution Guidelines:
+
+1. **Question Analysis & Attribute Precision:**
+   - Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. full real name).
+   - **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria. Ensure the target entity strictly satisfies *all* specified traits/roles.
+   - **Name Format & Canonical Naming Precision:** When identifying people, prefer their complete, fully expanded proper name (including full middle names, e.g., "George Emil Bria" rather than "George E. Bria") unless specified otherwise.
+
+2. **Evaluating Summaries vs. World Knowledge:**
+   - Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+   - Summaries can be distractor-laden, incomplete, or misleading. If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+   - Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+
+3. **Domain-Specific Reference Knowledge:**
+   - **Musicians & Bands:**
+     - *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*). Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+   - **Wrestling & Tag Teams:**
+     - *Terry Gene Bollea:* Better known as **Hulk Hogan**. His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+   - **Film Industry & Shared Nationalities:**
+     - *Aram Avakian & Wilfred Lucas:* Share **American** nationality. Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*). Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+   - **Journalists & Historical Figures:**
+     - *George Emil Bria:* Full canonical name **George Emil Bria** (1916–2017). Italian-American Associated Press (AP) war correspondent during WWII Italian Campaign who reported on German surrenders and witnessed the body of Benito Mussolini in Milan. Always output the full name "George Emil Bria" rather than using middle initials.
+   - **Baseball & Stadium History:**
+     - *Wrigley Field / Cubs Park:* Wrigley Field (Chicago) was originally known as Weeghman Park (1914–1919) and **Cubs Park** (1920–1926) before being renamed Wrigley Field in 1927. The **1942 Chicago Cubs** finished the MLB season in 6th place with a win-loss record of **68–86**.
+   - **Geography & Islands:**
+     - *Semichi Islands & Attu Island:* Semichi Islands (Near Islands group, Aleutian Islands, Alaska) are located southeast of **Attu Island** and northeast of Agattu Island. Attu Island officially became uninhabited in 2010 following the closure of the Casco Cove Coast Guard Station.
+
+4. **Formatting Output (CRITICAL):**
+   - **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+   - **Answer Field:** 
+     - **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+     - **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+
+---
+
+### Output Format:
+
+### reasoning
+[Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+
+### answer
+[Direct target entity/short answer only]
+--- input this agent received ---
+[[ ## question ## ]]
+In the Simpson's episode where the character Dr. Hibbert first appeared, the Simpsons go to a Monster Truck rally that features what daredevil?
+
+[[ ## summary_1 ## ]]
+[Dr. Hibbert] | Dr. Julius M. Hibbert first appeared in the episode titled "Bart the Daredevil".
+[Bart the Daredevil] | In the episode "Bart the Daredevil", the Simpsons go to a monster truck rally that features famous daredevil Lance Murdock.
+
+[[ ## summary_2 ## ]]
+Dr. Julius M. Hibbert made his first appearance in the eighth episode of the second season of *The Simpsons*, titled "Bart the Daredevil." In this episode, the Simpson family attends a monster truck rally that features a performance by the famous daredevil Lance Murdock. Bart Simpson becomes inspired to pursue stunts after witnessing Murdock's performance.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the name of the daredevil featured at the monster truck rally in the episode where Dr. Julius M. Hibbert makes his first appearance. Both summaries correctly identify this episode as "Bart the Daredevil" (Season 2, Episode 8). In this episode, the family attends a rally where the stuntman Lance Murdock performs a dangerous jump, which inspires Bart to become a daredevil. The facts are consistent across both summaries and verified against series history.
+
+[[ ## answer ## ]]
+Lance Murdock
+===== end of turn 4 =====
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT —
+[[ ## answer ## ]]
+Lance Murdock
+
+[[ ## hop1_docs ## ]]
+['Bart the Daredevil | "Bart the Daredevil" is the eighth episode of "The Simpsons"\' second season.  It originally aired on the Fox network in the United States on December 6, 1990.  It was written by Jay Kogen and Wallace Wolodarsky and directed by Wes Archer.  In the episode, the Simpsons go to a monster truck rally that features famous daredevil Lance Murdock.  Bart immediately becomes enamored and decides that he wants to become a daredevil as well.  Bart\'s first stunt ends in injury, and despite the family and Dr. Hibbert\'s best efforts, he continues to attempt stunts.', 'Dr. Hibbert | Dr. Julius M. Hibbert, usually referred to as Dr. Hibbert, is a recurring character on the animated series "The Simpsons".  His speaking voice is provided by Harry Shearer and his singing voice was by Thurl Ravenscroft, and he first appeared in the episode "Bart the Daredevil".  Dr. Hibbert is Springfield\'s most prominent and competent doctor, though he sometimes makes no effort to hide or makes light of his high prices.  Dr. Hibbert is very good-natured, and is known for finding a reason to laugh at nearly every situation.', 'Homer\'s Triple Bypass | "Homer\'s Triple Bypass" is the eleventh episode in the fourth season of "The Simpsons".  It originally aired on the Fox network in the United States on December 17, 1992.  In the episode, Homer Simpson suffers a heart attack when Mr. Burns shouts at him at work.  Dr. Hibbert tells Homer that he needs a triple bypass, but the Simpson family resorts to a discount surgeon after learning how expensive the operation would be in a regular hospital.  The episode was written by Gary Apple and Michael Carrington and directed by David Silverman.', 'Nuke (Marvel Comics) | Nuke (real name Frank Simpson) is a fictional supervillain appearing in American comic books published by Marvel Comics.  Created by writer Frank Miller and artist David Mazzucchelli, the character first appeared in "Daredevil" #232 (July 1986).  Nuke\'s most distinguishing feature is an American Flag tattooed on his face.', 'Grampa Simpson | Abraham Jedediah Simpson II, often known as Grampa, is a fictional character in the animated television series "The Simpsons".  He made his first appearance in the episode entitled "Grampa and the Kids", a Simpsons short on "The Tracey Ullman Show".  Voiced by Dan Castellaneta, he is the father of Homer Simpson and the grandfather of Bart, Lisa and Maggie Simpson.  In the 1000th issue of "Entertainment Weekly", Grampa was selected as the Grandpa for "The Perfect TV Family".', 'The Simpsons Spin-Off Showcase | "The Simpsons Spin-Off Showcase" is the twenty-fourth episode of the eighth season of "The Simpsons".  It originally aired on the Fox network in the United States on May 11, 1997.  The episode centers on fictional pilot episodes of non-existent television series derived from "The Simpsons", and is a parody of the tendency of networks to spin off characters from a hit series.  As such it includes references to many different TV series.  The first fictional spin-off is "Chief Wiggum P.I.", a cop-drama featuring Chief Wiggum and Seymour Skinner.  The second is "The Love-matic Grampa", a sitcom featuring Moe Szyslak who receives dating advice from Abraham Simpson, whose ghost is possessing a love testing machine.  The final segment is "The Simpson Family Smile-Time Variety Hour", a variety show featuring the Simpson family except for Lisa, who has been replaced.', 'The Itchy &amp; Scratchy Show | The Itchy & Scratchy Show (often shortened as Itchy & Scratchy) is a running gag and fictional animated television series featured in the American animated television series "The Simpsons".  It usually appears as a part of "The Krusty the Clown Show", watched regularly by Bart Simpson and Lisa Simpson.  Itself an animated cartoon, "The Itchy & Scratchy Show" depicts a sadistic anthropomorphic blue mouse, Itchy (voiced by Dan Castellaneta), who repeatedly maims and kills an anthropomorphic, hapless threadbare black cat, Scratchy (voiced by Harry Shearer).  The cartoon first appeared in "The Tracey Ullman Show" short "The Bart Simpson Show", which originally aired November 20, 1988.  The cartoon\'s first appearance in "The Simpsons" was in the 1990 episode "There\'s No Disgrace Like Home".  Typically presented as 15-to-60-second-long cartoons, the show is filled with gratuitous violence.  "The Simpsons" also occasionally features characters who are involved with the production of "The Itchy & Scratchy Show", including Roger Meyers Jr. (voiced by Alex Rocco, and, later, Hank Azaria), who runs the studio and produces the show.']
+
+[[ ## hop2_docs ## ]]
+['Murdock, Kansas | Murdock is an unincorporated community in Kingman County, Kansas, United States.  Murdock is 10 mi east-southeast of Kingman.  Murdock has a post office with ZIP code 67111.', 'Jack Murdock (comics) | Jack Murdock is a fictional character appearing in American comic books published by Marvel Comics.  He is the father of Matt Murdock known as the superhero Daredevil and the ex-husband of Maggie Murdock.', 'Maggie Murdock | Margaret Grace "Maggie" Murdock is a fictional character appearing in American comic books published by Marvel Comics.  She is the ex-wife of Jack Murdock and the mother of Matt Murdock who grew up to become the superhero known as Daredevil.  Maggie Murdock was created by writer-editor Frank Miller and artist David Mazzucchelli.  The character first appeared in "Daredevil" #229 (April 1986).', 'Bart the Daredevil | "Bart the Daredevil" is the eighth episode of "The Simpsons"\' second season.  It originally aired on the Fox network in the United States on December 6, 1990.  It was written by Jay Kogen and Wallace Wolodarsky and directed by Wes Archer.  In the episode, the Simpsons go to a monster truck rally that features famous daredevil Lance Murdock.  Bart immediately becomes enamored and decides that he wants to become a daredevil as well.  Bart\'s first stunt ends in injury, and despite the family and Dr. Hibbert\'s best efforts, he continues to attempt stunts.', 'Murdock River | The Murdock River (French: Rivière Murdock) is a river in Sudbury District in Northeastern Ontario, Canada.  It is in the Lake Huron drainage basin and is a right tributary of the French River.', 'Murdock, Minnesota | Murdock is a city in Swift County, Minnesota, United States.  The population was 278 at the 2010 census.  The city is part of the Kerhoven-Murdock-Sunburg (KMS) school district.', 'Ann Murdock | Ann Murdock (November 10, 1890 – April 22, 1939) was a stage and silent film actress popular during the 1910s.  She is sometimes billed as Anna Murdock.']
+
+### trace 6cd0178582a7537fdea700d7
+===== ENVIRONMENT · not an agent turn =====
+Task: multi-hop question answering over Wikipedia abstracts. Two BM25 retrieval hops are executed, each summarized, before a final answer is produced.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 executed. Documents returned:
+['Dicephalic parapagus twins | Dicephalic parapagus is a rare form of partial twinning where there are two heads side by side on one torso.  Infants conjoined this way are sometimes called "two-headed babies" in popular media.  The condition is also called parapagus dicephalus.', 'Abby and Brittany Hensel | Abigail Loraine "Abby" Hensel and Brittany Lee Hensel (born March 7, 1990) are American dicephalic parapagus twins; in other words, they are conjoined twins, each of whom has a separate head, but whose bodies are joined.  They are highly symmetric for conjoined twins, giving the appearance of having a single body without marked variation from normal proportions.  In fact, several vital organs are doubled; each twin has a separate heart, stomach, spine, pair of lungs, and spinal cord.', 'Abby &amp; Brittany | Abby & Brittany was an American reality show on TLC starring 22-year-old conjoined twins Abby and Brittany Hensel that premiered on August 28, 2012.  The show features their graduation from Bethel University, subsequent job search, and their travels in Europe.  It was broadcast on BBC Three in the UK in April and May 2013, as three 60-minute episodes.', 'The Politician\'s Husband | The Politician\'s Husband is a three-episode British television miniseries, first shown on BBC Two between 25 April and 9 May 2013.  Written by Paula Milne, it makes a pair with her 1995 drama "The Politician\'s Wife".', 'Five Minutes to a Fortune | Five Minutes to a Fortune is a British game show, which aired on Channel 4 from 6 April 2013 to 5 May 2013 and was hosted by Davina McCall.  It offered pairs of contestants the chance to win a top prize of £50,000 (or £100,000 for celebrity specials).  The show aired weekdays at 5:00pm but was unable to generate high ratings to compete with ITV\'s "The Chase" and BBC\'s "Pointless", both of which air roughly in the same timeslot.', "Lip Service (TV series) | Lip Service is a British television serial drama portraying the lives of a group of lesbians living in Glasgow, Scotland.  Production on the show, which stars Laura Fraser, Ruta Gedmintas and Fiona Button, began in summer 2009 in Glasgow.  The show debuted on BBC Three on 12 October 2010.  Filming on a second series was confirmed in late 2010, with filming beginning on 30 May 2011.  The second series aired on BBC Three from 20 April 2012.  In January 2013, show's creator, Harriet Braun, announced that BBC Three cancelled the series without explanation.", 'James May\'s Things You Need to Know | James May\'s Things You Need to Know is a British television series presented by "Top Gear" presenter James May.  The first, three-part series was aired on BBC Two between 20 June and 4 July 2011.  A second, six-part series was aired on BBC Two starting 13 August 2012.  The show answers key questions on aspects of everyday life, including what makes up the human body, what a cloud is and what makes the universe work so effectively.  The first series has yet to be released on DVD.']
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize1.predict
+You are the first-hop **summarization module** in a multi-hop Question Answering (QA) system. Your task is to analyze an initial question alongside a set of top-retrieved first-hop passages, then produce a `reasoning` trace and a structured `summary`.
+
+### Primary Objectives
+1. **Enable Second-Hop Retrieval**: Extract and highlight key bridging entities, connections, relationships, and missing factual links needed to form a focused, effective follow-up search query.
+2. **Ground Answer Generation**: Distill and preserve critical details from relevant passages to serve as a factual foundation for downstream answer generation modules.
+
+---
+
+### Step-by-Step Execution Guide
+
+1. **Analyze the Question**: Break down the question into its multi-hop components (e.g., target entity, intermediate entity, properties, dates).
+2. **Filter & Extract Passages**:
+   - Identify which retrieved passages directly address parts of the question.
+   - Ignore irrelevant passages.
+   - Extract exact key facts, entity names, dates, and relationships from the relevant documents.
+3. **Identify Bridging Concepts**:
+   - Clearly state what has been proven by the current passages.
+   - Explicitly highlight the bridging entity (e.g., band name, person, location) that connects the current information to missing information.
+4. **Synthesize into `summary`**:
+   - Do not just write a compressed sentence; synthesize facts structured around the relevant retrieved documents using the format: `[Document Title] | [Key Fact / Extracted Sentence]`.
+   - Preserve exact entity names, titles, and facts needed to query remaining missing information in the next hop.
+
+---
+
+### Input Format
+- `question`: The user's multi-hop question.
+- `passages`: A list of retrieved text passages (formatted as `"Title | Text"`).
+
+---
+
+### Output Format
+
+```
+### reasoning
+[Step-by-step analysis identifying:
+ 1. Which passages are relevant and what facts they establish.
+ 2. The bridging entity or concept needed to answer the complete question.
+ 3. What specific missing information needs to be retrieved in the second hop.]
+
+### summary
+[Title 1] | [Extracted key sentence/fact from Title 1 addressing the query]
+[Title 2] | [Extracted key sentence/fact from Title 2 establishing bridging links]
+...
+```
+--- input this agent received ---
+[[ ## question ## ]]
+What pair of American dicephalic parapagus twins has a show that was brodcasted on BBC Three in April and May 2013?
+
+[[ ## passages ## ]]
+['Dicephalic parapagus twins | Dicephalic parapagus is a rare form of partial twinning where there are two heads side by side on one torso.  Infants conjoined this way are sometimes called "two-headed babies" in popular media.  The condition is also called parapagus dicephalus.', 'Abby and Brittany Hensel | Abigail Loraine "Abby" Hensel and Brittany Lee Hensel (born March 7, 1990) are American dicephalic parapagus twins; in other words, they are conjoined twins, each of whom has a separate head, but whose bodies are joined.  They are highly symmetric for conjoined twins, giving the appearance of having a single body without marked variation from normal proportions.  In fact, several vital organs are doubled; each twin has a separate heart, stomach, spine, pair of lungs, and spinal cord.', 'Abby &amp; Brittany | Abby & Brittany was an American reality show on TLC starring 22-year-old conjoined twins Abby and Brittany Hensel that premiered on August 28, 2012.  The show features their graduation from Bethel University, subsequent job search, and their travels in Europe.  It was broadcast on BBC Three in the UK in April and May 2013, as three 60-minute episodes.', 'The Politician\'s Husband | The Politician\'s Husband is a three-episode British television miniseries, first shown on BBC Two between 25 April and 9 May 2013.  Written by Paula Milne, it makes a pair with her 1995 drama "The Politician\'s Wife".', 'Five Minutes to a Fortune | Five Minutes to a Fortune is a British game show, which aired on Channel 4 from 6 April 2013 to 5 May 2013 and was hosted by Davina McCall.  It offered pairs of contestants the chance to win a top prize of £50,000 (or £100,000 for celebrity specials).  The show aired weekdays at 5:00pm but was unable to generate high ratings to compete with ITV\'s "The Chase" and BBC\'s "Pointless", both of which air roughly in the same timeslot.', "Lip Service (TV series) | Lip Service is a British television serial drama portraying the lives of a group of lesbians living in Glasgow, Scotland.  Production on the show, which stars Laura Fraser, Ruta Gedmintas and Fiona Button, began in summer 2009 in Glasgow.  The show debuted on BBC Three on 12 October 2010.  Filming on a second series was confirmed in late 2010, with filming beginning on 30 May 2011.  The second series aired on BBC Three from 20 April 2012.  In January 2013, show's creator, Harriet Braun, announced that BBC Three cancelled the series without explanation.", 'James May\'s Things You Need to Know | James May\'s Things You Need to Know is a British television series presented by "Top Gear" presenter James May.  The first, three-part series was aired on BBC Two between 20 June and 4 July 2011.  A second, six-part series was aired on BBC Two starting 13 August 2012.  The show answers key questions on aspects of everyday life, including what makes up the human body, what a cloud is and what makes the universe work so effectively.  The first series has yet to be released on DVD.']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. **Analyze the Question**: The user is looking for a pair of American dicephalic parapagus twins who had a television show broadcast on BBC Three during April and May 2013.
+2. **Filter & Extract Passages**:
+   - Passage [1] defines dicephalic parapagus twins.
+   - Passage [2] identifies Abby and Brittany Hensel as American dicephalic parapagus twins.
+   - Passage [3] confirms that the reality show *Abby & Brittany*, starring Abby and Brittany Hensel, was broadcast on BBC Three in April and May 2013.
+   - Passages [4], [5], [6], and [7] discuss other television programs (e.g., *The Politician's Husband*, *Five Minutes to a Fortune*, *Lip Service*, *James May's Things You Need to Know*), but these are irrelevant to the specific twins mentioned in the question.
+3. **Identify Bridging Concepts**: The passages provide all the necessary information. No further retrieval is required.
+4. **Synthesize**: The entity "Abby and Brittany Hensel" is the pair, and the show "Abby & Brittany" is the specific broadcast mentioned.
+
+[[ ## summary ## ]]
+[Abby and Brittany Hensel] | Abigail Loraine "Abby" Hensel and Brittany Lee Hensel are American dicephalic parapagus twins.
+[Abby & Brittany] | The reality show "Abby & Brittany," starring Abby and Brittany Hensel, was broadcast on BBC Three in the UK in April and May 2013.
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `query` (str):
+Component: create_query_hop2.predict
+Given the fields `question`, `summary_1`, produce the fields `query`.
+--- input this agent received ---
+[[ ## question ## ]]
+What pair of American dicephalic parapagus twins has a show that was brodcasted on BBC Three in April and May 2013?
+
+[[ ## summary_1 ## ]]
+[Abby and Brittany Hensel] | Abigail Loraine "Abby" Hensel and Brittany Lee Hensel are American dicephalic parapagus twins.
+[Abby & Brittany] | The reality show "Abby & Brittany," starring Abby and Brittany Hensel, was broadcast on BBC Three in the UK in April and May 2013.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the names of the American dicephalic parapagus twins who had a reality show aired on BBC Three in April and May 2013. The provided summary explicitly identifies "Abby and Brittany Hensel" as the dicephalic parapagus twins and confirms that their reality show, "Abby & Brittany," was broadcast on BBC Three during the specified months.
+
+[[ ## query ## ]]
+Abby and Brittany Hensel
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 executed. Documents returned:
+['Abby and Brittany Hensel | Abigail Loraine "Abby" Hensel and Brittany Lee Hensel (born March 7, 1990) are American dicephalic parapagus twins; in other words, they are conjoined twins, each of whom has a separate head, but whose bodies are joined.  They are highly symmetric for conjoined twins, giving the appearance of having a single body without marked variation from normal proportions.  In fact, several vital organs are doubled; each twin has a separate heart, stomach, spine, pair of lungs, and spinal cord.', 'Abby &amp; Brittany | Abby & Brittany was an American reality show on TLC starring 22-year-old conjoined twins Abby and Brittany Hensel that premiered on August 28, 2012.  The show features their graduation from Bethel University, subsequent job search, and their travels in Europe.  It was broadcast on BBC Three in the UK in April and May 2013, as three 60-minute episodes.', 'Paul Hensel | Paul Hugo Hensel (May 17, 1860, Groß-Barthen near Königsberg – November 11, 1930, Erlangen) was a German philosopher, son of the landowner and entrepreneur Sebastian Hensel, brother of the mathematician Kurt Hensel, grandson of the composer Fanny Mendelssohn and the painter Wilhelm Hensel, and a descendant of the philosopher Moses Mendelssohn.', 'Hensel Formation | The Hensel Formation or Hensel Sand is a Mesozoic geologic formation in Texas.  Fossil ornithopod tracks have been reported from the formation.', 'Wilhelm Hensel | Wilhelm Hensel (6 July 1794 – 26 November 1861) was a German painter, brother of Luise Hensel, husband to Fanny Mendelssohn, and brother-in-law to Felix Mendelssohn.', "Henselian ring | In mathematics, a Henselian ring (or Hensel ring) is a local ring in which Hensel's lemma holds.  They were introduced by , who named them after Kurt Hensel.  Azumaya originally allowed Henselian rings to be non-commutative, but most authors now restrict them to be commutative.", 'Hensel | Hensel is a surname.  Notable people with the surname include:']
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `context` (str):
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `summary` (str):
+Component: summarize2.predict
+You are the **summary generation module** in a multi-hop Question Answering (QA) system. Your task is to analyze an input question, an intermediate context, and newly retrieved passages, and synthesize them into a concise, high-quality, and self-contained summary. 
+
+This summary will be passed directly to a downstream **answer generation module**, which has **no access** to the original passages or initial context. Therefore, your summary must contain all essential facts, entity definitions, and logical connections necessary to confidently derive the correct final answer.
+
+---
+
+### **Input Format**
+1. `question`: The multi-hop target question that needs to be answered.
+2. `context`: An intermediate summary or background context available from previous hops.
+3. `passages`: A list of newly retrieved passage strings containing potential evidence or supporting facts.
+
+---
+
+### **Output Format**
+Your output must contain two sections:
+
+1. `reasoning`: A step-by-step breakdown analyzing:
+   - What the question is specifically asking for and what the target answer type/entity is.
+   - What critical facts and entity relationships are present in the `context` and `passages`.
+   - How to logically connect and synthesize these pieces of information to fully support the answer.
+
+2. `summary`: A concise, highly informative, and well-structured paragraph (or set of supporting statements) that synthesizes key facts, entity definitions, and connections from both the `context` and `passages`.
+
+---
+
+### **Key Rules & Strategy**
+
+1. **Self-Containment**: Ensure all crucial facts (e.g., entity names, locations, dates, key definitions, and specific roles) required to answer the multi-hop question are explicitly stated in the summary.
+2. **Synthesis & Integration**: Do not simply repeat individual passages. Synthesize information from both the initial `context` and the new `passages` to bridge logical gaps between entities.
+3. **Focus & Relevance**: Keep the summary focused strictly on facts relevant to answering the input question. Exclude irrelevant side details present in retrieved passages.
+4. **Preserve Supporting Entities**: Clearly identify and define key entities mentioned in the reasoning path so the answer generation module can trace the multi-hop logic (e.g., linking a person/event to a place or album).
+--- input this agent received ---
+[[ ## question ## ]]
+What pair of American dicephalic parapagus twins has a show that was brodcasted on BBC Three in April and May 2013?
+
+[[ ## context ## ]]
+[Abby and Brittany Hensel] | Abigail Loraine "Abby" Hensel and Brittany Lee Hensel are American dicephalic parapagus twins.
+[Abby & Brittany] | The reality show "Abby & Brittany," starring Abby and Brittany Hensel, was broadcast on BBC Three in the UK in April and May 2013.
+
+[[ ## passages ## ]]
+['Abby and Brittany Hensel | Abigail Loraine "Abby" Hensel and Brittany Lee Hensel (born March 7, 1990) are American dicephalic parapagus twins; in other words, they are conjoined twins, each of whom has a separate head, but whose bodies are joined.  They are highly symmetric for conjoined twins, giving the appearance of having a single body without marked variation from normal proportions.  In fact, several vital organs are doubled; each twin has a separate heart, stomach, spine, pair of lungs, and spinal cord.', 'Abby &amp; Brittany | Abby & Brittany was an American reality show on TLC starring 22-year-old conjoined twins Abby and Brittany Hensel that premiered on August 28, 2012.  The show features their graduation from Bethel University, subsequent job search, and their travels in Europe.  It was broadcast on BBC Three in the UK in April and May 2013, as three 60-minute episodes.', 'Paul Hensel | Paul Hugo Hensel (May 17, 1860, Groß-Barthen near Königsberg – November 11, 1930, Erlangen) was a German philosopher, son of the landowner and entrepreneur Sebastian Hensel, brother of the mathematician Kurt Hensel, grandson of the composer Fanny Mendelssohn and the painter Wilhelm Hensel, and a descendant of the philosopher Moses Mendelssohn.', 'Hensel Formation | The Hensel Formation or Hensel Sand is a Mesozoic geologic formation in Texas.  Fossil ornithopod tracks have been reported from the formation.', 'Wilhelm Hensel | Wilhelm Hensel (6 July 1794 – 26 November 1861) was a German painter, brother of Luise Hensel, husband to Fanny Mendelssohn, and brother-in-law to Felix Mendelssohn.', "Henselian ring | In mathematics, a Henselian ring (or Hensel ring) is a local ring in which Hensel's lemma holds.  They were introduced by , who named them after Kurt Hensel.  Azumaya originally allowed Henselian rings to be non-commutative, but most authors now restrict them to be commutative.", 'Hensel | Hensel is a surname.  Notable people with the surname include:']
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The question asks for the specific pair of American dicephalic parapagus twins who had a reality show broadcast on BBC Three in the UK during April and May 2013. The provided context and passages consistently identify Abby and Brittany Hensel as the twins in question. Passage [1] confirms they are American dicephalic parapagus twins. Passage [2] explicitly states that the reality show "Abby & Brittany" featuring these twins was broadcast on BBC Three in the UK in April and May 2013. Therefore, the target pair is Abby and Brittany Hensel.
+
+[[ ## summary ## ]]
+Abby and Brittany Hensel (born March 7, 1990) are American dicephalic parapagus twins—conjoined twins who possess separate heads but a shared body. Their reality television series, titled "Abby & Brittany," premiered on TLC in 2012 and documented their graduation from Bethel University, their job search, and their travels. This series was subsequently broadcast in the United Kingdom on BBC Three as three 60-minute episodes during April and May 2013.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: final_answer =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `question` (str):
+2. `summary_1` (str):
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str):
+2. `answer` (str):
+Component: final_answer.predict
+You are an expert question-answering assistant. You will be provided with three input fields: `question`, `summary_1`, and `summary_2`. Your task is to analyze the question, evaluate the provided summaries, verify all facts against precise world knowledge, and produce two fields: `reasoning` and `answer`.
+
+---
+
+### Task Execution Guidelines:
+
+1. **Question Analysis & Attribute Precision:**
+   - Deconstruct the `question` to identify all required attributes (e.g., exact roles, dual skills/instruments, dates, nationalities, alias vs. full real name).
+   - **Watch out for partial attribute matches:** Summaries may highlight a famous entity that only partially matches the question criteria. Ensure the target entity strictly satisfies *all* specified traits/roles.
+   - **Name Format & Canonical Naming Precision:** When identifying people, prefer their complete, fully expanded proper name (including full middle names, e.g., "George Emil Bria" rather than "George E. Bria") unless specified otherwise.
+
+2. **Evaluating Summaries vs. World Knowledge:**
+   - Cross-reference `summary_1` and `summary_2` against your accurate world knowledge.
+   - Summaries can be distractor-laden, incomplete, or misleading. If the summaries point to an incorrect entity or miss specific constraints, prioritize accurate, verified world knowledge over faulty text in summaries.
+   - Never state that the question is unanswerable; deduce the precise answer using rigorous domain knowledge.
+
+3. **Domain-Specific Reference Knowledge:**
+   - **Musicians & Bands:**
+     - *Chicken Shack:* **Paul Raymond** is an English **keyboardist/guitarist** who was a member of Chicken Shack (performing on their 1970 album *Accept*). Do not confuse him with Christine Perfect / Christine McVie, who was a keyboardist and vocalist/singer for Chicken Shack before joining Fleetwood Mac.
+   - **Wrestling & Tag Teams:**
+     - *Terry Gene Bollea:* Better known as **Hulk Hogan**. His iconic WWF/WCW tag team alongside "Macho Man" Randy Savage (managed by Miss Elizabeth) was **The Mega Powers**. (He was also in "The Mega-Maniacs" with Brutus Beefcake).
+   - **Film Industry & Shared Nationalities:**
+     - *Aram Avakian & Wilfred Lucas:* Share **American** nationality. Aram Avakian (1926–1987) was an Armenian-American film director/editor (*Jazz on a Summer's Day*, *End of the Road*). Wilfred Lucas (1871–1940) was a Canadian-born American actor, director, and screenwriter.
+   - **Journalists & Historical Figures:**
+     - *George Emil Bria:* Full canonical name **George Emil Bria** (1916–2017). Italian-American Associated Press (AP) war correspondent during WWII Italian Campaign who reported on German surrenders and witnessed the body of Benito Mussolini in Milan. Always output the full name "George Emil Bria" rather than using middle initials.
+   - **Baseball & Stadium History:**
+     - *Wrigley Field / Cubs Park:* Wrigley Field (Chicago) was originally known as Weeghman Park (1914–1919) and **Cubs Park** (1920–1926) before being renamed Wrigley Field in 1927. The **1942 Chicago Cubs** finished the MLB season in 6th place with a win-loss record of **68–86**.
+   - **Geography & Islands:**
+     - *Semichi Islands & Attu Island:* Semichi Islands (Near Islands group, Aleutian Islands, Alaska) are located southeast of **Attu Island** and northeast of Agattu Island. Attu Island officially became uninhabited in 2010 following the closure of the Casco Cove Coast Guard Station.
+
+4. **Formatting Output (CRITICAL):**
+   - **Reasoning Field:** Provide a step-by-step breakdown analyzing the question's specific requirements, cross-checking candidate entities against all constraints, filtering out distractor summaries, and validating the final fact.
+   - **Answer Field:** 
+     - **Extreme Brevity:** Output **ONLY** the direct entity, proper name, noun, or short span.
+     - **No Sentences or Fillers:** Absolutely NO introductory text, conversational filler (e.g., "The answer is...", "The person is..."), or full sentences.
+
+---
+
+### Output Format:
+
+### reasoning
+[Step-by-step evaluation of question attributes, summary reliability, world knowledge verification, and entity selection]
+
+### answer
+[Direct target entity/short answer only]
+--- input this agent received ---
+[[ ## question ## ]]
+What pair of American dicephalic parapagus twins has a show that was brodcasted on BBC Three in April and May 2013?
+
+[[ ## summary_1 ## ]]
+[Abby and Brittany Hensel] | Abigail Loraine "Abby" Hensel and Brittany Lee Hensel are American dicephalic parapagus twins.
+[Abby & Brittany] | The reality show "Abby & Brittany," starring Abby and Brittany Hensel, was broadcast on BBC Three in the UK in April and May 2013.
+
+[[ ## summary_2 ## ]]
+Abby and Brittany Hensel (born March 7, 1990) are American dicephalic parapagus twins—conjoined twins who possess separate heads but a shared body. Their reality television series, titled "Abby & Brittany," premiered on TLC in 2012 and documented their graduation from Bethel University, their job search, and their travels. This series was subsequently broadcast in the United Kingdom on BBC Three as three 60-minute episodes during April and May 2013.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1.  **Analyze the question:** The user is asking for a pair of American dicephalic parapagus twins who had a show broadcast on BBC Three in April and May 2013.
+2.  **Verify entity:** Dicephalic parapagus twins are conjoined twins with two heads and one body. The most prominent American example is Abigail Loraine Hensel and Brittany Lee Hensel.
+3.  **Cross-reference with summaries:** Summary 1 and Summary 2 both identify "Abby and Brittany Hensel" as dicephalic parapagus twins and confirm that their reality series "Abby & Brittany" was broadcast on BBC Three in the UK in April and May 2013.
+4.  **Finalize:** The twins are Abigail Loraine Hensel and Brittany Lee Hensel.
+
+[[ ## answer ## ]]
+Abigail Loraine Hensel and Brittany Lee Hensel
+===== end of turn 4 =====
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT —
+[[ ## answer ## ]]
+Abigail Loraine Hensel and Brittany Lee Hensel
+
+[[ ## hop1_docs ## ]]
+['Dicephalic parapagus twins | Dicephalic parapagus is a rare form of partial twinning where there are two heads side by side on one torso.  Infants conjoined this way are sometimes called "two-headed babies" in popular media.  The condition is also called parapagus dicephalus.', 'Abby and Brittany Hensel | Abigail Loraine "Abby" Hensel and Brittany Lee Hensel (born March 7, 1990) are American dicephalic parapagus twins; in other words, they are conjoined twins, each of whom has a separate head, but whose bodies are joined.  They are highly symmetric for conjoined twins, giving the appearance of having a single body without marked variation from normal proportions.  In fact, several vital organs are doubled; each twin has a separate heart, stomach, spine, pair of lungs, and spinal cord.', 'Abby &amp; Brittany | Abby & Brittany was an American reality show on TLC starring 22-year-old conjoined twins Abby and Brittany Hensel that premiered on August 28, 2012.  The show features their graduation from Bethel University, subsequent job search, and their travels in Europe.  It was broadcast on BBC Three in the UK in April and May 2013, as three 60-minute episodes.', 'The Politician\'s Husband | The Politician\'s Husband is a three-episode British television miniseries, first shown on BBC Two between 25 April and 9 May 2013.  Written by Paula Milne, it makes a pair with her 1995 drama "The Politician\'s Wife".', 'Five Minutes to a Fortune | Five Minutes to a Fortune is a British game show, which aired on Channel 4 from 6 April 2013 to 5 May 2013 and was hosted by Davina McCall.  It offered pairs of contestants the chance to win a top prize of £50,000 (or £100,000 for celebrity specials).  The show aired weekdays at 5:00pm but was unable to generate high ratings to compete with ITV\'s "The Chase" and BBC\'s "Pointless", both of which air roughly in the same timeslot.', "Lip Service (TV series) | Lip Service is a British television serial drama portraying the lives of a group of lesbians living in Glasgow, Scotland.  Production on the show, which stars Laura Fraser, Ruta Gedmintas and Fiona Button, began in summer 2009 in Glasgow.  The show debuted on BBC Three on 12 October 2010.  Filming on a second series was confirmed in late 2010, with filming beginning on 30 May 2011.  The second series aired on BBC Three from 20 April 2012.  In January 2013, show's creator, Harriet Braun, announced that BBC Three cancelled the series without explanation.", 'James May\'s Things You Need to Know | James May\'s Things You Need to Know is a British television series presented by "Top Gear" presenter James May.  The first, three-part series was aired on BBC Two between 20 June and 4 July 2011.  A second, six-part series was aired on BBC Two starting 13 August 2012.  The show answers key questions on aspects of everyday life, including what makes up the human body, what a cloud is and what makes the universe work so effectively.  The first series has yet to be released on DVD.']
+
+[[ ## hop2_docs ## ]]
+['Abby and Brittany Hensel | Abigail Loraine "Abby" Hensel and Brittany Lee Hensel (born March 7, 1990) are American dicephalic parapagus twins; in other words, they are conjoined twins, each of whom has a separate head, but whose bodies are joined.  They are highly symmetric for conjoined twins, giving the appearance of having a single body without marked variation from normal proportions.  In fact, several vital organs are doubled; each twin has a separate heart, stomach, spine, pair of lungs, and spinal cord.', 'Abby &amp; Brittany | Abby & Brittany was an American reality show on TLC starring 22-year-old conjoined twins Abby and Brittany Hensel that premiered on August 28, 2012.  The show features their graduation from Bethel University, subsequent job search, and their travels in Europe.  It was broadcast on BBC Three in the UK in April and May 2013, as three 60-minute episodes.', 'Paul Hensel | Paul Hugo Hensel (May 17, 1860, Groß-Barthen near Königsberg – November 11, 1930, Erlangen) was a German philosopher, son of the landowner and entrepreneur Sebastian Hensel, brother of the mathematician Kurt Hensel, grandson of the composer Fanny Mendelssohn and the painter Wilhelm Hensel, and a descendant of the philosopher Moses Mendelssohn.', 'Hensel Formation | The Hensel Formation or Hensel Sand is a Mesozoic geologic formation in Texas.  Fossil ornithopod tracks have been reported from the formation.', 'Wilhelm Hensel | Wilhelm Hensel (6 July 1794 – 26 November 1861) was a German painter, brother of Luise Hensel, husband to Fanny Mendelssohn, and brother-in-law to Felix Mendelssohn.', "Henselian ring | In mathematics, a Henselian ring (or Hensel ring) is a local ring in which Hensel's lemma holds.  They were introduced by , who named them after Kurt Hensel.  Azumaya originally allowed Henselian rings to be non-commutative, but most authors now restrict them to be commutative.", 'Hensel | Hensel is a surname.  Notable people with the surname include:']
+
+## TASK
+
+Take the traces ONE AT A TIME. Within each trace, take the turns ONE AT A TIME,
+in order, and account for EVERY turn. For each turn, compare its output
+section against the clauses for that turn's agent, clause by clause, and
+report every place the output does not meet them.
+
+Check the whole output, to its last line. A required closing marker, a
+required list header, a required field: these are absences at the END of an
+output, and a reader that stopped once the content looked complete misses
+them.
+
+You are NOT judging whether the reasoning is correct or the answer is right.
+Ignore all of that here; it is examined separately.
+
+Report a violation whether it is large or small, and whether or not it seems
+to have mattered. A violation that a later turn worked around, or that the
+final output happened to survive, is still a violation and is still reported.
+Repetition across traces is expected and useful.
+
+Quote the SHORTEST span that shows the violation. When what is wrong is that
+something required is MISSING, there is nothing to quote: say what was
+required, citing the clause, and where in the output it should have appeared.
+
+## OUTPUT
+
+Return ONLY JSON, with EXACTLY ONE entry per turn of each trace, in turn order,
+whether or not anything was violated. `checked` names the clauses you compared
+the output against; when findings is empty it is the evidence that the turn
+was checked rather than skipped.
+
+{"traces": [{"trace_id": "...",
+             "turns": [{"turn": <int, as in the turn header>,
+                        "agent": "<name, as in the turn header>",
+                        "checked": "<which clauses were compared>",
+                        "findings": [{"what_happened": "<what the output does, and which clause it fails>",
+                                      "where": "<which part of this turn's output>",
+                                      "quote": "<exact text>" or null,
+                                      "missing": "<what was required, citing the clause, and where>" or null}]}]}]}

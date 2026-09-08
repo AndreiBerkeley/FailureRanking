@@ -1,0 +1,118 @@
+{
+  "trace_format": {
+    "description": "DSPy four-module pipeline trace with external BM25 retrieval events interleaved. Each module appears as a system message declaring its signature, a user message with its inputs, and an assistant message with its outputs. Retrieval results appear as 'RETRIEVAL EVENT' user messages produced by the harness, not by an LLM.",
+    "agent_markers": [
+      "Your input fields are",
+      "RETRIEVAL EVENT",
+      "[[ ## summary ## ]]",
+      "[[ ## query ## ]]",
+      "[[ ## answer ## ]]"
+    ],
+    "key_fields": [
+      {
+        "field_name": "summary_1",
+        "description": "hop-1 summary of retrieved passages"
+      },
+      {
+        "field_name": "query",
+        "description": "the hop-2 retrieval query it writes"
+      },
+      {
+        "field_name": "summary_2",
+        "description": "hop-2 summary of retrieved passages"
+      },
+      {
+        "field_name": "reasoning",
+        "description": "reasoning before the final answer"
+      },
+      {
+        "field_name": "answer",
+        "description": "the final short answer"
+      }
+    ]
+  },
+  "architecture": {
+    "topology": "linear_pipeline",
+    "topology_details": "Fixed four-stage pipeline over two BM25 retrieval hops: summarize1 -> create_query_hop2 -> summarize2 -> final_answer. Retrieval itself is an external harness step, not an agent. Manually specified; not inferred.",
+    "verification_pattern": "none",
+    "verification_details": "No stage verifies another stage's output; each consumes the previous output as given.",
+    "termination_owner": "final_answer (single pass)",
+    "critical_handoffs": [
+      {
+        "from_agent": "retrieval (harness)",
+        "to_agent": "summarize1",
+        "what_is_passed": "hop-1 retrieved passages",
+        "failure_risk": "passages summarized without the fact the question needs"
+      },
+      {
+        "from_agent": "summarize1",
+        "to_agent": "create_query_hop2",
+        "what_is_passed": "summary_1",
+        "failure_risk": "query written from an incomplete summary cannot target the gap"
+      },
+      {
+        "from_agent": "create_query_hop2",
+        "to_agent": "retrieval (harness)",
+        "what_is_passed": "hop-2 query",
+        "failure_risk": "a query restating known facts retrieves nothing new"
+      },
+      {
+        "from_agent": "retrieval (harness)",
+        "to_agent": "summarize2",
+        "what_is_passed": "hop-2 retrieved passages",
+        "failure_risk": "bridging document present but not carried into summary_2"
+      },
+      {
+        "from_agent": "summarize2",
+        "to_agent": "final_answer",
+        "what_is_passed": "summary_1 and summary_2",
+        "failure_risk": "answer committed without the original documents to check against"
+      }
+    ]
+  },
+  "discovered_agents": {
+    "agents": [
+      "summarize1",
+      "create_query_hop2",
+      "summarize2",
+      "final_answer"
+    ],
+    "agent_to_role": {
+      "summarize1": "summarizer",
+      "create_query_hop2": "query_generator",
+      "summarize2": "summarizer",
+      "final_answer": "answerer"
+    },
+    "role_details": {
+      "summarizer": {
+        "agents": [
+          "summarize1",
+          "summarize2"
+        ],
+        "purpose": "Compress retrieved documents into a summary that preserves what the question needs",
+        "definition": "Reads retrieved passages plus the question (and, at hop 2, the prior summary) and writes a summary downstream stages depend on entirely; information it drops is unrecoverable later.",
+        "key_behavior": "Produces summary_1 / summary_2 from retrieved documents."
+      },
+      "query_generator": {
+        "agents": [
+          "create_query_hop2"
+        ],
+        "purpose": "Write the second-hop retrieval query that advances toward the missing fact",
+        "definition": "Reads the question and summary_1 and must identify what is still unknown, producing a query that retrieves the bridging document. A query that restates known facts retrieves nothing new.",
+        "key_behavior": "Produces the hop-2 query consumed by external BM25 retrieval."
+      },
+      "answerer": {
+        "agents": [
+          "final_answer"
+        ],
+        "purpose": "State the final answer from the two summaries",
+        "definition": "Reads the question and both summaries and must commit to a short answer grounded in them, without access to the original documents.",
+        "key_behavior": "Produces reasoning and the final short answer; nothing reviews it."
+      }
+    }
+  },
+  "capabilities": {
+    "interaction_style": "direct_reasoning",
+    "tool_names_seen": []
+  }
+}

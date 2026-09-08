@@ -1,0 +1,90 @@
+{
+ "trace_format": {
+  "description": "DSPy two-module pipeline trace. Each module appears as a system message declaring its signature and instructions (with a 'Component:' line naming the module), a user message with its inputs, and an assistant message with its outputs. A final assistant message repeats the program's final_response as FINAL OUTPUT; it is assembled by the harness, not generated. No tools and no retrieval: the only environment content is the task prompt.",
+  "agent_markers": [
+   "Your input fields are",
+   "Component:",
+   "FINAL OUTPUT",
+   "[[ ## response ## ]]",
+   "[[ ## final_response ## ]]",
+   "[[ ## reasoning ## ]]"
+  ],
+  "key_fields": [
+   {
+    "field_name": "query",
+    "description": "the task prompt: a request plus one or more formatting or content constraints the response must satisfy"
+   },
+   {
+    "field_name": "response",
+    "description": "the first module's draft response to the query"
+   },
+   {
+    "field_name": "final_response",
+    "description": "the second module's revised response, which is what the task is scored on"
+   },
+   {
+    "field_name": "reasoning",
+    "description": "each module's reasoning before its output field"
+   }
+  ]
+ },
+ "architecture": {
+  "topology": "linear_pipeline",
+  "topology_details": "generate_response_module -> ensure_correct_response_module. The first module reads the query and writes a response; the second reads the query and that response, checks the response against the query's constraints, and writes the final response. Two LLM modules, no tools, no retrieval, single pass. Manually specified; not inferred.",
+  "verification_pattern": "second_module_reviews_first",
+  "verification_details": "The second module is the program's only check: it is instructed to ensure the response is correct and adheres to the constraints. Nothing reviews the second module's output.",
+  "termination_owner": "ensure_correct_response_module (single pass)",
+  "critical_handoffs": [
+   {
+    "from_agent": "task prompt (environment)",
+    "to_agent": "generate_response_module",
+    "what_is_passed": "the query with its constraints",
+    "failure_risk": "a constraint misread or not registered at intake is absent from the draft, and the checker has to catch it from the query alone"
+   },
+   {
+    "from_agent": "generate_response_module",
+    "to_agent": "ensure_correct_response_module",
+    "what_is_passed": "response",
+    "failure_risk": "the checker inherits the draft's content; it can repair constraint violations but may also introduce new ones or remove content the query required"
+   },
+   {
+    "from_agent": "ensure_correct_response_module",
+    "to_agent": "scorer (harness)",
+    "what_is_passed": "final_response",
+    "failure_risk": "the final response is scored per constraint; anything the checker leaves or breaks counts against the task"
+   }
+  ]
+ },
+ "discovered_agents": {
+  "agents": [
+   "generate_response_module",
+   "ensure_correct_response_module"
+  ],
+  "agent_to_role": {
+   "generate_response_module": "responder",
+   "ensure_correct_response_module": "checker"
+  },
+  "role_details": {
+   "responder": {
+    "agents": [
+     "generate_response_module"
+    ],
+    "purpose": "Answer the query in a way that satisfies every constraint it states",
+    "definition": "Reads the query alone and writes a complete response; every constraint (length, format, wording, structure, language) has to be registered from the query and honoured in the draft.",
+    "key_behavior": "Produces reasoning and response from the query."
+   },
+   "checker": {
+    "agents": [
+     "ensure_correct_response_module"
+    ],
+    "purpose": "Verify the draft against the query's constraints and emit the final response",
+    "definition": "Reads the query and the draft response, checks the draft against each constraint, and writes the final response, repairing what the draft missed without breaking what it satisfied. Its output is what the task is scored on and nothing reviews it.",
+    "key_behavior": "Produces reasoning and final_response from query and response."
+   }
+  }
+ },
+ "capabilities": {
+  "interaction_style": "direct_reasoning",
+  "tool_names_seen": []
+ }
+}
