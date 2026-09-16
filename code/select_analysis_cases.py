@@ -105,6 +105,23 @@ def lcb():
         ts = sorted([t for t, d in recs.items() if d["task_id"] == task])
         for t in [x for x in ts if out[x] == 0][:2] + [x for x in ts if out[x] == 1][:2]:
             cases.append(row(t, "E", f"task {task}: {'passes, no point' if out[t] else 'fails; ' + first_problem(t)[:100]}"))
+    pm = defaultdict(Counter)
+    gg = json.loads((REPO / "runs/new_pipeline/lcb-models/pool_generalization/outcomes.json").read_text())["scores"]
+    ggen = defaultdict(list)
+    for f in (REPO / "runs/new_pipeline/lcb-models/pool_generalization").glob("*.json"):
+        if f.name in ("outcomes.json", "pool_manifest.json"): continue
+        d = json.loads(f.read_text()); ggen[idx2m[d["metadata"]["candidate_index"]]].append(gg[d["trace_id"]])
+    for t, d in recs.items():
+        m = idx2m[d["candidate_index"]]; n = len(d["points"]); g = out[t]
+        pm[m]["fails"] += (g == 0); pm[m]["points"] += n
+        if g == 0: pm[m]["pts_on_fail"] += n; pm[m]["silent_fail"] += (n == 0)
+        else: pm[m]["pts_on_pass"] += n
+    per_model_table = ("| model | gold-gen | fails / 150 | points | points per failing trace | silent failures | points on passing traces |\n"
+                       "|---|---:|---:|---:|---:|---:|---:|\n")
+    for m in sorted(pm, key=lambda m: -sum(ggen[m]) / len(ggen[m])):
+        c = pm[m]
+        per_model_table += (f"| {m} | {sum(ggen[m]) / len(ggen[m]):.3f} | {c['fails']} | {c['points']} | {c['pts_on_fail'] / max(c['fails'], 1):.2f} | "
+                            f"{c['silent_fail']} | {c['pts_on_pass']} |\n")
     categories = {
         "A": ("points on passing traces", "22 of 878 passing traces carry a point (the judge never sees outcomes): mostly complexity warnings (SP_02) and implementation defects the tests did not exercise"),
         "B": ("failing traces with no point", "33 of 472 failing traces have no point: 9 are one task whose checker rejects every valid answer, the rest are runtime/TLE/subtle wrong answers the reader did not catch"),
@@ -122,7 +139,29 @@ def lcb():
              "warnings (a judged O(n²) that the tests never stressed) and implementation defects on paths the tests do not reach. "
              "The B cases are the noise on the failing side, and a third of them are not noise at all: `abc343_a` accepts any digit "
              "≠ A+B and the benchmark's exact-match checker rejects eight of the nine valid answers, so the judge's silence is right "
-             "and the gold is wrong. The C cases are the codes doing their job; the E cases show the pattern per task.")
+             "and the gold is wrong. The C cases are the codes doing their job; the E cases show the pattern per task.\n\n"
+             "## Why it is still not perfect\n\n"
+             "Amplitude reaches +0.889 against gold-gen on the 150 judged tasks, not +1, and a random 50 lands anywhere between "
+             "+0.667 and +0.941. The reasons are visible in the cases and in the per-model counts:\n\n"
+             + per_model_table +
+             "\n1. **Amplitude counts points, not failures, and points per failing trace differ by model** — from 1.00 (minimax) "
+             "to 1.54 (seed). glm and deepseek both fail 42 of 150 and are tied on gold-gen (0.694 vs 0.690), but deepseek's "
+             "failures draw 55 points to glm's 44: the judge finds more to quote in some models' programs than in others', and "
+             "that is not a difference in how often they fail. Incidence removes this and matches amplitude on the 150 (+0.889).\n"
+             "2. **Failures the reader cannot see from the program.** Of the 33 silent failures, 9 are the checker's error (B), "
+             "and the rest are mostly things a reading cannot settle: a time limit that depends on constant factors (C `1e9fbe53`, "
+             "`43032638`), a runtime error on the third hidden test, a module the sandbox does not have (`21d66ec0`), a recursion "
+             "depth the language enforces (D `caf5599b`). They are not evenly spread — minimax has 8 silent failures in 53, "
+             "mistral 1 in 75 — so they shift candidates relative to each other.\n"
+             "3. **Points on passing programs are not evenly spread either** — gpt-5.4-nano and minimax carry 5–6 points on passing "
+             "traces, mimo none. Most are complexity warnings (SP_02): the judge predicts a time limit the tests did not enforce.\n"
+             "4. **Gold-gen has its own noise.** Two candidate pairs are within 0.004 pass rate on the 755 tasks (mimo / gpt-5.4-nano, "
+             "deepseek / glm) — a coin flip for any method, including gold-50 — and 85 of the 755 tasks are failed by all nine "
+             "models, 8 of them because the statement allows several answers and the checker accepts one (`arc190_a`, `abc311_c`, "
+             "`abc343_e`, …), the same defect as `abc343_a`.\n"
+             "5. **Fifty tasks is a small sample of nine models a few passes apart.** Adjacent models differ by 1–3 passes on a "
+             "random 50; which side of a pair a draw lands on is the draw, for the trace methods and for gold-50 alike — hence the "
+             "spread of the ten draws, and hence gold-50's own +0.657 to +0.941.")
     write_folder("livecodebench_model", "livecodebench / models — cases", intro, categories, cases,
                  lambda tid: P / f"{tid}.json", lambda tid: recs[tid], extra)
 

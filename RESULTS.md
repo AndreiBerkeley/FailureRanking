@@ -45,7 +45,12 @@ Draws where the method beats gold-50: amplitude 6/10, incidence 4/10, combinatio
 
 On a random 50, reading the traces and scoring the outcomes predict the 755-task ranking
 about equally well (+0.80–0.82 vs +0.81), and which one wins is the draw. On all 150 the
-gold pulls ahead (+0.941 vs +0.889).
+gold pulls ahead (+0.941 vs +0.889). Why not +1: points per failing trace differ by model
+(1.00–1.54), some failures leave nothing to read (time limits, sandbox modules, recursion
+depth), a few passing programs draw complexity warnings, two candidate pairs are within
+0.004 on gold-gen, and the checker itself rejects valid answers on some tasks —
+`analysis/livecodebench_model/README.md`, "Why it is still not perfect", with the per-model
+counts.
 
 ### the two named judged sets, for the record
 `judging-50-1_pointjudge-2.md` (50, easy under-weighted 16/17/17): gold +0.765, amplitude +0.882,

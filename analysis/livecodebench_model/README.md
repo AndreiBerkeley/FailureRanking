@@ -50,3 +50,25 @@ Nine models, tax-2, judge `pointjudge-2` on the 150 judging tasks. On this bench
 ## What the cases say
 
 The judge is outcome-blind and almost never fires on a passing program: 856 of 878 passing traces are silent, 439 of 472 failing traces carry a point. That asymmetry is the whole result — a per-candidate count of points is a per-candidate count of failures with ~5% noise either way. The A cases are that noise on the passing side: complexity warnings (a judged O(n²) that the tests never stressed) and implementation defects on paths the tests do not reach. The B cases are the noise on the failing side, and a third of them are not noise at all: `abc343_a` accepts any digit ≠ A+B and the benchmark's exact-match checker rejects eight of the nine valid answers, so the judge's silence is right and the gold is wrong. The C cases are the codes doing their job; the E cases show the pattern per task.
+
+## Why it is still not perfect
+
+Amplitude reaches +0.889 against gold-gen on the 150 judged tasks, not +1, and a random 50 lands anywhere between +0.667 and +0.941. The reasons are visible in the cases and in the per-model counts:
+
+| model | gold-gen | fails / 150 | points | points per failing trace | silent failures | points on passing traces |
+|---|---:|---:|---:|---:|---:|---:|
+| gemini-3.1-flash-lite | 0.751 | 36 | 50 | 1.31 | 2 | 3 |
+| glm-5.3-flash | 0.694 | 42 | 44 | 1.02 | 5 | 1 |
+| deepseek-v4-flash-0731 | 0.690 | 42 | 55 | 1.24 | 2 | 3 |
+| mimo-v2.5 | 0.654 | 48 | 59 | 1.23 | 3 | 0 |
+| gpt-5.4-nano | 0.650 | 54 | 74 | 1.28 | 3 | 5 |
+| minimax-m3 | 0.601 | 53 | 59 | 1.00 | 8 | 6 |
+| seed-2.0-mini | 0.566 | 54 | 85 | 1.54 | 3 | 2 |
+| claude-haiku-4.5 | 0.542 | 68 | 87 | 1.21 | 6 | 5 |
+| mistral-small-2603 | 0.453 | 75 | 114 | 1.49 | 1 | 2 |
+
+1. **Amplitude counts points, not failures, and points per failing trace differ by model** — from 1.00 (minimax) to 1.54 (seed). glm and deepseek both fail 42 of 150 and are tied on gold-gen (0.694 vs 0.690), but deepseek's failures draw 55 points to glm's 44: the judge finds more to quote in some models' programs than in others', and that is not a difference in how often they fail. Incidence removes this and matches amplitude on the 150 (+0.889).
+2. **Failures the reader cannot see from the program.** Of the 33 silent failures, 9 are the checker's error (B), and the rest are mostly things a reading cannot settle: a time limit that depends on constant factors (C `1e9fbe53`, `43032638`), a runtime error on the third hidden test, a module the sandbox does not have (`21d66ec0`), a recursion depth the language enforces (D `caf5599b`). They are not evenly spread — minimax has 8 silent failures in 53, mistral 1 in 75 — so they shift candidates relative to each other.
+3. **Points on passing programs are not evenly spread either** — gpt-5.4-nano and minimax carry 5–6 points on passing traces, mimo none. Most are complexity warnings (SP_02): the judge predicts a time limit the tests did not enforce.
+4. **Gold-gen has its own noise.** Two candidate pairs are within 0.004 pass rate on the 755 tasks (mimo / gpt-5.4-nano, deepseek / glm) — a coin flip for any method, including gold-50 — and 85 of the 755 tasks are failed by all nine models, 8 of them because the statement allows several answers and the checker accepts one (`arc190_a`, `abc311_c`, `abc343_e`, …), the same defect as `abc343_a`.
+5. **Fifty tasks is a small sample of nine models a few passes apart.** Adjacent models differ by 1–3 passes on a random 50; which side of a pair a draw lands on is the draw, for the trace methods and for gold-50 alike — hence the spread of the ten draws, and hence gold-50's own +0.657 to +0.941.
