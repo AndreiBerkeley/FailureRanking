@@ -15,7 +15,7 @@ taxonomy_generation/run-1   the new_pipeline run that produced tax-14 (GENERATIO
 judge_traces/
   judged-50-a/   traces (450) + judge/pointjudge-1 (tax-14), judge/pointjudge-1-sp15 (tax-15 appended)
   judged-50-b/   traces (450) + judge/pointjudge-3 (tax-15)
-results/         the four-column tables per judged set
+results/         tables (tau vs gold-gen, top-1) per judged set, the pooled 100, and the 50x10 draws
 ```
 
 **Two judged 50s.** `models-1-judged-50` is a seeded random draw from the 500-task judging

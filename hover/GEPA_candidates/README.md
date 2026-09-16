@@ -15,7 +15,7 @@ outcomes/        cap-2 (sample, 600), cap-5 (judging pool, 5,400), cap-3 (domain
 judge_traces/
   sample-50/     traces (600: 12 × eval-1/sample) + judge (map-5)
   judging-50/    traces (600: 12 × judging-sample-2) + judge (map-6)
-results/         the four-column tables: sample-50, judging-50, and both (100 tasks)
+results/         tables (tau vs gold-gen, top-1): sample-50, judging-50, both (100 tasks), and the 50x10 draws
 ```
 
 **Two judged sets, 100 tasks, one taxonomy, one judge.** `eval-1/sample` (50) and
