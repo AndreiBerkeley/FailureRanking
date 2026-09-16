@@ -63,7 +63,7 @@ outcomes, disclosed): `pointjudge-3` under tax-15, two readers + decider. Same 1
 two sets are pooled for the 100-task table and the draws. Step methods apply: four modules.
 
 ### both sets, 100 judged tasks
-`hover/models/results/both-100_pointjudge-1-sp15+pointjudge-3.md`
+`hover/models/results/both-100_pointjudge-1-sp15_pointjudge-3.md`
 
 | method | tau vs gold-gen | top-1 |
 |---|---:|---|
@@ -108,7 +108,7 @@ are not computable). `map-5` on `eval-1/sample` (50, random); `map-6` on `judgin
 disclosed). Pooled for the 100-task table and the draws.
 
 ### both sets, 100 judged tasks
-`hover/GEPA_candidates/results/both-100_map-5+map-6.md`
+`hover/GEPA_candidates/results/both-100_map-5_map-6.md`
 
 | method | tau vs gold-gen | top-1 |
 |---|---:|---|
