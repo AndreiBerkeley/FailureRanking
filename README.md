@@ -25,6 +25,7 @@ livecodebench/models/          the 9 models on livecodebench: taxonomies, traces
 hover/                         program, task registry
 hover/GEPA_candidates/         the 12 optimizer candidates: taxonomy, traces, judge mappings, outcomes, results
 hover/models/                  the 9 models on hover: taxonomies, traces, judge runs, outcomes, results
+analysis/                      traces worth reading closely, with their judge records, per benchmark and candidate set
 code/                          the pipeline, judge, capture and scoring code, as run
 ```
 

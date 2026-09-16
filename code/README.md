@@ -15,6 +15,7 @@ the two is in `build_model_ranking_branch.py`, which assembled this tree.
 | `pointjudge_design.md` | the judge's design note: the failure-point unit, the passes, the decider |
 | `livecodebench_scripts/` | `capture.py` (capture + score), `export_pool.py`, `lcb.py`, the split builders, `build_tax2.py`, `assign_uncovered.py` |
 | `hover_scripts/` | the models-1 capture, the hover scorer, `append_sp15.py`, the set-b draw |
+| `select_analysis_cases.py` | builds `analysis/` — the case selection, deterministic |
 | `BASELINES.md`, `methods_scripts/run_baselines.py` | the eleven parameter-free methods and the script that computes every results table |
 
 Model calls go through OpenRouter (`OPENROUTER_API_KEY`) or Gemini direct (`GEMINI_API_KEY`);
