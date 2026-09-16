@@ -117,10 +117,14 @@ def openrouter_call(temperature=0.0, retries=5, max_output=16384, timeout=300,
                 fr = ch.get("finish_reason")
                 u = resp.get("usage") or {}
                 det = u.get("completion_tokens_details") or {}
+                cd = u.get("cost_details") or {}
+                # a BYOK call (the Anthropic decider) reports cost=0 on OpenRouter and is
+                # billed upstream; log that figure too so the run's spend can be summed
                 usage = (f"prompt={u.get('prompt_tokens')} "
                          f"thoughts={det.get('reasoning_tokens')} "
                          f"answer={u.get('completion_tokens')} "
-                         f"cost={u.get('cost')} model={resp.get('model')}")
+                         f"cost={u.get('cost')} upstream={cd.get('upstream_inference_cost')} "
+                         f"byok={u.get('is_byok')} model={resp.get('model')}")
                 if not text:
                     raise Transient(f"empty content; finish_reason={fr}")
                 if fr and fr != "stop":

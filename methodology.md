@@ -103,8 +103,9 @@ that fired per trace and which source supplied each.
 ## 7. From mapping to ranking
 
 Each method in `methods/README.md` turns one candidate's judged traces into one number; the
-candidates are then ranked. Four methods are reported: gold (the reference), amplitude,
-incidence and combinations. All read the mapping and nothing else.
+candidates are then ranked. Reported: gold (the reference), amplitude, incidence,
+combinations, and — on hover, whose program has four steps — step-amplitude and
+containment. All read the mapping and nothing else.
 
 Two mappings carry hand work and are labelled as such: hover `pointjudge-1-sp15` lifts the
 new code's points from a single-reader pass onto the two-reader mapping; livecodebench
@@ -115,11 +116,11 @@ hand, without a re-judge (the re-judge with tax-2 in view is `pointjudge-2`).
 
 Kendall tau-b between two rankings of the candidates, computed over the candidate pairs
 ordered in both rankings — a pair tied in either is dropped, so a gold-50 with tied
-candidates is compared on fewer pairs and the pair count is stated where it matters.
-Three comparisons per method: judge vs gold-50 (the judged tasks' own pass rate), judge vs
-gold-gen (the generalization pool's pass rate), and gold-50 vs gold-gen — the constant that
-says how well scoring the judged tasks themselves predicts the large set. Top-1: is the
-method's best candidate gold-gen's best.
+candidates is compared on fewer pairs. One comparison per method: the method's ranking vs
+gold-gen, the pass rate on the generalization pool. The gold row is gold-50 (the judged
+tasks' own pass rate) vs gold-gen: how well scoring the judged tasks themselves predicts the
+large set, the bar. Top-1: is the method's best candidate gold-gen's best. Stability: ten
+uniform random draws of 50 from each 100- or 150-task judged set, each scored the same way.
 
 ## 9. Judged sets
 
@@ -136,8 +137,9 @@ method's best candidate gold-gen's best.
 
 | run | traces | cost | time |
 |---|---:|---:|---:|
-| lcb capture, three pools | 1,350 + 450 + 6,795 (+900) | $2.61 + $0.90 + $13.47 (+$1.8) | 40 min + 50 min + 134 min |
+| lcb capture, three pools | 1,350 + 1,350 + 6,795 | $2.61 + $2.69 + $13.47 | 40 + 78 + 134 min |
 | lcb taxonomy generation (v3, run-1) | 160 + 160 + 60 + 50 | ≈ $11 | 50 min |
-| lcb judge, 50 tasks (`pointjudge-1`) | 450 | $11.10 | 22 min |
-| hover judge, 50 tasks (`pointjudge-1`) | 450 | $40.75 | 150 min |
+| lcb judge, 50 tasks (`pointjudge-1`) | 450 | $11.10 reader + ≈ $10 decider | 22 min |
+| lcb judge, 150 tasks (`pointjudge-2`) | 1,350 | $38.99 reader + ≈ $43 decider | 76 min |
+| hover judge, 50 tasks (`pointjudge-1`, `pointjudge-3`) | 450 each | ≈ $41 reader + ≈ $68 decider each | 90–150 min |
 | hover panel judge, 50 tasks (`map-5`, `map-6`) | 600 each | — | — |

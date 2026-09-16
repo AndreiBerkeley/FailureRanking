@@ -1,106 +1,154 @@
 # Results
 
-Every table: candidates ranked by the method from the judge's mapping of the judged tasks;
-Kendall tau-b (tied pairs dropped) against gold-50 (pass rate on the judged tasks) and
-gold-gen (pass rate on the generalization tasks); the third column is gold-50 vs gold-gen,
-the bar; top-1 is whether the method's best candidate is gold-gen's best. Formulas in
-`methods/README.md`. The raw tables with all eleven methods are the `results/*.md` files
-named under each heading; they are the unedited output of
-`code/methods_scripts/run_baselines.py`.
+Every number: candidates ranked by a method from the judge's mapping of the judged tasks;
+Kendall tau-b (tied pairs dropped) against the candidates' pass rate on the generalization
+tasks (*gold-gen*), which were never judged. The **gold** row is the same comparison for the
+judged tasks' own pass rate — the bar every trace method is read against. *Top-1*: is the
+method's best candidate gold-gen's best. Formulas in `methods/README.md`; every table is the
+unedited output of `code/methods_scripts/run_baselines.py` or `subsample_50.py`, filed
+under the `results/` path named beneath it.
 
-## livecodebench — 9 models, 50 judged tasks, 755 generalization tasks
+## livecodebench — 9 models · tax-2 · judge `pointjudge-2` · gold-gen on 755 tasks
 
-### judge `pointjudge-1-tax2` (tax-2; 22 of 181 points hand-assigned, no re-judge)
-`livecodebench/results/judging-50-1_pointjudge-1-tax2.md`
+Judge: two readers + decider with tax-2 in view, all 150 judging-pool tasks, 1,350 traces,
+627 points, 3 unplaced. On this one-step program step-amplitude and containment equal
+amplitude and are not listed.
 
-| method | tau judge vs gold-50 | tau judge vs gold-gen | tau gold-50 vs gold-gen | top-1 |
-|---|---:|---:|---:|---|
-| gold | +1.000 | +0.765 | +0.765 | yes |
-| amplitude | +0.818 | +0.941 | +0.765 | yes |
-| incidence | +0.939 | +0.824 | +0.765 | yes |
-| combinations | +0.758 | +1.000 | +0.765 | yes |
+### all 150 judged tasks
+`livecodebench/results/judging-150_pointjudge-2.md`
 
-### judge `pointjudge-1` (tax-1; the same run, the 22 unplaced points dropped)
-`livecodebench/results/judging-50-1_pointjudge-1.md`
+| method | tau vs gold-gen | top-1 |
+|---|---:|---|
+| gold | +0.941 | yes |
+| amplitude | +0.889 | no |
+| incidence | +0.889 | yes |
+| combinations | +0.771 | no |
 
-| method | tau judge vs gold-50 | tau judge vs gold-gen | tau gold-50 vs gold-gen | top-1 |
-|---|---:|---:|---:|---|
-| gold | +1.000 | +0.765 | +0.765 | yes |
-| amplitude | +0.879 | +0.657 | +0.765 | no |
-| incidence | +0.812 | +0.588 | +0.765 | no |
-| combinations | +0.867 | +0.867 | +0.765 | no |
+### ten random draws of 50 from the 150
+`livecodebench/results/subsamples-50x10_pointjudge-2.md` — seeds 1–10, uniform, no stratification.
 
-The two tables differ only in whether the 22 points the decider could not place carry a
-code. Those 22 points (13 traces, almost all failing) move amplitude from +0.657 to +0.941
-against gold-gen — four pair orderings among nine candidates. Which number stands is
-settled by `pointjudge-2`, the judge pass with tax-2 in view on all 150 judging tasks
-(pending). Gold-50 ties 2 of 36 pairs; the judged 50 under-weights easy tasks (16/17/17).
+| draw | gold-50 | amplitude | incidence | combinations | top-1 amp / inc / comb |
+|---|---:|---:|---:|---:|---|
+| 1 | +0.778 | +0.941 | +0.879 | +0.833 | yes / yes / yes |
+| 2 | +0.758 | +0.778 | +0.882 | +0.706 | no / yes / no |
+| 3 | +0.875 | +0.667 | +0.765 | +0.588 | no / no / no |
+| 4 | +0.714 | +0.765 | +0.647 | +0.722 | no / no / no |
+| 5 | +0.938 | +0.829 | +0.879 | +0.722 | no / yes / no |
+| 6 | +0.833 | +0.706 | +0.771 | +0.500 | no / yes / no |
+| 7 | +0.758 | +0.765 | +0.771 | +0.556 | yes / yes / no |
+| 8 | +0.941 | +0.829 | +0.939 | +0.771 | no / yes / no |
+| 9 | +0.824 | +0.882 | +0.824 | +0.829 | yes / yes / yes |
+| 10 | +0.657 | +0.829 | +0.875 | +0.824 | yes / yes / yes |
+| **mean** | +0.808 | +0.799 | +0.823 | +0.705 | |
 
-### judge `pointjudge-2` (tax-2 in view, 150 judged tasks) — pending
+Draws where the method beats gold-50: amplitude 6/10, incidence 4/10, combinations 4/10.
 
-## hover / models — 9 models, 50 judged tasks, 500 generalization tasks
+On a random 50, reading the traces and scoring the outcomes predict the 755-task ranking
+about equally well (+0.80–0.82 vs +0.81), and which one wins is the draw. On all 150 the
+gold pulls ahead (+0.941 vs +0.889).
 
-### set a, judge `pointjudge-1-sp15` (tax-15; SP_15 points lifted from a single-reader pass)
-`hover/models/results/judged-50-a_pointjudge-1-sp15.md`
+### the two named judged sets, for the record
+`judging-50-1_pointjudge-2.md` (50, easy under-weighted 16/17/17): gold +0.765, amplitude +0.882,
+incidence +0.771, combinations +0.833. `judging-100-1_pointjudge-2.md` (the other 100): gold
++0.886, amplitude +0.829, incidence +0.889, combinations +0.722. The earlier tax-1 pass on the
+first 50 (`judging-50-1_pointjudge-1.md`, 22 points unplaced) gave amplitude +0.657; with those
+22 hand-assigned (`…_pointjudge-1-tax2.md`) +0.941 — the real tax-2 pass lands between them.
 
-| method | tau judge vs gold-50 | tau judge vs gold-gen | tau gold-50 vs gold-gen | top-1 |
-|---|---:|---:|---:|---|
-| gold | +1.000 | +0.867 | +0.867 | yes |
-| amplitude | +0.067 | +0.000 | +0.867 | no |
-| incidence | +0.750 | +0.750 | +0.867 | no |
-| combinations | −0.067 | +0.000 | +0.867 | no |
+## hover / models — 9 models · tax-15 · judge pointjudge · gold-gen on 500 tasks
 
-Gold-50 ties 6 of 36 pairs on this set. Amplitude carries no information; incidence —
-whether anything fired at all — carries most of what gold-50 has.
+Judge: two readers + decider. Set a (`models-1-judged-50`, random draw): `pointjudge-1` under
+tax-14 with the SP_15 points appended from a single-reader tax-15 pass (`pointjudge-1-sp15`).
+Set b (`models-1-judged-50-b`, drawn for an untied gold-50 — selection on the judging pool's
+outcomes, disclosed): `pointjudge-3` under tax-15, two readers + decider. Same 15 codes; the
+two sets are pooled for the 100-task table and the draws. Step methods apply: four modules.
 
-### set b, judge `pointjudge-3` (tax-15, two readers + decider) — pending
-Set b was drawn for an untied gold-50 (selection on the judging pool's outcomes, disclosed
-in `hover/models/splits/models-1-judged-50-b/`).
+### both sets, 100 judged tasks
+`hover/models/results/both-100_pointjudge-1-sp15+pointjudge-3.md`
 
-## hover / GEPA_candidates — 12 instruction sets, 500 generalization tasks
+| method | tau vs gold-gen | top-1 |
+|---|---:|---|
+| gold | +0.529 | yes |
+| amplitude | +0.056 | no |
+| incidence | +0.200 | no |
+| combinations | +0.111 | no |
+| step-amplitude | +0.111 | no |
+| containment | +0.167 | no |
 
-### sample-50, judge `map-5` (tax-10, panel + open reader)
-`hover/GEPA_candidates/results/sample-50_map-5.md`
+### ten random draws of 50 from the 100
+`hover/models/results/subsamples-50x10_both-100.md`
 
-| method | tau judge vs gold-50 | tau judge vs gold-gen | tau gold-50 vs gold-gen | top-1 |
-|---|---:|---:|---:|---|
-| gold | +1.000 | +0.785 | +0.785 | no |
-| amplitude | +0.046 | +0.061 | +0.785 | no |
-| incidence | −0.184 | −0.320 | +0.785 | no |
-| combinations | +0.231 | +0.242 | +0.785 | no |
+| draw | gold-50 | amplitude | incidence | combinations | step-amp | containment | top-1 amp / inc / comb / step / cont |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 1 | +0.438 | +0.056 | +0.143 | +0.200 | +0.222 | +0.222 | no / no / no / no / no |
+| 2 | +0.486 | −0.056 | +0.200 | −0.056 | +0.111 | +0.056 | no / no / no / no / no |
+| 3 | +0.588 | +0.000 | +0.200 | −0.111 | +0.111 | +0.111 | no / no / no / no / no |
+| 4 | +0.636 | +0.056 | +0.333 | +0.056 | +0.111 | +0.167 | no / no / no / no / no |
+| 5 | +0.543 | +0.056 | +0.333 | +0.111 | +0.111 | +0.111 | no / no / no / no / no |
+| 6 | +0.647 | +0.200 | +0.143 | +0.056 | +0.167 | +0.167 | no / no / no / no / no |
+| 7 | +0.697 | +0.000 | +0.200 | +0.111 | +0.111 | +0.167 | no / no / no / no / no |
+| 8 | +0.375 | +0.167 | +0.333 | +0.167 | +0.167 | +0.167 | no / no / no / no / no |
+| 9 | +0.278 | +0.111 | +0.143 | −0.111 | +0.086 | +0.111 | no / no / no / no / no |
+| 10 | +0.394 | −0.029 | +0.143 | +0.056 | +0.056 | +0.029 | no / no / no / no / no |
+| **mean** | +0.508 | +0.056 | +0.217 | +0.048 | +0.125 | +0.131 | |
 
-### judging-50, judge `map-6` (tax-10; the set was drawn stratified by mean candidate score)
-`hover/GEPA_candidates/results/judging-50_map-6.md`
+No method beats gold-50 on any draw.
 
-| method | tau judge vs gold-50 | tau judge vs gold-gen | tau gold-50 vs gold-gen | top-1 |
-|---|---:|---:|---:|---|
-| gold | +1.000 | +0.367 | +0.367 | no |
-| amplitude | +0.017 | −0.077 | +0.367 | no |
-| incidence | −0.347 | −0.283 | +0.367 | no |
-| combinations | +0.233 | +0.000 | +0.367 | no |
+### the two named sets
+`judged-50-a_pointjudge-1-sp15.md`: gold +0.867, amplitude +0.000, incidence +0.750,
+combinations +0.000, step-amplitude +0.111, containment +0.111.
+`judged-50-b_pointjudge-3.md`: gold +0.444, amplitude −0.056, incidence +0.200,
+combinations +0.056, step-amplitude +0.000, containment +0.000. Set a's incidence +0.750 is
+the only hover value above 0.35 anywhere and does not repeat on set b or on any draw.
 
-### both sets, 100 judged tasks, `map-5` + `map-6`
+## hover / GEPA_candidates — 12 instruction sets · tax-10 · panel judge · gold-gen on 500 tasks
+
+Judge: two-annotator panel + open reader, code counts per trace (no steps, so step methods
+are not computable). `map-5` on `eval-1/sample` (50, random); `map-6` on `judging-sample-2`
+(50, stratified by mean candidate score — selection on the judging pool's outcomes,
+disclosed). Pooled for the 100-task table and the draws.
+
+### both sets, 100 judged tasks
 `hover/GEPA_candidates/results/both-100_map-5+map-6.md`
 
-| method | tau judge vs gold-50 | tau judge vs gold-gen | tau gold-50 vs gold-gen | top-1 |
-|---|---:|---:|---:|---|
-| gold | +1.000 | +0.742 | +0.742 | no |
-| amplitude | +0.032 | −0.091 | +0.742 | no |
-| incidence | −0.148 | −0.345 | +0.742 | no |
-| combinations | +0.226 | +0.091 | +0.742 | no |
+| method | tau vs gold-gen | top-1 |
+|---|---:|---|
+| gold | +0.742 | no |
+| amplitude | −0.091 | no |
+| incidence | −0.345 | no |
+| combinations | +0.091 | no |
 
-On the optimizer candidates no trace method carries signal on 50 or on 100 tasks, while
-gold-50 on 100 tasks predicts the 500-task ranking at +0.742. The panel judge records codes
-per trace only, so step-level methods are not computable here. Top-1 is "no" even for gold
-because gold-50's best candidate differs from gold-gen's on every set.
+### ten random draws of 50 from the 100
+`hover/GEPA_candidates/results/subsamples-50x10_both-100.md`
 
-## Reading across the benchmarks
+| draw | gold-50 | amplitude | incidence | combinations | top-1 amp / inc / comb |
+|---|---:|---:|---:|---:|---|
+| 1 | +0.621 | −0.152 | −0.585 | +0.091 | no / no / no |
+| 2 | +0.815 | +0.030 | −0.053 | +0.152 | no / no / no |
+| 3 | +0.627 | −0.231 | −0.423 | +0.061 | no / no / no |
+| 4 | +0.633 | −0.061 | −0.259 | +0.152 | no / no / no |
+| 5 | +0.778 | +0.015 | −0.333 | +0.273 | no / no / no |
+| 6 | +0.867 | −0.016 | −0.138 | +0.030 | no / no / no |
+| 7 | +0.692 | +0.094 | −0.583 | +0.212 | no / no / no |
+| 8 | +0.746 | −0.077 | −0.393 | +0.030 | no / no / no |
+| 9 | +0.841 | −0.046 | −0.176 | +0.030 | no / no / no |
+| 10 | +0.700 | −0.030 | −0.088 | +0.182 | no / no / no |
+| **mean** | +0.732 | −0.047 | −0.303 | +0.121 | |
 
-Same nine models, same judge shape, same formulas: on livecodebench the mapping ranks them;
-on hover it does not. The hover taxonomies describe the *form* of the modules' work (48% of
-hover points are two form codes that fire on passing and failing traces alike) while the
-gold is decided by whether the right entities were retrieved; the livecodebench codes name
-what makes a program wrong, and nothing fires on passing traces (2 points on 298 passing
-traces vs 151 on 152 failing). Whether that is a property of the benchmark, of the
-taxonomy, or of single-step vs multi-step programs is the open question this branch is set
-up to examine.
+No method beats gold-50 on any draw. Incidence is consistently negative: the candidates on
+which something fires more often are the better ones. Top-1 is "no" even for gold because
+gold-50's best candidate differs from gold-gen's on every set.
+
+### the two named sets
+`sample-50_map-5.md`: gold +0.785, amplitude +0.061, incidence −0.320, combinations +0.242.
+`judging-50_map-6.md`: gold +0.367, amplitude −0.077, incidence −0.283, combinations +0.000.
+
+## Across the benchmarks
+
+Same nine models, same judge, same formulas: on livecodebench the trace read is level with
+the outcomes on 50 tasks; on hover it carries nothing, for either candidate set, either
+judge, any draw. The hover taxonomies describe the *form* of the modules' work — on the
+models set two form codes make up 48% of all points and fire on passing and failing traces
+alike — while the gold is decided by which entities were retrieved; the livecodebench codes
+name what makes a program wrong, and on the first judged 50 nothing fired on 296 of 298
+passing traces. Whether that is the benchmark, the taxonomy, or single-step vs multi-step
+programs is the open question this branch is set up to examine.

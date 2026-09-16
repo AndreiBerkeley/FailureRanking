@@ -1,8 +1,13 @@
 # The scoring formulas
 
-Four formulas are reported. Each turns one candidate's judged traces into one number, from
-the judge's mapping and nothing else; the candidates are then ranked by that number. None
-has a parameter. The formulas are compared to each other and to gold by the measure in §5.
+Six formulas are reported: gold (the reference) and five trace methods. Three read the
+per-trace code sets (amplitude, incidence, combinations) and are reported on every
+benchmark; two read *where* in the trace each code fired (step-amplitude, containment) and
+are reported on hover, whose program has four steps — on livecodebench's one-step program
+they reduce to amplitude, and the panel judge used for hover's optimizer candidates records
+no steps. Each turns one candidate's judged traces into one number, from the judge's
+mapping and nothing else; the candidates are then ranked by that number. None has a
+parameter. The measure that compares them is in §8.
 
 ## 1. What the judge provides
 
@@ -15,6 +20,9 @@ those points:
 |---|---|
 | codes(c,t) ⊆ M | the distinct codes that fired anywhere in *c*'s trace on task *t* |
 | k(c,t) = \|codes(c,t)\| | how many distinct codes fired on that trace |
+| S(t) | the steps (turns) of the trace on *t*; the last one is the terminal step |
+| codes(c,t,s) ⊆ codes(c,t) | the codes that fired at step *s* of that trace |
+| down(s) ⊆ S(t) | the steps that consume step *s*'s output, directly or through the harness — every later step in a linear pipeline |
 | g(c,t) ∈ {0,1} | the gold outcome of *c* on *t* (pass = 1) — read only by the reference and by the measure, never by a trace method |
 
 A code cited several times in one trace still enters codes(c,t) once, so a repetitive judge
@@ -64,10 +72,40 @@ failures are worse than the same failures apart" that is not already amplitude: 
 exponential in the per-trace count and has no strength parameter. Counting each code
 separately instead would give amplitude exactly, since Σ_t k(c,t) is linear in the counts.
 
-## 6. From scores to rankings, and the measure
+## 6. Step-amplitude — how many (step, code) firings
+
+A_step(c) = (1/T) · Σ_{t∈𝒯} Σ_{s∈S(t)} |codes(c,t,s)|         lower is better
+
+Amplitude counted per step instead of per trace: a code that fired at two different steps
+of one trace counts twice here and once in A_amp. A_step(c) ≥ A_amp(c) always, with equality
+when no code ever fires at more than one step of a trace — which is forced on a one-step
+program, where A_step = A_amp exactly. On hover's four-module pipeline the two differ by
+however often the same code recurs across modules.
+
+## 7. Containment-discounted amplitude — did anything follow it
+
+A firing at step *s* of the trace on *t* is **contained** when down(s) is non-empty and no
+code fired at any step in down(s) on that trace: something ran after the failure and ran
+clean. A firing at the terminal step is never contained, because nothing ran afterwards and
+observing no downstream failure says nothing.
+
+A_con(c) = (1/T) · Σ_{t∈𝒯} |{ (s,m) : m ∈ codes(c,t,s), (s,t) not contained }|     lower is better
+
+Every step-amplitude firing contributes 1 unless it was contained, when it contributes 0.
+It is the gold-free counterpart of asking whether a failure cost the outcome: instead of
+reading the outcome, it reads whether the program's own later steps carried the trouble
+forward. Parameter-free by construction — any graded discount by how many downstream steps
+stayed clean would introduce a strength parameter. A_con(c) ≤ A_step(c) always. On a
+one-step program every firing is terminal, so A_con = A_step = A_amp.
+
+The tension to note: dropping contained firings discards evidence, against the rule that a
+formula should weigh everything. It is a conditional drop decided by the trace, not a
+selection of steps decided in advance, but it is the only entry here that has it.
+
+## 8. From scores to rankings, and the measure
 
 **Ranking.** Candidates are sorted by the score: descending for gold, ascending for the
-three trace methods (fewer, rarer, less-clustered failures rank higher). Two candidates with
+trace methods (fewer, rarer, less-clustered failures rank higher). Two candidates with
 equal scores are tied.
 
 **Kendall tau-b, tied pairs dropped.** For two rankings *R₁*, *R₂* of the same *n*
@@ -82,39 +120,36 @@ so τ = +1 is perfect agreement on every ordered pair, −1 perfect reversal, 0 
 Dropping tied pairs rather than counting them as half-right is what makes a tied gold-50
 visible: it is compared on fewer pairs, and the pair count is stated where it matters.
 
-**The three comparisons.** For every method, τ is computed against two gold rankings:
-
-| column | R₁ | R₂ |
-|---|---|---|
-| judge vs gold-50 | the method's ranking from the judged traces | A_gold on the same judged tasks |
-| judge vs gold-gen | the method's ranking | pass rate on the generalization tasks (disjoint, never judged) |
-| gold-50 vs gold-gen | A_gold on the judged tasks | pass rate on the generalization tasks |
-
-The third column does not depend on the method. It is the bar: how well scoring the judged
-tasks themselves predicts the large set. A trace method that beats it is extracting more
-about the candidate from *T* traces than *T* outcomes carry.
+**The comparison.** For every method, τ is computed between the method's ranking (from the
+judged traces) and the ranking by pass rate on the generalization tasks — disjoint from the
+judged tasks and never judged. The *gold* row of every table is the same comparison for the
+judged tasks' own pass rate, so it is the bar: how well scoring the judged tasks themselves
+predicts the large set. A trace method above the gold row is extracting more about the
+candidate from *T* traces than *T* outcomes carry.
 
 **Top-1.** Whether the method's first-ranked candidate is the first-ranked candidate under
 gold-gen.
 
-## 7. Worked example
+## 9. Worked example
 
 Nine candidates, 50 judged tasks. Candidate *c* has points on 21 of its 50 traces: 15 traces
 with one code, 5 with two, 1 with three. Then
 
 - k sums to 15·1 + 5·2 + 1·3 = 28, so A_amp = 28/50 = 0.56;
 - 21 traces carry anything, so A_inc = 21/50 = 0.42;
-- subsets sum to 15·1 + 5·3 + 1·7 = 37, so A_comb = 37/50 = 0.74.
+- subsets sum to 15·1 + 5·3 + 1·7 = 37, so A_comb = 37/50 = 0.74;
+- if, on a four-step program, 4 of the 28 code firings recur at a second step, there are 32
+  (step, code) firings, so A_step = 32/50 = 0.64; if 3 of those 32 sit at a non-terminal step
+  with every later step clean, they are contained and A_con = 29/50 = 0.58.
 
-Rank all nine by each score (ascending), rank them by gold-50 and by gold-gen (descending),
-and count concordant / discordant pairs over the 36 candidate pairs, dropping any pair that
-is tied in either ranking being compared. If amplitude orders 34 of 35 untied pairs the way
-gold-gen does, τ = (34 − 1)/35 = +0.943.
+Rank all nine by each score (ascending), rank them by gold-gen (descending), and count
+concordant / discordant pairs over the 36 candidate pairs, dropping any pair tied in either
+ranking. If amplitude orders 34 of 35 untied pairs the way gold-gen does,
+τ = (34 − 1)/35 = +0.943.
 
-## 8. What was run but is not reported here
+## 10. What was run but is not reported here
 
 `code/BASELINES.md` lists eleven parameter-free entries; `code/methods_scripts/run_baselines.py`
 computes all of them. Breadth, worst-mode and distinct-patterns are dominated by or redundant
-with the four above; step-amplitude and containment need per-step firings and coincide with
-amplitude on a one-step program; recovery reads gold and is therefore not a trace-only method.
-Their rows remain in the raw tables in each `results/` directory.
+with the ones above; recovery reads gold and is therefore not a trace-only method. Their rows
+remain in the raw tables in each `results/` directory.

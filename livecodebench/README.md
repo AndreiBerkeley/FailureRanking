@@ -8,11 +8,11 @@ judged with the induced taxonomy.
 tasks/          tasks.jsonl (registry, no tests), splits/, code_generation_lite.py (loader for the raw release)
 program/        prompt.md (the exact prompt), structure.json (one agent, single step)
 candidates/     models-1.json — the nine models, ids, aliases
-traces/         taxonomy_pool (1,350), judging_pool (450 → 1,350), generalization_pool (6,795)
+traces/         taxonomy_pool (1,350), judging_pool (1,350), generalization_pool (6,795)
 taxonomies/     tax-1 (induced, 7 codes), tax-2 (tax-1 + 3 hand-authored codes)
 taxonomy_generation/run-1   every stage's prompt, raw reply and parsed output; gates; gap test; granularity
 judge/          pointjudge-1 (tax-1), pointjudge-1-tax2 (hand-assigned), pointjudge-2 (tax-2, 150 tasks)
-results/        the four-column tables
+results/        the tables (tau vs gold-gen, top-1) per judged set, and the 50x10 draws
 ```
 
 **Tests are not here.** The hidden tests (4.2 GB) are LiveCodeBench's own; download
@@ -42,4 +42,4 @@ byte-identical. Each taxonomy's README states this.
 `pointjudge-1`: tax-1 on the 450 traces of `judging-50-1`, 181 points, 22 fitting nothing.
 `pointjudge-1-tax2`: the same run with those 22 hand-assigned to tax-2 codes, no re-judge —
 labelled hand-assigned wherever cited. `pointjudge-2`: tax-2 in view on all 150 judging
-tasks (in progress at the time of writing).
+tasks, 1,350 traces, 627 points, 3 unplaced — the mapping every livecodebench result uses.
