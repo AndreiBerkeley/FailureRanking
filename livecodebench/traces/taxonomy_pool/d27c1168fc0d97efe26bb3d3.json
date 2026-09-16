@@ -1,0 +1,32 @@
+{
+ "trace_id": "d27c1168fc0d97efe26bb3d3",
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are an expert Python programmer. You will be given a question (problem specification) and will generate a correct Python program that matches the specification and passes all tests."
+  },
+  {
+   "role": "user",
+   "content": "### Question:\nYou are given two arrays nums and andValues of length n and m respectively.\nThe value of an array is equal to the last element of that array.\nYou have to divide nums into m disjoint contiguous subarrays such that for the i^th subarray [l_i, r_i], the bitwise AND of the subarray elements is equal to andValues[i], in other words, nums[l_i] & nums[l_i + 1] & ... & nums[r_i] == andValues[i] for all 1 <= i <= m, where & represents the bitwise AND operator.\nReturn the minimum possible sum of the values of the m subarrays nums is divided into. If it is not possible to divide nums into m subarrays satisfying these conditions, return -1.\n \nExample 1:\n\nInput: nums = [1,4,3,3,2], andValues = [0,3,3,2]\nOutput: 12\nExplanation:\nThe only possible way to divide nums is:\n\n[1,4] as 1 & 4 == 0.\n[3] as the bitwise AND of a single element subarray is that element itself.\n[3] as the bitwise AND of a single element subarray is that element itself.\n[2] as the bitwise AND of a single element subarray is that element itself.\n\nThe sum of the values for these subarrays is 4 + 3 + 3 + 2 = 12.\n\nExample 2:\n\nInput: nums = [2,3,5,7,7,7,5], andValues = [0,7,5]\nOutput: 17\nExplanation:\nThere are three ways to divide nums:\n\n[[2,3,5],[7,7,7],[5]] with the sum of the values 5 + 7 + 5 == 17.\n[[2,3,5,7],[7,7],[5]] with the sum of the values 7 + 7 + 5 == 19.\n[[2,3,5,7,7],[7],[5]] with the sum of the values 7 + 7 + 5 == 19.\n\nThe minimum possible sum of the values is 17.\n\nExample 3:\n\nInput: nums = [1,2,3,4], andValues = [2]\nOutput: -1\nExplanation:\nThe bitwise AND of the entire array nums is 0. As there is no possible way to divide nums into a single subarray to have the bitwise AND of elements 2, return -1.\n\n \nConstraints:\n\n1 <= n == nums.length <= 10^4\n1 <= m == andValues.length <= min(n, 10)\n1 <= nums[i] < 10^5\n0 <= andValues[j] < 10^5\n\n### Format: You will use the following starter code to write the solution to the problem and enclose your code within delimiters.\n```python\nclass Solution:\n    def minimumValueSum(self, nums: List[int], andValues: List[int]) -> int:\n        \n```\n\n### Answer: (use the provided format with backticks)\n\n"
+  },
+  {
+   "role": "assistant",
+   "content": "```python\nfrom typing import List\n\nclass SparseTable:\n    def __init__(self, arr):\n        n = len(arr)\n        self.log = [0] * (n + 1)\n        for i in range(2, n + 1):\n            self.log[i] = self.log[i // 2] + 1\n        k = self.log[n] + 1\n        self.st = [[0] * n for _ in range(k)]\n        self.st[0] = arr[:]\n        for j in range(1, k):\n            step = 1 << (j - 1)\n            for i in range(n - (1 << j) + 1):\n                self.st[j][i] = min(self.st[j-1][i], self.st[j-1][i + step])\n\n    def query(self, l, r):\n        j = self.log[r - l + 1]\n        return min(self.st[j][l], self.st[j][r - (1 << j) + 1])\n\nclass Solution:\n    def minimumValueSum(self, nums: List[int], andValues: List[int]) -> int:\n        n = len(nums)\n        m = len(andValues)\n        INF = 10**18\n\n        # Precompute next_zero for each bit (0..16, since nums[i] < 1e5 < 2^17)\n        max_bit = 17\n        next_zero = [[n] * n for _ in range(max_bit)]\n        for b in range(max_bit):\n            # scan from right to left\n            next_zero[b][n-1] = n-1 if ((nums[n-1] >> b) & 1) == 0 else n\n            for i in range(n-2, -1, -1):\n                if ((nums[i] >> b) & 1) == 0:\n                    next_zero[b][i] = i\n                else:\n                    next_zero[b][i] = next_zero[b][i+1]\n\n        # Precompute intervals for each starting index i\n        intervals_by_start = [[] for _ in range(n)]\n        for i in range(n):\n            bits_set = [b for b in range(max_bit) if (nums[i] >> b) & 1]\n            thresholds = sorted([next_zero[b][i] for b in bits_set])\n            intervals = []\n            start = i\n            cur_and = nums[i]\n            for t in thresholds:\n                if t > start:\n                    intervals.append((start, t-1, cur_and))\n                # update with element at t\n                cur_and = cur_and & nums[t]\n                start = t\n            intervals.append((start, n-1, cur_and))\n            intervals_by_start[i] = intervals\n\n        # DP table: dp[idx][i] for idx from 0..m, i from 0..n\n        dp = [[INF] * (n+1) for _ in range(m+1)]\n        dp[m][n] = 0\n\n        # Process idx from m-1 down to 0\n        for idx in range(m-1, -1, -1):\n            # best[j] = nums[j] + dp[idx+1][j+1] if reachable, else INF\n            best = [INF] * n\n            for j in range(n):\n                if dp[idx+1][j+1] < INF:\n                    best[j] = nums[j] + dp[idx+1][j+1]\n            # Build sparse table for range minimum queries on best\n            st = SparseTable(best)\n            # Compute dp[idx][i] for all i from n-1 down to 0\n            for i in range(n-1, -1, -1):\n                min_val = INF\n                for L, R, and_val in intervals_by_start[i]:\n                    if and_val == andValues[idx]:\n                        # query minimum best in [L, R]\n                        q = st.query(L, R)\n                        if q < min_val:\n                            min_val = q\n                dp[idx][i] = min_val\n\n        result = dp[0][0]\n        return -1 if result >= INF else result\n```"
+  }
+ ],
+ "metadata": {
+  "task_source_id": "3364",
+  "task_id": "3364",
+  "candidate_index": 7,
+  "candidate_id": "cnd-c474168eea25",
+  "benchmark": "livecodebench",
+  "capture": "models-1-taxonomy",
+  "repeat": 0,
+  "split": "pools-1/taxonomy",
+  "solver_model": "xiaomi/mimo-v2.5",
+  "reasoning": "off",
+  "difficulty": "hard",
+  "platform": "leetcode",
+  "prompt_variant": "starter_code"
+ }
+}

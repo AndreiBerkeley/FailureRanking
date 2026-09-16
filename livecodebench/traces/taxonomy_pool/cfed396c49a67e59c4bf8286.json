@@ -1,0 +1,32 @@
+{
+ "trace_id": "cfed396c49a67e59c4bf8286",
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are an expert Python programmer. You will be given a question (problem specification) and will generate a correct Python program that matches the specification and passes all tests."
+  },
+  {
+   "role": "user",
+   "content": "### Question:\nYou are given a string S of length N consisting of characters A, B, and ?.\nYou are also given a positive integer K.\r\nA string T consisting of A and B is considered a good string if it satisfies the following condition:\n\n- No contiguous substring of length K in T is a palindrome.\n\nLet q be the number of ? characters in S.\r\nThere are 2^q strings that can be obtained by replacing each ? in S with either A or B. Find how many of these strings are good strings.\nThe count can be very large, so find it modulo 998244353.\n\nInput\n\nThe input is given from Standard Input in the following format:\nN K\r\nS\n\nOutput\n\nPrint the answer.\n\nConstraints\n\n\n- 2 \\leq K \\leq N \\leq 1000\n- K \\leq 10\n- S is a string consisting of A, B, and ?.\n- The length of S is N.\n- N and K are integers.\n\nSample Input 1\n\n7 4\r\nAB?A?BA\n\nSample Output 1\n\n1\r\n\nThe given string has two ?s.\r\nThere are four strings obtained by replacing each ? with A or B:\n\n- ABAAABA\n- ABAABBA\n- ABBAABA\n- ABBABBA\n\nAmong these, the last three contain the contiguous substring ABBA of length 4, which is a palindrome, and thus are not good strings.\nTherefore, you should print 1.\n\nSample Input 2\n\n40 7\r\n????????????????????????????????????????\n\nSample Output 2\n\n116295436\r\n\nEnsure to find the number of good strings modulo 998244353.\n\nSample Input 3\n\n15 5\r\nABABA??????????\n\nSample Output 3\n\n0\r\n\nIt is possible that there is no way to replace the ?s to obtain a good string.\n\nSample Input 4\n\n40 8\r\n?A?B??B?B?AA?A?B??B?A???B?BB?B???BA??BAA\n\nSample Output 4\n\n259240\n\n### Format: Read the inputs from stdin solve the problem and write the answer to stdout (do not directly test on the sample inputs). Enclose your code within delimiters as follows. Ensure that when the python program runs, it reads the inputs, runs the algorithm and writes output to STDOUT.\n```python\n# YOUR CODE HERE\n```\n\n### Answer: (use the provided format with backticks)\n\n"
+  },
+  {
+   "role": "assistant",
+   "content": "```python\nimport sys\n\nMOD = 998244353\n\ndef solve():\n    sys.setrecursionlimit(1_000_000)\n    input = sys.stdin.readline\n\n    N, K = map(int, input().split())\n    S = input().strip()\n\n    # Map to bits: A=0, B=1\n    # For '?' we'll store -1\n    arr = []\n    for ch in S:\n        if ch == 'A':\n            arr.append(0)\n        elif ch == 'B':\n            arr.append(1)\n        else:\n            arr.append(-1)\n\n    # Precompute all binary strings of length K (as bitmasks 0..2^K-1)\n    # and identify which are palindromes.\n    # Also precompute compatibility for building length N with shift window:\n    # window at position i is bits of arr[i:i+K]\n    # When shifting from window w (bits for i..i+K-1) to next window w2 (bits for i+1..i+K),\n    # we need suffix/prefix match: w2's lower K-1 bits == w's higher K-1 bits.\n    M = 1 << K\n    is_pal = [False] * M\n    for w in range(M):\n        ok = True\n        for j in range(K // 2):\n            b1 = (w >> j) & 1\n            b2 = (w >> (K - 1 - j)) & 1\n            if b1 != b2:\n                ok = False\n                break\n        is_pal[w] = ok\n\n    # Build adjacency lists between windows for DP\n    # We'll use: from state w (window starting at i)\n    # to state w2 (window starting at i+1) if compatible.\n    adj = [[] for _ in range(M)]\n    for w in range(M):\n        # w2 = ((w >> 1)?) careful:\n        # Let bits of w correspond to positions i..i+K-1, with bit j = position i+j.\n        # Next window starts at i+1, bits shift left by removing position i, adding new at end.\n        # Compatibility condition:\n        # lower K-1 bits of w2 correspond to positions i+1..i+K-1,\n        # which equal bits 1..K-1 of w => bits positions i+1..i+K-1.\n        # In terms of numeric representation where bit 0 is first position,\n        # new lower K-1 bits should equal w >> 1.\n        core = w >> 1\n        # w2 has bits 0..K-2 equal to core bits, bit K-1 can be 0/1.\n        # So w2 is core + (0 or 1) << (K-1)\n        w2a = core\n        w2b = core | (1 << (K - 1))\n        adj[w].append(w2a)\n        if w2b != w2a:\n            adj[w].append(w2b)\n\n    # DP over last K-1 bits (i.e., window state).\n    # But simplest: DP over window length K, ensuring we never place a palindrome window.\n    # Initialize for first window starting at 0.\n    # We'll iterate over positions and maintain states representing window bits for last K characters.\n    #\n    # At step pos (starting from K-1), state corresponds to bits arr[pos-K+1..pos].\n    # Transition by shifting and adding new bit.\n\n    # Precompute for each possible window mask whether it matches S at positions 0..K-1.\n    def window_matches(mask, start):\n        for j in range(K):\n            v = (mask >> j) & 1\n            x = arr[start + j]\n            if x != -1 and x != v:\n                return False\n        return True\n\n    dp = [0] * M\n\n    # initial window at start 0\n    for mask in range(M):\n        if window_matches(mask, 0) and not is_pal[mask]:\n            dp[mask] = 1\n\n    # If K==N, answer is sum over dp states\n    for start in range(1, N - K + 1):\n        # window start is 'start', we add new character at index start+K-1\n        newdp = [0] * M\n        for w in range(M):\n            if dp[w] == 0:\n                continue\n            for w2 in adj[w]:\n                # w2 corresponds to window starting at start\n                if is_pal[w2]:\n                    continue\n                if not window_matches(w2, start):\n                    continue\n                newdp[w2] = (newdp[w2] + dp[w]) % MOD\n        dp = newdp\n\n    ans = sum(dp) % MOD\n    print(ans)\n\nif __name__ == \"__main__\":\n    solve()\n```"
+  }
+ ],
+ "metadata": {
+  "task_source_id": "abc359_d",
+  "task_id": "abc359_d",
+  "candidate_index": 2,
+  "candidate_id": "cnd-2c2afebac4dc",
+  "benchmark": "livecodebench",
+  "capture": "models-1-taxonomy",
+  "repeat": 0,
+  "split": "pools-1/taxonomy",
+  "solver_model": "openai/gpt-5.4-nano",
+  "reasoning": "off",
+  "difficulty": "hard",
+  "platform": "atcoder",
+  "prompt_variant": "stdin"
+ }
+}

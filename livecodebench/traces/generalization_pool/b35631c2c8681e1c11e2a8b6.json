@@ -1,0 +1,32 @@
+{
+ "trace_id": "b35631c2c8681e1c11e2a8b6",
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are an expert Python programmer. You will be given a question (problem specification) and will generate a correct Python program that matches the specification and passes all tests."
+  },
+  {
+   "role": "user",
+   "content": "### Question:\nThere are N+2 cells arranged in a row. Let cell i denote the i-th cell from the left.\nThere is one stone placed in each of the cells from cell 1 to cell N.\r\nFor each 1 \\leq i \\leq N, the stone in cell i is white if S_i is W, and black if S_i is B.\r\nCells N+1 and N+2 are empty.\nYou can perform the following operation any number of times (possibly zero):\n\n- Choose a pair of adjacent cells that both contain stones, and move these two stones to the empty two cells while preserving their order.\r\n  More precisely, choose an integer x such that 1 \\leq x \\leq N+1 and both cells x and x+1 contain stones. Let k and k+1 be the empty two cells. Move the stones from cells x and x+1 to cells k and k+1, respectively.\n\nDetermine if it is possible to achieve the following state, and if so, find the minimum number of operations required:\n\n- Each of the cells from cell 1 to cell N contains one stone, and for each 1 \\leq i \\leq N, the stone in cell i is white if T_i is W, and black if T_i is B.\n\nInput\n\nThe input is given from Standard Input in the following format:\nN\r\nS\r\nT\n\nOutput\n\nIf it is possible to achieve the desired state, print the minimum number of operations required. If it is impossible, print -1.\n\nConstraints\n\n\n- 2 \\leq N \\leq 14\n- N is an integer.\n- Each of S and T is a string of length N consisting of B and W.\n\nSample Input 1\n\n6\r\nBWBWBW\r\nWWWBBB\n\nSample Output 1\n\n4\r\n\nUsing . to represent an empty cell, the desired state can be achieved in four operations as follows, which is the minimum:\n\n- BWBWBW..\n- BW..BWBW\n- BWWBB..W\n- ..WBBBWW\n- WWWBBB..\n\nSample Input 2\n\n6\r\nBBBBBB\r\nWWWWWW\n\nSample Output 2\n\n-1\n\nSample Input 3\n\n14\r\nBBBWBWWWBBWWBW\r\nWBWWBBWWWBWBBB\n\nSample Output 3\n\n7\n\n### Format: Read the inputs from stdin solve the problem and write the answer to stdout (do not directly test on the sample inputs). Enclose your code within delimiters as follows. Ensure that when the python program runs, it reads the inputs, runs the algorithm and writes output to STDOUT.\n```python\n# YOUR CODE HERE\n```\n\n### Answer: (use the provided format with backticks)\n\n"
+  },
+  {
+   "role": "assistant",
+   "content": "```python\nimport sys\nfrom collections import deque\n\ndef solve():\n    input = sys.stdin.readline\n    N = int(input().strip())\n    S = input().strip()\n    T = input().strip()\n\n    # Encode colors: B=0, W=1\n    s_bits = 0\n    t_bits = 0\n    for ch in S:\n        s_bits = (s_bits << 1) | (1 if ch == 'W' else 0)\n    for ch in T:\n        t_bits = (t_bits << 1) | (1 if ch == 'W' else 0)\n\n    # State representation:\n    # There are N+2 cells; last two are empty in the initial state and should be empty in the goal.\n    # Represent the whole configuration using a base-3 mask:\n    # each cell is 0 empty, 1 black, 2 white.\n    #\n    # Total cells <= 16, so 3^(N+2) <= 3^16 ~ 43M too big, but BFS on reachable states is fine.\n    # Instead, we do BFS over exact states using bit tricks and hashing integers.\n    #\n    # Build initial and goal states.\n    def build_state(bits):\n        # bits: length N, msb corresponds to cell 1\n        cells = [0]*(N+2)\n        for i in range(N):\n            # cell i (0-indexed)\n            bit = (bits >> (N-1-i)) & 1\n            cells[i] = 2 if bit else 1\n        # last two empties: 0 already\n        st = 0\n        p = 1\n        for v in cells:\n            st += v * p\n            p *= 3\n        return st\n\n    init = build_state(s_bits)\n    goal = build_state(t_bits)\n\n    # Precompute powers of 3 for quick digit extraction/update\n    pow3 = [1]*(N+2)\n    for i in range(1, N+2):\n        pow3[i] = pow3[i-1]*3\n\n    def get_cell(st, idx):\n        return (st // pow3[idx]) % 3\n\n    def set_cell(st, idx, val):\n        # val in {0,1,2}\n        cur = get_cell(st, idx)\n        return st + (val - cur) * pow3[idx]\n\n    # BFS\n    q = deque([init])\n    dist = {init: 0}\n\n    while q:\n        st = q.popleft()\n        d = dist[st]\n        if st == goal:\n            print(d)\n            return\n\n        # Try move adjacent pair of stones (x,x+1) to empty pair (k,k+1)\n        # where k is empty start among 1..N+1.\n        # Condition: both x and x+1 occupied; both k and k+1 empty; and k != x typically\n        # We'll enumerate x and k. Complexity is small: (N+1)^2 <= 225.\n        for x in range(N+1):  # cells x and x+1 exist, x in [0..N]\n            c1 = get_cell(st, x)\n            c2 = get_cell(st, x+1)\n            if c1 == 0 or c2 == 0:\n                continue\n            # pair stones\n            for k in range(N+1):\n                if k == x:\n                    continue\n                e1 = get_cell(st, k)\n                e2 = get_cell(st, k+1)\n                if e1 != 0 or e2 != 0:\n                    continue\n                # Move preserving order: stones at x->k, x+1->k+1\n                nst = st\n                # clear x,x+1\n                nst = set_cell(nst, x, 0)\n                nst = set_cell(nst, x+1, 0)\n                # place at k,k+1\n                nst = set_cell(nst, k, c1)\n                nst = set_cell(nst, k+1, c2)\n                if nst not in dist:\n                    dist[nst] = d + 1\n                    q.append(nst)\n\n    print(-1)\n\nif __name__ == \"__main__\":\n    solve()\n```"
+  }
+ ],
+ "metadata": {
+  "task_source_id": "abc361_d",
+  "task_id": "abc361_d",
+  "candidate_index": 2,
+  "candidate_id": "cnd-2c2afebac4dc",
+  "benchmark": "livecodebench",
+  "capture": "models-1-generalization",
+  "repeat": 0,
+  "split": "pools-1/generalization",
+  "solver_model": "openai/gpt-5.4-nano",
+  "reasoning": "off",
+  "difficulty": "hard",
+  "platform": "atcoder",
+  "prompt_variant": "stdin"
+ }
+}
