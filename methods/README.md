@@ -4,8 +4,9 @@ Six formulas are reported: gold (the reference) and five trace methods. Three re
 per-trace code sets (amplitude, incidence, combinations) and are reported on every
 benchmark; two read *where* in the trace each code fired (step-amplitude, containment) and
 are reported on hover, whose program has four steps — on livecodebench's one-step program
-they reduce to amplitude, and the panel judge used for hover's optimizer candidates records
-no steps. Each turns one candidate's judged traces into one number, from the judge's
+they reduce to amplitude. For hover's optimizer candidates, whose panel judge stores counts
+per trace, the steps are read from the judge records (the turns at which annotators and the
+open reader reported each counted code). Each turns one candidate's judged traces into one number, from the judge's
 mapping and nothing else; the candidates are then ranked by that number. None has a
 parameter. The measure that compares them is in §8.
 

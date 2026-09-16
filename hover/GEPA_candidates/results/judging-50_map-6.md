@@ -9,7 +9,9 @@ hover-pool3  run=data/hover/mappings/map-6  taxonomy=data/hover/taxonomies/tax-1
 | 5 worst mode | +0.048 | no |
 | 6 combinations | +0.000 | no |
 | 7 patterns | -0.322 | no |
+| 8 step-amp | +0.108 | no |
 | 9 recovery | +0.121 | no |
+| 10 containment | +0.333 | no |
 
 low-support code/candidate cells in method 9 (app_m < 5): 15
-methods 8 and 10 need per-step firings; this judge records code counts per trace only
+steps for methods 8 and 10: panel votes_by_turn and open-reader agents, from judge_records

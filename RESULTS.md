@@ -102,10 +102,12 @@ the only hover value above 0.35 anywhere and does not repeat on set b or on any 
 
 ## hover / GEPA_candidates — 12 instruction sets · tax-10 · panel judge · gold-gen on 500 tasks
 
-Judge: two-annotator panel + open reader, code counts per trace (no steps, so step methods
-are not computable). `map-5` on `eval-1/sample` (50, random); `map-6` on `judging-sample-2`
-(50, stratified by mean candidate score — selection on the judging pool's outcomes,
-disclosed). Pooled for the 100-task table and the draws.
+Judge: two-annotator panel + open reader. `map-5` on `eval-1/sample` (50, random); `map-6` on
+`judging-sample-2` (50, stratified by mean candidate score — selection on the judging pool's
+outcomes, disclosed). Pooled for the 100-task table and the draws. Steps for the two
+step-attributed methods come from the judge records: a code that counted is placed at every
+turn an annotator reported it and at the turn of every open-reader problem mapped to it —
+the same turns the per-trace count was built from (every counted code has at least one).
 
 ### both sets, 100 judged tasks
 `hover/GEPA_candidates/results/both-100_map-5_map-6.md`
@@ -116,31 +118,37 @@ disclosed). Pooled for the 100-task table and the draws.
 | amplitude | −0.091 | no |
 | incidence | −0.345 | no |
 | combinations | +0.091 | no |
+| step-amplitude | +0.061 | no |
+| containment | +0.323 | no |
 
 ### ten random draws of 50 from the 100
 `hover/GEPA_candidates/results/subsamples-50x10_both-100.md`
 
-| draw | gold-50 | amplitude | incidence | combinations | top-1 amp / inc / comb |
-|---|---:|---:|---:|---:|---|
-| 1 | +0.621 | −0.152 | −0.585 | +0.091 | no / no / no |
-| 2 | +0.815 | +0.030 | −0.053 | +0.152 | no / no / no |
-| 3 | +0.627 | −0.231 | −0.423 | +0.061 | no / no / no |
-| 4 | +0.633 | −0.061 | −0.259 | +0.152 | no / no / no |
-| 5 | +0.778 | +0.015 | −0.333 | +0.273 | no / no / no |
-| 6 | +0.867 | −0.016 | −0.138 | +0.030 | no / no / no |
-| 7 | +0.692 | +0.094 | −0.583 | +0.212 | no / no / no |
-| 8 | +0.746 | −0.077 | −0.393 | +0.030 | no / no / no |
-| 9 | +0.841 | −0.046 | −0.176 | +0.030 | no / no / no |
-| 10 | +0.700 | −0.030 | −0.088 | +0.182 | no / no / no |
-| **mean** | +0.732 | −0.047 | −0.303 | +0.121 | |
+| draw | gold-50 | amplitude | incidence | combinations | step-amp | containment | top-1 amp / inc / comb / step / cont |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 1 | +0.621 | −0.152 | −0.585 | +0.091 | +0.000 | +0.273 | no / no / no / no / no |
+| 2 | +0.815 | +0.030 | −0.053 | +0.152 | +0.152 | +0.415 | no / no / no / no / no |
+| 3 | +0.627 | −0.231 | −0.423 | +0.061 | +0.015 | +0.312 | no / no / no / no / no |
+| 4 | +0.633 | −0.061 | −0.259 | +0.152 | +0.091 | +0.292 | no / no / no / no / no |
+| 5 | +0.778 | +0.015 | −0.333 | +0.273 | +0.152 | +0.424 | no / no / no / no / no |
+| 6 | +0.867 | −0.016 | −0.138 | +0.030 | +0.091 | +0.212 | no / no / no / no / no |
+| 7 | +0.692 | +0.094 | −0.583 | +0.212 | +0.212 | +0.242 | no / no / no / no / no |
+| 8 | +0.746 | −0.077 | −0.393 | +0.030 | +0.094 | +0.323 | no / no / no / no / no |
+| 9 | +0.841 | −0.046 | −0.176 | +0.030 | +0.156 | +0.303 | no / no / no / no / no |
+| 10 | +0.700 | −0.030 | −0.088 | +0.182 | +0.152 | +0.273 | no / no / no / no / no |
+| **mean** | +0.732 | −0.047 | −0.303 | +0.121 | +0.112 | +0.307 | |
 
 No method beats gold-50 on any draw. Incidence is consistently negative: the candidates on
-which something fires more often are the better ones. Top-1 is "no" even for gold because
-gold-50's best candidate differs from gold-gen's on every set.
+which something fires more often are the better ones. Containment is the one method with a
+consistent positive sign on this set (+0.21 to +0.42 on every draw), still well under the
+bar. Top-1 is "no" even for gold because gold-50's best candidate differs from gold-gen's
+on every set.
 
 ### the two named sets
-`sample-50_map-5.md`: gold +0.785, amplitude +0.061, incidence −0.320, combinations +0.242.
-`judging-50_map-6.md`: gold +0.367, amplitude −0.077, incidence −0.283, combinations +0.000.
+`sample-50_map-5.md`: gold +0.785, amplitude +0.061, incidence −0.320, combinations +0.242,
+step-amplitude +0.121, containment +0.364.
+`judging-50_map-6.md`: gold +0.367, amplitude −0.077, incidence −0.283, combinations +0.000,
+step-amplitude +0.108, containment +0.333.
 
 ## Across the benchmarks
 

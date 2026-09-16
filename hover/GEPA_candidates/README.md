@@ -35,9 +35,10 @@ temperature 0) each read with the taxonomy and name the codes; a code fires when
 An open reader (gemini-3.1-pro-preview) reads with no taxonomy and reports problems, mapped
 to codes afterwards. `judge/mapping.jsonl` gives per trace the codes that fired and which
 source supplied each; `judge/judge_records/` the full record per trace; `judge/manifest.json`
-the settings, per-code firing and audits. The judge records code counts per trace, not
-steps, so the step-level methods are not computable on these mappings. 600/600 judged, 0
-failed, in both sets.
+the settings, per-code firing and audits. The per-trace mapping carries counts, not steps;
+the step-attributed methods read the judge records instead — `votes_by_turn` (which turn each
+annotator reported a code at) and the open reader's problems with their agent — and place
+each counted code at the turns it was reported. 600/600 judged, 0 failed, in both sets.
 
 **Traces.** One JSON per trace, the outcome-blind judge view (`messages` = the DSPy turns as
 rendered for the judge; `metadata` = task, candidate, candidate index, split). Gold is in
