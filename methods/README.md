@@ -34,6 +34,13 @@ than contributing 0, because "not judged" is not "no failure found".
 
 A_gold(c) = (1/T) · Σ_{t∈𝒯} g(c,t)                     higher is better
 
+where
+- *c* — the candidate being scored (one model, or one instruction set);
+- *𝒯* — the set of judged tasks, the same for every candidate; *t* ranges over it;
+- *T* = |𝒯| — how many judged tasks *c* has, the divisor that makes the score a per-task mean;
+- g(c,t) — the benchmark's gold outcome of *c* on task *t*: 1 if the run passed (every hidden
+  test passed / all three titles retrieved), 0 otherwise.
+
 The pass rate on the judged tasks. It reads outcomes, so it can never be part of a
 trace-based claim; it is reported because it says what scoring these same tasks — the thing
 the trace methods are trying to replace — predicts about the large set.
@@ -42,11 +49,24 @@ the trace methods are trying to replace — predicts about the large set.
 
 A_amp(c) = (1/T) · Σ_{t∈𝒯} k(c,t)                       lower is better
 
+where
+- *c*, *𝒯*, *t*, *T* — as above;
+- codes(c,t) — the set of *distinct* failure codes the judge assigned anywhere in *c*'s trace
+  on task *t* (a code cited twice in one trace is in the set once);
+- k(c,t) = |codes(c,t)| — the size of that set: how many different failure codes fired on
+  that trace, 0 when the judge found nothing.
+
 The mean number of distinct failure codes per judged trace. Equivalently, writing
 r_m(c) = (1/T)·Σ_t 1[m ∈ codes(c,t)] for the share of *c*'s judged traces on which code *m*
 fired,
 
 A_amp(c) = Σ_{m∈M} r_m(c)
+
+where
+- *M* — the taxonomy's set of codes; *m* ranges over it;
+- r_m(c) = (1/T)·Σ_t 1[m ∈ codes(c,t)] — the firing rate of code *m* for candidate *c*: the
+  share of *c*'s judged traces on which *m* fired; 1[·] is the indicator, 1 when the condition
+  inside holds and 0 otherwise.
 
 — the sum of the per-code firing rates. The two readings are the same number: counting codes
 task by task and counting tasks code by code cannot be told apart at this level. Amplitude
@@ -56,6 +76,11 @@ does not know where a code fired, what it fired with, or whether it cost the out
 
 A_inc(c) = (1/T) · Σ_{t∈𝒯} 1[ k(c,t) > 0 ]              lower is better
 
+where
+- *c*, *𝒯*, *t*, *T*, k(c,t) — as above;
+- 1[k(c,t) > 0] — the indicator: 1 if at least one code fired on *c*'s trace for task *t*,
+  0 if the judge found nothing; so the sum counts the traces on which anything fired.
+
 The share of judged traces on which anything fired. One per failing trace however much
 went wrong on it, so a candidate that ruins a few tasks is separated from one that lightly
 marks many — which amplitude adds into the same total. A_inc(c) ≤ A_amp(c) always, with
@@ -64,6 +89,11 @@ equality only when no trace ever carries two codes.
 ## 5. Combinations — failures that arrive together cost more
 
 A_comb(c) = (1/T) · Σ_{t∈𝒯} ( 2^{k(c,t)} − 1 )          lower is better
+
+where
+- *c*, *𝒯*, *t*, *T*, k(c,t) — as above;
+- 2^{k(c,t)} − 1 — the number of non-empty subsets of the codes that fired on that trace:
+  0 codes → 0, one → 1, two → 3, three → 7, four → 15.
 
 A trace showing *k* codes contributes the number of its non-empty code subsets, 2^k − 1:
 one code → 1, two → 3, three → 7. Three codes on one trace therefore cost 7 where the same
@@ -75,6 +105,13 @@ separately instead would give amplitude exactly, since Σ_t k(c,t) is linear in 
 ## 6. Step-amplitude — how many (step, code) firings
 
 A_step(c) = (1/T) · Σ_{t∈𝒯} Σ_{s∈S(t)} |codes(c,t,s)|         lower is better
+
+where
+- *c*, *𝒯*, *t*, *T* — as above;
+- S(t) — the steps of the trace on task *t*: the program's turns in order (hover: the four
+  module calls summarize1, create_query_hop2, summarize2, create_query_hop3); *s* ranges over it;
+- codes(c,t,s) — the distinct codes the judge placed *at step s* of *c*'s trace on *t*; the
+  union over *s* is codes(c,t), and |codes(c,t,s)| is how many fired at that step.
 
 Amplitude counted per step instead of per trace: a code that fired at two different steps
 of one trace counts twice here and once in A_amp. A_step(c) ≥ A_amp(c) always, with equality
@@ -90,6 +127,15 @@ clean. A firing at the terminal step is never contained, because nothing ran aft
 observing no downstream failure says nothing.
 
 A_con(c) = (1/T) · Σ_{t∈𝒯} |{ (s,m) : m ∈ codes(c,t,s), (s,t) not contained }|     lower is better
+
+where
+- *c*, *𝒯*, *t*, *T*, S(t), *s*, codes(c,t,s) — as above;
+- (s,m) — one firing: code *m* at step *s* of the trace on *t*; the set collects every firing
+  in the trace, and |·| counts them;
+- down(s) — the steps that consume step *s*'s output, directly or through the harness; on a
+  linear pipeline, every step after *s*; empty for the terminal step;
+- "(s,t) not contained" — the firing is kept unless down(s) is non-empty *and* no code fired
+  at any step in down(s) on that trace, i.e. unless something ran after step *s* and ran clean.
 
 Every step-amplitude firing contributes 1 unless it was contained, when it contributes 0.
 It is the gold-free counterpart of asking whether a failure cost the outcome: instead of
@@ -115,6 +161,15 @@ way, *discordant* if they order them oppositely, and *dropped* if either ranking
 With C concordant and D discordant pairs,
 
 τ = (C − D) / (C + D)
+
+where
+- *R₁*, *R₂* — the two rankings being compared (a method's ranking of the candidates, and
+  the gold-gen ranking); *n* — the number of candidates (9 or 12);
+- {a, b} — one unordered pair of candidates; there are n(n−1)/2 of them;
+- *C* — the number of pairs both rankings order the same way (concordant);
+- *D* — the number of pairs they order oppositely (discordant);
+- pairs tied in either ranking are in neither count, so C + D is the number of pairs the
+  comparison is actually made on, and it is reported when it is less than n(n−1)/2.
 
 so τ = +1 is perfect agreement on every ordered pair, −1 perfect reversal, 0 no relation.
 Dropping tied pairs rather than counting them as half-right is what makes a tied gold-50
