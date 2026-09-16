@@ -10,7 +10,8 @@ any source that does not exist yet, printing what it skipped.
 
 Layout produced (see the branch README for the reader's view):
 
-    livecodebench/{tasks,program,candidates,traces,taxonomies,taxonomy_generation,judge}
+    livecodebench/program, livecodebench/tasks
+    livecodebench/models/{candidates,splits,taxonomies,traces,taxonomy_generation,judge_traces/{judging-50-1,judging-150}}
     hover/program, hover/tasks
     hover/GEPA_candidates/{candidates,taxonomy,splits,outcomes,judge_traces/{sample-50,judging-50}}
     hover/models/{candidates,taxonomies,splits,outcomes,taxonomy_generation,judge_traces/{judged-50-a,judged-50-b}}
@@ -107,25 +108,33 @@ def split_tasks(path, key="judged"):
     return set(json.loads((REPO / path).read_text())["portions"][key])
 
 
-print("livecodebench")
+print("livecodebench (shared)")
 copy_file("data/livecodebench/tasks/tasks.jsonl", "livecodebench/tasks/tasks.jsonl")
 copy_file("data/livecodebench/tasks/README.md", "livecodebench/tasks/README.source.md")
-for s in ("pools-1", "judging-50-1", "judging-100-1"):
-    copy_tree(f"data/livecodebench/splits/{s}", f"livecodebench/tasks/splits/{s}")
+copy_tree("data/livecodebench/splits/pools-1", "livecodebench/tasks/splits/pools-1")
 copy_file("data/livecodebench/evaluator/code_generation_lite.py", "livecodebench/tasks/code_generation_lite.py")
 copy_file("data/livecodebench/program/prompt.md", "livecodebench/program/prompt.md")
 copy_file("data/livecodebench/program/structure.json", "livecodebench/program/structure.json")
-copy_file("data/livecodebench/candidates/sets/models-1.json", "livecodebench/candidates/models-1.json")
-copy_pool("runs/new_pipeline/lcb-models/pool_taxonomy", "livecodebench/traces/taxonomy_pool")
-copy_pool("runs/new_pipeline/lcb-models/pool_judging150", "livecodebench/traces/judging_pool")
-copy_pool("runs/new_pipeline/lcb-models/pool_generalization", "livecodebench/traces/generalization_pool")
+
+print("livecodebench / models")
+LM = "livecodebench/models"
+copy_file("data/livecodebench/candidates/sets/models-1.json", f"{LM}/candidates/models-1.json")
+for s_ in ("judging-50-1", "judging-100-1"):
+    copy_tree(f"data/livecodebench/splits/{s_}", f"{LM}/splits/{s_}")
 for t in ("tax-1", "tax-2"):
-    copy_tree(f"data/livecodebench/taxonomies/{t}", f"livecodebench/taxonomies/{t}")
-copy_tree("runs/new_pipeline/lcb-models/run-1", "livecodebench/taxonomy_generation/run-1",
+    copy_tree(f"data/livecodebench/taxonomies/{t}", f"{LM}/taxonomies/{t}")
+copy_pool("runs/new_pipeline/lcb-models/pool_taxonomy", f"{LM}/traces/taxonomy_pool")
+copy_pool("runs/new_pipeline/lcb-models/pool_generalization", f"{LM}/traces/generalization_pool")
+copy_tree("runs/new_pipeline/lcb-models/run-1", f"{LM}/taxonomy_generation/run-1",
           exclude=("corpus_*", "fresh_corpus"))
-for j in ("pointjudge-1", "pointjudge-1-tax2", "pointjudge-2"):
-    copy_tree(f"runs/new_pipeline/lcb-models/{j}", f"livecodebench/judge/{j}")
-    copy_file(f"runs/new_pipeline/lcb-models/{j}.log", f"livecodebench/judge/{j}.log")
+j50 = split_tasks("data/livecodebench/splits/judging-50-1/split.json", key="judging")
+copy_pool("runs/new_pipeline/lcb-models/pool_judging150", f"{LM}/judge_traces/judging-150/traces")
+copy_pool("runs/new_pipeline/lcb-models/pool_judging150", f"{LM}/judge_traces/judging-50-1/traces", task_ids=j50)
+for j in ("pointjudge-1", "pointjudge-1-tax2"):
+    copy_tree(f"runs/new_pipeline/lcb-models/{j}", f"{LM}/judge_traces/judging-50-1/judge/{j}")
+copy_file("runs/new_pipeline/lcb-models/pointjudge-1.log", f"{LM}/judge_traces/judging-50-1/judge/pointjudge-1.log")
+copy_tree("runs/new_pipeline/lcb-models/pointjudge-2", f"{LM}/judge_traces/judging-150/judge/pointjudge-2")
+copy_file("runs/new_pipeline/lcb-models/pointjudge-2.log", f"{LM}/judge_traces/judging-150/judge/pointjudge-2.log")
 
 print("hover (shared)")
 copy_file("data/hover/program/structure.json", "hover/program/structure.json")

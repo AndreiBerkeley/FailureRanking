@@ -15,7 +15,7 @@ Judge: two readers + decider with tax-2 in view, all 150 judging-pool tasks, 1,3
 amplitude and are not listed.
 
 ### all 150 judged tasks
-`livecodebench/results/judging-150_pointjudge-2.md`
+`livecodebench/models/results/judging-150_pointjudge-2.md`
 
 | method | tau vs gold-gen | top-1 |
 |---|---:|---|
@@ -25,7 +25,7 @@ amplitude and are not listed.
 | combinations | +0.771 | no |
 
 ### ten random draws of 50 from the 150
-`livecodebench/results/subsamples-50x10_pointjudge-2.md` — seeds 1–10, uniform, no stratification.
+`livecodebench/models/results/subsamples-50x10_pointjudge-2.md` — seeds 1–10, uniform, no stratification.
 
 | draw | gold-50 | amplitude | incidence | combinations | top-1 amp / inc / comb |
 |---|---:|---:|---:|---:|---|

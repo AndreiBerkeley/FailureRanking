@@ -20,7 +20,8 @@ summarised from elsewhere; every number in `results/` recomputes from the files 
 ```
 methodology.md                 the process, start to end
 methods/README.md              the scoring formulas, fully derived
-livecodebench/                 tasks, prompt, candidates, traces, taxonomies, generation run, judge runs, results
+livecodebench/                 program, task registry
+livecodebench/models/          the 9 models on livecodebench: taxonomies, traces, judge runs, outcomes, results
 hover/                         program, task registry
 hover/GEPA_candidates/         the 12 optimizer candidates: taxonomy, traces, judge mappings, outcomes, results
 hover/models/                  the 9 models on hover: taxonomies, traces, judge runs, outcomes, results
@@ -30,7 +31,7 @@ code/                          the pipeline, judge, capture and scoring code, as
 Every benchmark directory follows the same pattern: `traces/` holds one JSON per trace in the
 judge's view (`{trace_id, messages, metadata}`), with the gold outcomes in a separate file
 beside them and never inside a trace; `judge*/` holds the judge's mapping of those traces;
-`results/` holds the tables produced by `code/methods_scripts/run_baselines.py`.
+`results/` holds the tables produced by `code/methods_scripts/run_baselines.py` and `subsample_50.py`.
 
 ## Reading a result
 

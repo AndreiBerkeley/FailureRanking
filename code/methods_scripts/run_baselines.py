@@ -20,8 +20,9 @@ if "--tasks" in args:       # a split.json; only its portions.judged / portions.
     i = args.index("--tasks"); TASKS_ARG = args[i + 1]; del args[i:i + 2]
 SUPPORT_MIN = 5
 
+RUNS = args or None      # one or more judge run dirs (disjoint task sets are pooled)
 if BENCH == "hover":
-    RUN  = args[0] if args else "runs/new_pipeline/hover-models/pointjudge-1-sp15"
+    RUN  = " + ".join(args) if args else "runs/new_pipeline/hover-models/pointjudge-1-sp15"
     POOL = "runs/new_pipeline/hover-models/pool_judging"
     CSET = 'data/hover/candidates/sets/models-1.json'
     TAX  = 'data/hover/taxonomies/tax-15/taxonomy.json'
@@ -33,11 +34,11 @@ elif BENCH == "hover-pool3":
     TAX  = 'data/hover/taxonomies/tax-10/taxonomy.json'
     GOLD50 = {"map-5": "cap-2", "map-6": "cap-5"}      # the judged tasks' own capture
 else:
-    RUN  = args[0] if args else "runs/new_pipeline/lcb-models/pointjudge-1-tax2"
+    RUN  = " + ".join(args) if args else "runs/new_pipeline/lcb-models/pointjudge-1-tax2"
     POOL = POOL_ARG or "runs/new_pipeline/lcb-models/pool_judging50"
     GEN  = "runs/new_pipeline/lcb-models/pool_generalization"
     CSET = 'data/livecodebench/candidates/sets/models-1.json'
-    TAX  = json.load(open(f"{RUN}/summary.json"))["taxonomy"]
+    TAX  = json.load(open(f"{(args or [RUN])[0]}/summary.json"))["taxonomy"]
 
 cs = json.load(open(CSET))
 if BENCH == "hover-pool3":
@@ -85,7 +86,8 @@ if BENCH == "hover-pool3":
             if d.get("status") != "judged": continue
             ev[d["candidate_id"]][d["task_id"]] = set(d["codes"])
     T = {c: len(ev[c]) for c in active}
-for p in (glob.glob(f"{RUN}/traces/*.json") if HAS_STEPS else []):
+RUN_DIRS = RUNS or [RUN]
+for p in ([f for r in RUN_DIRS for f in glob.glob(f"{r}/traces/*.json")] if HAS_STEPS else []):
     d = json.load(open(p))
     if d.get("status") != "judged": continue
     c = inv[d["candidate_index"]]
@@ -170,13 +172,14 @@ r50 = sorted(active, key=lambda c: -g50[c]); rgn = sorted(active, key=lambda c: 
 C3 = taub(r50, g50, rgn, ggn)
 
 print(f"{BENCH}  run={RUN}  taxonomy={TAX}  judged tasks={len(tasks50)}{'  (' + TASKS_ARG + ')' if TASKS_ARG else ''}  gen tasks={len(GG[active[0]])}\n")
-print(f"| method | tau judge vs gold-50 | tau judge vs gold-gen | tau gold-50 vs gold-gen | top-1 |")
-print(f"|---|---:|---:|---:|---|")
+# three columns: the gold row's "vs gold-gen" IS gold-50 vs gold-gen, so that constant
+# is not repeated as a column of its own
+# the gold row's value is gold-50 vs gold-gen, the bar every trace method is read against
+print(f"| method | tau vs gold-gen | top-1 |")
+print(f"|---|---:|---|")
 for name in M:
     r = ranking(name)
-    t1 = taub(r, M[name], r50, g50)
     t2 = taub(r, M[name], rgn, ggn)
-    print(f"| {name} | {t1:+.3f} | {t2:+.3f} | {C3:+.3f} | "
-          f"{'yes' if r[0]==rgn[0] else 'no'} |")
+    print(f"| {name} | {t2:+.3f} | {'yes' if r[0]==rgn[0] else 'no'} |")
 print(f"\nlow-support code/candidate cells in method 9 (app_m < {SUPPORT_MIN}): {low_support}")
 if not HAS_STEPS: print("methods 8 and 10 need per-step firings; this judge records code counts per trace only")
