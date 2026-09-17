@@ -43,6 +43,24 @@ amplitude and are not listed.
 
 Draws where the method beats gold-50: amplitude 6/10, incidence 4/10, combinations 4/10.
 
+### agreement vs judged-set size
+`livecodebench/models/results/size-sweep_pointjudge-2.md` — 20 uniform draws at each k (one at k = 150, the whole set); draws at large k overlap, so their spread shrinks for that reason alone. Step-amp and containment equal amplitude here.
+
+| k | draws | gold-k | amplitude | incidence | combinations | step-amp | containment | beats gold-k |
+|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 10 | 20 | +0.620 | +0.593 | +0.598 | +0.540 | +0.593 | +0.593 | amplitude 10/20, incidence 7/20, combinations 7/20, step-amp 10/20, containment 10/20 |
+| 20 | 20 | +0.724 | +0.691 | +0.705 | +0.605 | +0.691 | +0.691 | amplitude 9/20, incidence 8/20, combinations 6/20, step-amp 9/20, containment 9/20 |
+| 30 | 20 | +0.752 | +0.682 | +0.738 | +0.595 | +0.682 | +0.682 | amplitude 8/20, incidence 7/20, combinations 1/20, step-amp 8/20, containment 8/20 |
+| 50 | 20 | +0.783 | +0.775 | +0.794 | +0.692 | +0.775 | +0.775 | amplitude 10/20, incidence 9/20, combinations 8/20, step-amp 10/20, containment 10/20 |
+| 75 | 20 | +0.832 | +0.815 | +0.835 | +0.761 | +0.815 | +0.815 | amplitude 8/20, incidence 5/20, combinations 4/20, step-amp 8/20, containment 8/20 |
+| 100 | 20 | +0.874 | +0.836 | +0.877 | +0.764 | +0.836 | +0.836 | amplitude 6/20, incidence 9/20, combinations 3/20, step-amp 6/20, containment 6/20 |
+| 150 | 1 | +0.941 | +0.889 | +0.889 | +0.771 | +0.889 | +0.889 | amplitude 0/1, incidence 0/1, combinations 0/1, step-amp 0/1, containment 0/1 |
+
+Both curves rise with k and stay within 0.05 of each other up to k = 100; at k = 150 gold is
+ahead by 0.05 on a single draw. There is no crossover in either direction: on this
+benchmark, n judged traces and n outcomes carry about the same ranking information at every
+n tried.
+
 On a random 50, reading the traces and scoring the outcomes predict the 755-task ranking
 about equally well (+0.80–0.82 vs +0.81), and which one wins is the draw. On all 150 the
 gold pulls ahead (+0.941 vs +0.889). Why not +1: points per failing trace differ by model
@@ -98,6 +116,23 @@ two sets are pooled for the 100-task table and the draws. Step methods apply: fo
 
 No method beats gold-50 on any draw.
 
+### agreement vs judged-set size
+`hover/models/results/size-sweep_both-100.md`
+
+| k | draws | gold-k | amplitude | incidence | combinations | step-amp | containment | beats gold-k |
+|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 10 | 20 | +0.330 | -0.031 | +0.525 | +0.006 | +0.016 | +0.048 | amplitude 1/20, incidence 9/20, combinations 2/20, step-amp 4/20, containment 5/20 |
+| 20 | 20 | +0.378 | -0.014 | +0.446 | +0.017 | +0.033 | +0.056 | amplitude 1/20, incidence 12/20, combinations 1/20, step-amp 1/20, containment 2/20 |
+| 30 | 20 | +0.400 | +0.010 | +0.381 | +0.017 | +0.045 | +0.070 | amplitude 0/20, incidence 8/20, combinations 1/20, step-amp 1/20, containment 1/20 |
+| 50 | 20 | +0.500 | +0.029 | +0.274 | +0.048 | +0.093 | +0.097 | amplitude 0/20, incidence 3/20, combinations 0/20, step-amp 0/20, containment 0/20 |
+| 75 | 20 | +0.501 | +0.076 | +0.212 | +0.097 | +0.123 | +0.126 | amplitude 0/20, incidence 1/20, combinations 0/20, step-amp 0/20, containment 0/20 |
+| 100 | 1 | +0.529 | +0.056 | +0.200 | +0.111 | +0.111 | +0.167 | amplitude 0/1, incidence 0/1, combinations 0/1, step-amp 0/1, containment 0/1 |
+
+Incidence's +0.5 at k = 10 is not a signal: on hover something fires on 889 of 900 traces,
+so at k = 10 most candidates have incidence exactly 1.0 and the tau is computed on ~7 of 36
+pairs (12 at k = 20, 17 at k = 50, 21 at k = 100); it falls toward +0.2 as pairs become
+untied. Every other method is flat near zero at every k.
+
 ### the two named sets
 `judged-50-a_pointjudge-1-sp15.md`: gold +0.867, amplitude +0.000, incidence +0.750,
 combinations +0.000, step-amplitude +0.111, containment +0.111.
@@ -142,6 +177,21 @@ the same turns the per-trace count was built from (every counted code has at lea
 | 9 | +0.841 | −0.046 | −0.176 | +0.030 | +0.156 | +0.303 | no / no / no / no / no |
 | 10 | +0.700 | −0.030 | −0.088 | +0.182 | +0.152 | +0.273 | no / no / no / no / no |
 | **mean** | +0.732 | −0.047 | −0.303 | +0.121 | +0.112 | +0.307 | |
+
+### agreement vs judged-set size
+`hover/GEPA_candidates/results/size-sweep_both-100.md`
+
+| k | draws | gold-k | amplitude | incidence | combinations | step-amp | containment | beats gold-k |
+|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 10 | 20 | +0.449 | -0.053 | -0.253 | +0.062 | +0.054 | +0.205 | amplitude 2/20, incidence 2/20, combinations 3/20, step-amp 3/20, containment 4/20 |
+| 20 | 20 | +0.574 | -0.099 | -0.280 | +0.033 | +0.030 | +0.275 | amplitude 0/20, incidence 0/20, combinations 0/20, step-amp 0/20, containment 1/20 |
+| 30 | 20 | +0.631 | -0.078 | -0.242 | +0.058 | +0.057 | +0.268 | amplitude 0/20, incidence 0/20, combinations 0/20, step-amp 0/20, containment 1/20 |
+| 50 | 20 | +0.692 | -0.064 | -0.321 | +0.102 | +0.092 | +0.302 | amplitude 0/20, incidence 0/20, combinations 0/20, step-amp 0/20, containment 0/20 |
+| 75 | 20 | +0.719 | -0.049 | -0.329 | +0.119 | +0.072 | +0.328 | amplitude 0/20, incidence 0/20, combinations 0/20, step-amp 0/20, containment 0/20 |
+| 100 | 1 | +0.742 | -0.091 | -0.345 | +0.091 | +0.061 | +0.323 | amplitude 0/1, incidence 0/1, combinations 0/1, step-amp 0/1, containment 0/1 |
+
+Flat at every k: amplitude and step-amplitude near zero, incidence negative, containment
++0.2 to +0.3, while gold-k climbs from +0.45 to +0.74.
 
 No method beats gold-50 on any draw. Incidence is consistently negative: the candidates on
 which something fires more often are the better ones. Containment is the one method with a

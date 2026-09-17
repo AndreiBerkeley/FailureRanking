@@ -120,7 +120,9 @@ candidates is compared on fewer pairs. One comparison per method: the method's r
 gold-gen, the pass rate on the generalization pool. The gold row is gold-50 (the judged
 tasks' own pass rate) vs gold-gen: how well scoring the judged tasks themselves predicts the
 large set, the bar. Top-1: is the method's best candidate gold-gen's best. Stability: ten
-uniform random draws of 50 from each 100- or 150-task judged set, each scored the same way.
+uniform random draws of 50 from each 100- or 150-task judged set, each scored the same way;
+and the same at k = 10, 20, 30, 50, 75, 100 (150), twenty draws per k, as a curve of agreement
+against judged-set size.
 
 ## 9. Judged sets
 
