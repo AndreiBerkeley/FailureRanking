@@ -35,7 +35,7 @@ for k in KS:
     mean = next(l for l in lines if l.startswith("| **mean** |"))
     vals = [c.strip() for c in mean.strip("|").split("|")][1:-1]
     beats = next((l for l in lines if l.startswith("draws where")), "")
-    b = dict(re.findall(r"([\w-]+) (\d+/\d+)", beats))
+    b = dict(re.findall(r"([\w-]+) (\d+/\d+)", beats))       # short method names, one token each
     if header is None:
         header = cols
         print(f"{' + '.join(RUNS)}: {n_tasks} judged tasks; {DRAWS} uniform draws per k (1 at k = {n_tasks})\n")

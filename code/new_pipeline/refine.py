@@ -30,6 +30,13 @@ CHECKS = ("subject", "observable", "mechanism", "contract", "column", "level", "
 FIX = ("name", "definition", "when_to_use", "when_not_to_use", "column")
 OK = {"subject": "candidate", "observable": "yes", "mechanism": "ok", "contract": "ok", "column": "ok", "level": "ok", "adequacy": "matches", "overlap": "none"}
 CODE_FIELDS = ("id", "column", "name", "definition", "when_to_use", "when_not_to_use", "consequence")
+# v3 rule: a code the open reader (no taxonomy in view) independently finds on fewer than
+# this share of the traces the panel assigned it to is describing something only the
+# vocabulary makes visible. On hover the two codes under 0.20 carried 48% of all points and
+# predicted nothing. Retired here, at the refinement round, on the round's own judge reading;
+# measured only once the code has fired CORROBORATION_MIN_FIRED times.
+CORROBORATION_MIN = 0.30
+CORROBORATION_MIN_FIRED = 3
 
 
 def gather(judge_out: Path, code_ids: list[str]):
@@ -104,6 +111,11 @@ def ask_json(name, prompt, out: Path, call, model, retries=2, expect_checks=None
         d, note = salvage(raw)
         if note: log(f"  {name}: [!] {note}")
         if d is None: log(f"  {name}: unparseable, re-asking ({k+1}/{retries})"); continue
+        # a reviewer that returns the checklist as a bare list of entries (2026-09-17, one of
+        # four) has answered the question; only the wrapper is missing
+        if expect_checks and isinstance(d, list) and all(isinstance(x, dict) and "code" in x for x in d):
+            d = {"checks": d}; log(f"  {name}: [!] checklist returned as a bare list; wrapped")
+        if not isinstance(d, dict): log(f"  {name}: not a JSON object, re-asking ({k+1}/{retries})"); continue
         if expect_checks:
             got = {x.get("code") for x in (d.get("checks") or []) if isinstance(x, dict)}
             missing = [c for c in expect_checks if c not in got]
@@ -121,14 +133,23 @@ def derive(x):
     return "keep"
 
 
-def apply_operations(codes, checklist, ops, round_no):
-    """Pure: (codes, consolidated checklist by id, ops) -> (new codes, retired, provenance, report)."""
+def apply_operations(codes, checklist, ops, round_no, per=None):
+    """Pure: (codes, consolidated checklist by id, ops[, per-code judge stats]) -> (new codes, retired, provenance, report)."""
     active = {c["id"]: dict(c) for c in codes}; order = [c["id"] for c in codes]
     retired, prov, applied = [], [], Counter()
     verdict = {cid: derive(checklist.get(cid, {})) for cid in order}
     for cid in order:
+        e = (per or {}).get(cid) or {}
+        if e.get("fired", 0) >= CORROBORATION_MIN_FIRED and e["corroborated"] / e["fired"] < CORROBORATION_MIN:
+            verdict[cid] = "retire"
+            checklist.setdefault(cid, {})["_corroboration"] = f"{e['corroborated']}/{e['fired']}"
+    for cid in order:
         if verdict[cid] == "retire":
-            x = checklist[cid]; why = "environment" if x.get("subject") == "environment" else "unobservable"
+            x = checklist[cid]
+            if x.get("_corroboration"):
+                why = f"weakly corroborated: the open reader found it on {x['_corroboration']} of the traces the panel assigned it to (rule: share < {CORROBORATION_MIN})"
+                retired.append({**active.pop(cid), "retired_by": "corroboration", "reason": why}); applied["retire_corroboration"] += 1; continue
+            why = "environment" if x.get("subject") == "environment" else "unobservable"
             retired.append({**active.pop(cid), "retired_by": "checklist", "reason": f"[{why}] {x.get('reason', '')}"}); applied["retire"] += 1
     new_codes = []
     for cid in order:
@@ -210,7 +231,7 @@ def run(taxonomy: Path, judge_out: Path, corpus: Path, structure: Path, out: Pat
     ktext = "\n".join(f"{c}: verdict={checklist[c]['verdict']} " + " ".join(f"{f}={checklist[c].get(f)}" for f in CHECKS if f != "reason") + f" :: {(checklist[c].get('reason') or '')[:160]}" for c in ids)
     ops = ask_json("operations", prompts.build("stage7c", contracts=ctext, taxonomy=ttext, checklist=ktext, unmapped=render_unmapped(unmapped)), out, call0, mid)
     ops = ops if isinstance(ops, dict) else {}
-    new, retired, prov, report = apply_operations(codes, checklist, ops, round_no)
+    new, retired, prov, report = apply_operations(codes, checklist, ops, round_no, per=per)
     refined = {"benchmark": tax.get("benchmark"), "framework": "v2", "produced_by": f"new_pipeline.refine (round {round_no})",
                "derives_from": {"taxonomy": str(taxonomy), "judge_out": str(judge_out), "corpus": str(corpus)},
                "codes": new, "provenance": prov, "retired": retired, "checklist": checklist, "counts": report, "model": model, "panel": panel}

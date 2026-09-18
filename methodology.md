@@ -82,6 +82,18 @@ Hand amendments are disclosed in each taxonomy's README: hover tax-14 → tax-15
 code for the family the judge could not place (51 points); livecodebench tax-1 → tax-2
 added three codes for its 22 unplaced points (see §7 on how those were used).
 
+**GENERATION_v3.1 (2026-09-16), used for hover `tax-13`.** Beyond v3: a candidate-balanced
+generation corpus with a per-candidate failing floor; codes the blind reader corroborates
+under 0.30 at the final gate are retired; gap-test findings that fit no code well (uncovered,
+stretched or loose) become proposals, and survivors of the stage-6 check are admitted with
+provenance — the taxonomy that ships covers what its own gap test found, with no hand codes.
+The tax-13 run (`hover/GEPA_candidates/taxonomy_generation/run-v3-1`): 11-code draft from
+160 traces / 40 tasks, gates 0.66 → 0.62 kappa at 0.98 coverage, nothing retired, all 55
+fresh-trace findings fitted at ≥ 85 so nothing proposed, two granularity splits, 13 codes;
+$28 on gemini-3.6-flash. Two hand codes were added afterwards as `tax-15-pool3` for the
+mechanism the judge kept finding under it and could not name (a targeted query that does not
+retrieve the required page); that is a hand step and is recorded as one.
+
 ## 6. The judge
 
 **Failure points (`code/new_pipeline/pointjudge`)**, used for `models-1` on both benchmarks.
@@ -99,6 +111,24 @@ enters a prompt; the judge is told nothing about outcomes.
 per trace; a code counts when both agree. An open reader (gemini-3.1-pro-preview) reads with
 no taxonomy and its problems are mapped to codes afterwards. The mapping records the codes
 that fired per trace and which source supplied each.
+
+**Success rule in view (2026-09-17).** `hover/program/structure.json` carries a
+`success_rule` — how the program's output is scored (retrieved document titles, three per
+task; a mention inside another document does not count). It is the task's scoring
+definition, not any task's gold, and every judge pass and the recovery reader render it. It
+was added after a hand audit of the recovery reader found its wrong "recovered" verdicts
+were all of one kind: a passage that mentioned the entity taken for the entity's page.
+
+**Recovery pass (`code/new_pipeline/recovery`).** A separate Sonnet 5 reader, one call per
+trace with the judge's points (codes hidden), four anchored questions per point, every
+quote verified, verdict by rule (`methods/README.md` §7b). Runs: models set b (`recovery-1`,
+before the rule; 21% unrecovered), GEPA sample-50 (`recovery-2`, with the rule; 28%).
+
+**The GEPA judge (2026-09-18).** The pointjudge as above with tax-13 in view, readers
+`openai/gpt-5.6-luna` and decider `openai/gpt-5.6-sol` (OpenRouter, reasoning high): 3,043
+points on 600 traces, 735 reader points rejected by the decider, 169 kept that fit no code;
+$65, 69 min at 24 workers. The 170 uncoded points were then assigned by turn kind to the two
+hand codes of `tax-15-pool3` (`code/hover_scripts/assign_uncoded_pool3.py`) — no re-judge.
 
 ## 7. From mapping to ranking
 
@@ -145,3 +175,7 @@ against judged-set size.
 | lcb judge, 150 tasks (`pointjudge-2`) | 1,350 | $38.99 reader + ≈ $43 decider | 76 min |
 | hover judge, 50 tasks (`pointjudge-1`, `pointjudge-3`) | 450 each | ≈ $41 reader + ≈ $68 decider each | 90–150 min |
 | hover panel judge, 50 tasks (`map-5`, `map-6`) | 600 each | — | — |
+| hover taxonomy generation (v3.1, `run-v3-1`, gemini-3.6-flash) | 160 + 160 + 60 + 50 | $28 (two crashed attempts included) | 36 min compute |
+| hover GEPA judge, 50 tasks (`pointjudge-1`, Luna/Sol) | 600 | $24 readers + $41 decider | 69 min |
+| hover recovery, models set b (`recovery-1`, Sonnet 5) | 450 | $41 | 35 min |
+| hover recovery, GEPA sample-50 (`recovery-2`, Sonnet 5) | 600 | $77 | 31 min compute |

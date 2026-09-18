@@ -1,0 +1,919 @@
+## HOW THE TRACES ARE LAID OUT
+
+Each trace is a sequence of blocks.
+
+  `===== ENVIRONMENT · not an agent turn =====`
+      The task statement, tool or retrieval results, and other material
+      produced by the environment, not by an agent.
+
+  `===== TURN k · agent: NAME =====` ... `===== end of turn k =====`
+      One agent turn, holding three sections in this order:
+        `--- instructions given to this agent ---`   the agent's own instructions
+        `--- input this agent received ---`          what it was handed
+        `--- output this agent produced ---`         what it produced
+
+  `===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS ... =====`
+      Assembled by the harness. Not a turn.
+
+A turn is judged against ITS OWN instructions section and ITS OWN input
+section, and nothing else. Instructions shown in another turn do not bind this
+one, even when the agent has the same name in another trace. A mistake already
+present in a turn's input belongs to the earlier turn that produced it, not to
+this one.
+
+The instructions section declares the agent's input and output fields and its
+task. Producing a declared output field (a `reasoning` field listed under "Your
+output fields") is required, not a deviation, even where a later sentence names
+only some of the fields. The `[[ ## name ## ]]` markers that open each output
+field are the harness's own output format, declared in that same section and
+needed to parse the output; using them, rather than a plainer layout described
+elsewhere in the instructions (`reasoning: ...`, `**query**: ...`), is required
+and is never a failure.
+
+## WHAT EACH AGENT WAS ASKED TO DO
+### agent: summarize1   (role: summarizer)
+  receives: ['claim', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] Given the fields `claim` and `passages`, your task is to produce the fields `reasoning` and `summary` to verify the claim and guide a multi-hop retrieval system.
+    [c2] Detailed Task Description:
+    [c3] You are acting as an expert fact-checker and a query-generator for a three-hop document retrieval trajectory.
+    [c4] Often, the provided `passages` are incomplete or represent only the first or second hop of evidence.
+    [c5] You must evaluate what is provided, use your broad world knowledge to identify the unmentioned implicit entities, and output a summary that clearly identifies what information is still missing so the retrieval trajectory can find every required evidence document on the next hop.
+    [c6] Generalizable Strategy:
+    [c7] Deconstruct the multi-hop `claim` into individual factual components.
+    [c8] Cross-reference the components against the provided `passages`.
+    [c9] Note what is supported, what is contradicted, and what is missing.
+    [c10] When passages omit specific details (e.g., a passage about a movie doesn't list all its actors), use your internal knowledge to identify the exact entities, films, or people referred to in the claim.
+    [c11] In your `reasoning`, explain your step-by-step analysis and deduce the exact missing entities needed to verify the remaining parts of the claim.
+    [c12] In your `summary`, briefly state the verification status of the claim, summarize the evidence found, and explicitly list the exact names of the missing required evidence documents (e.g., specific actors, directors, or film titles) needed to complete the verification.
+    [c13] Niche and Domain-Specific Factual Information to remember:
+    [c14] For claims involving Matt Damon and Edward Norton playing together, the film is "Rounders".
+    [c15] John Malkovich and David Zayas also acted in this film.
+    [c16] If they are missing from the retrieved passages, explicitly list 'John Malkovich' and 'David Zayas' as required missing evidence documents.
+    [c17] Eliot Hyman co-founded Seven Arts Productions with Ray Stark.
+    [c18] Ray Stark produced the 1962 British-American black comedy-drama "Lolita".
+    [c19] If a claim references Hyman's co-founder and a British-American black comedy-drama, explicitly identify 'Ray Stark' and 'Lolita 1962 film' as required missing documents, even if the claim contains deliberate inaccuracies (e.g., wrongly stating it was directed by actress Quinn Cummings).
+    [c20] Eddie Steeples is known for an OfficeMax ad campaign and the sitcom "My Name is Earl".
+    [c21] Billy Gardell also appeared in this sitcom.
+    [c22] To verify intersecting claims connecting these elements, ensure documents like 'Eddie Steeples', 'My Name is Earl', and 'Billy Gardell' are fully identified or confirmed as retrieved.
+    [c23] reasoning: [Your step-by-step analysis comparing the claim to the passages and identifying missing entities using internal knowledge]
+    [c24] summary: [A concise conclusion on the claim's validity based on current evidence, followed by an explicit list of any missing required evidence documents (e.g., "Missing required evidence documents: ['David Zayas', 'John Malkovich']")]
+
+### agent: create_query_hop2   (role: query_generator)
+  receives: ['claim', 'summary_1']
+  must produce: ['reasoning', 'query']
+  requirements it was given:
+    [c1] You are an AI assistant operating within a multi-hop fact-checking system.
+    [c2] Your task is to generate a search query to retrieve evidence documents necessary to verify a given claim.
+    [c3] You will be provided with the following inputs:
+    [c4] `claim`: A factual claim that requires a three-hop retrieval trajectory to fully verify.
+    [c5] `summary_1`: A summary of the information and evidence documents that have already been retrieved in the first hop.
+    [c6] Given the fields `claim` and `summary_1`, produce the fields `reasoning` and `query`.
+    [c7] 1. **Identify the Missing Evidence:** Compare `claim` with `summary_1` to determine what entities, facts, or relationships are still missing.
+    [c8] Your generated query must bridge this gap to help the system retrieve the remaining required evidence documents in the next hop.
+    [c9] 2. **Beware of Distractors or Incomplete Information:** Do not blindly trust that an entity mentioned in `summary_1` (e.g., "Paula Patton") is the only or correct subject of the claim.
+    [c10] Often, the summary contains partial matches, and the actual required entity is still missing.
+    [c11] Frame your query to explore the source or group rather than anchoring strictly to the entity guessed in the summary.
+    [c12] 3. **Stop When Falsified by a False Premise:** If `summary_1` provides sufficient evidence that the claim is based on a false premise (e.g., conflating distinct historical events or incorrectly attributing an album to the wrong conductor), the claim is already proven false.
+    [c13] In these scenarios, no further evidence is missing.
+    [c14] Do not chase irrelevant distractors (e.g., searching for "Lund Chamber Choir repertoire" when the claim's core premise is already falsified).
+    [c15] Output `none` for your query.
+    [c16] 4. **Avoid Overloading Queries with Multiple Entities:** If `summary_1` identifies a list of multiple potential candidates for a relationship (e.g., multiple lyricists for an operetta), do not combine all their names into a single long search query.
+    [c17] A query like "Maxine Kumin ancestry Dorothy Parker Lillian Hellman..." is too broad and will fail to retrieve the specific required document.
+    [c18] Narrow the search down to a single relevant candidate.
+    [c19] 5. **Avoid Yes/No Questions:** Do not formulate your query as a conversational or closed-ended question (e.g., "Did [Actor] act in [Film]?").
+    [c20] Use concise, keyword-centric search phrases that are likely to match the text or title of an encyclopedia document.
+    [c21] 6. **Avoid Complex Boolean Logic:** Do not use complex operators like `AND`, `OR`, or excessive quotation marks.
+    [c22] Overly complex Boolean queries often fail to match the required documents.
+    [c23] 7. **Use Specific Keywords from the Claim:** Ensure that the query incorporates the specific descriptive keywords from the claim used to identify the missing entity (e.g., "Peter Rees entertainment program creator").
+    [c24] **Eric Edward Whitacre / Tarik O'Regan:** For claims involving Eric Whitacre composing works for the ensemble that released *Tarik O'Regan: Threshold of Night*, the true ensemble is Conspirare (which is not based on Daniel Åberg).
+    [c25] The required documents are `conspirare`, `eric whitacre`, and `tarik oregan threshold of night`.
+    [c26] Once this false premise is identified in the first hop, no further documents are missing.
+    [c27] You must output `none` for the query.
+    [c28] **New York and New Jersey Campaign (1776):** For claims conflating the Battle of Harlem Heights, Battle of Long Island, and Battle of White Plains as a single simultaneous event, the required documents (`battle of harlem heights`, `battle of white plains`, `new york and new jersey campaign`) are usually already retrieved in the first hop.
+    [c29] Because the summary confirms they are distinct events on different dates, the claim is already fully falsified.
+    [c30] You must output `none` for the query.
+    [c31] **Candide Operetta & Maxine Kumin:** For the claim linking a *Candide* (operetta) lyricist to Maxine Kumin's heritage, the specific required missing document is `dorothy parker`.
+    [c32] Do not search for all lyricists at once; query directly for `dorothy parker`.
+    [... 36 clauses total, remainder omitted for length ...]
+
+### agent: summarize2   (role: summarizer)
+  receives: ['claim', 'context', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are an expert fact-checking assistant specialized in the entertainment domain (including movies, television, documentaries, music history, voice actors, directors, and chart performances).
+    [c2] You will receive the following fields as input:
+    [c3] `claim`: A complex, multi-hop (typically three-hop) factual statement.
+    [c4] `context`: An authoritative summary of facts relevant to the claim.
+    [c5] `passages`: A list of retrieved reference documents (e.g., Wikipedia excerpts).
+    [c6] Your task is to evaluate the accuracy of the `claim` by tracing its three-hop reasoning trajectory.
+    [c7] Because you are verifying multi-hop claims, you must synthesize information across both the `context` and the `passages`.
+    [c8] You must adopt the following generalizable strategy and structure your response using exactly these two fields:
+    [c9] Perform a step-by-step logical deduction, breaking down the claim into its individual hops.
+    [c10] Verify each hop against the provided `context` and `passages`.
+    [c11] Note that sometimes required information missing from the `passages` may be present in the `context`, which you should treat as valid retrieved evidence.
+    [c12] You must evaluate if the three-hop retrieval trajectory successfully found every required evidence document.
+    [c13] Explicitly list the supporting entities/documents under "Retrieved required evidence documents" (format these as normalized, lowercase Wikipedia-style titles, e.g., ['catherine ohara', 'charlie tahan', 'frankenweenie 2012 film'] or ['billie anthony', 'shakin stevens', 'this ole house']).
+    [c14] If any hop of the claim cannot be verified because the information is completely absent from both the `context` and `passages`, explicitly list the missing entities/documents under "Missing required evidence documents" (e.g., ['aliens of deep']).
+    [c15] Explain how this absence impacts the verification.
+    [c16] Provide a concise final verdict stating whether the claim is accurate, inaccurate, or cannot be fully verified.
+    [c17] Summarize the corrected or verified facts based on the available evidence.
+    [c18] If applicable, reiterate what missing information prevents full verification of the claim's comparisons or statements.
+
+### agent: create_query_hop3   (role: query_generator)
+  receives: ['claim', 'summary_1', 'summary_2']
+  must produce: ['reasoning', 'query']
+  requirements it was given:
+    [c1] Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `reasoning` and `query`.
+    [c2] Your task is to generate a search query that will successfully retrieve *all* required evidence documents to verify a multi-hop claim.
+    [c3] The retrieval trajectory typically involves multiple documents (e.g., three hops), and your query must find every single required document in this trajectory, including starting nodes, intermediate "bridge" nodes, and final nodes.
+    [c4] Follow these guidelines to formulate your query:
+    [c5] 1. **Include All Explicit Claim Entities and Concepts**: Deconstruct the claim into individual facts.
+    [c6] Identify all explicit entities, descriptive phrases, and specialized concepts directly mentioned in the `claim` (e.g., "Drowning Pool", "Throttle Junkies", "Paysonia", "Thujopsis", "Mount View High School").
+    [c7] Ensure all of these key terms are present in your query.
+    [c8] 2. **Extract Bridge Entities from Summaries**: Identify intermediate or "bridge" entities mentioned in `summary_1` and `summary_2` that connect the facts in the claim.
+    [c9] For example, add entities like the band "Soil" connecting Drowning Pool to the album Throttle Junkies; the former genus "Lesquerella" connecting Paysonia to flowering plants; or "Maine School Administrative District 3" and "Unity" connecting a school to a specific population statistic.
+    [c10] Add all these bridge entities to your query.
+    [c11] 3. **Address Indirect Descriptions**: If the claim describes an entity indirectly (e.g., "the band whose first album was Throttle Junkies" or "a town in Waldo County"), ensure your query contains enough information to retrieve all potential matching entities, even if the summaries only mention one or miss them entirely.
+    [c12] 4. **Include Disambiguation Terms**: Entities often have common names (like "Soil" or "Unity") that require context to find the correct specific page.
+    [c13] Always include relevant disambiguation modifiers based on context—such as "American band", "Maine", "plant", "genus", or "gymnosperm"—to ensure the precise page (e.g., "Soil American band" or "Unity Maine") is retrieved instead of a generic topic.
+    [c14] 5. **Always Generate a Query**: Even if the summaries are in complete agreement and fully verify the claim, you MUST generate a query.
+    [c15] Your goal is to fetch the underlying evidence documents for the multi-hop trajectory, not just to answer or evaluate the claim.
+    [c16] Never output "No query needed".
+    [c17] 6. **Query Formatting (No Boolean Operators or Quotes)**: Combine all identified explicit entities, bridge entities, and key conceptual phrases into a broad, comprehensive search query. **Do not use boolean operators (like AND, OR), quotation marks, or other advanced search syntax.** Write the query as a simple space-separated list of keywords and entity names.
+    [c18] Using strict operators or exact-match quotes can disrupt the search engine and prevent it from finding disambiguated page titles (e.g., searching for `"Soil" AND` can cause the system to miss the document titled "Soil American band", whereas a flat list of keywords successfully retrieves all documents).
+    [c19] Provide your output strictly using the following format:
+    [c20] reasoning: <Step-by-step reasoning identifying the explicit entities in the claim, the intermediate bridge entities from the summaries, and any missing links needed to cover all hops>
+    [c21] query: <A comprehensive, simple space-separated search query containing all necessary keywords, bridge entities, and disambiguation terms, WITHOUT quotes or boolean operators>
+
+
+The requirements above are the same text as the instructions sections inside
+the turns, split into numbered clauses so that a violation can cite one. Every
+trace in this batch belongs to the same candidate program, so the requirements
+apply to every trace here. A clause listed under agent NAME binds only the
+turns whose header names NAME.
+
+## TRACES
+### trace 27cda0c969d67e53d940d683
+===== ENVIRONMENT · not an agent turn =====
+Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Rafael de Souza Pereira is a player in a league that is the top level of the Mexican football league system. Óscar Fernández Monroy plays for Club Necaxa in the same league.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Oscar Fernández Monroy | Óscar Fernández Monroy (born December 23, 1987), is a Mexican footballer who plays as a Striker for Club Necaxa in the Liga MX.
+2010–11 Club Necaxa season | The 2010–11 Necaxa season was the 64th professional season of Mexico's top-flight football league.  The season is split into two tournaments—the Torneo Apertura and the Torneo Clausura—each with identical formats and each contested by the same eighteen teams.  Necaxa will begin their season on July 24, 2010 against Chiapas, Necaxa played their homes games on Fridays at 8:00pm.  Necaxa was relegated to the Liga de Ascenso after having the lowest percentage of points in the 2010 Apertura and Clausura 2011 seasons.
+French football league system | The French football league system is a series of interconnected leagues for club football in France and Monaco, and includes one Spanish side.  At the top two levels of the system is the Ligue de Football Professionnel, which consists of two professional national divisions, Ligue 1 and Ligue 2.  Below that are a number of leagues run by the Fédération Française de Football.  At level 3 is the semi-professional Championnat National.  Below that is the amateur Championnat de France amateur (level 4), which is divided into four parallel regional divisions, followed by the Championnat de France amateur 2 (level 5), which is divided into eight parallel regional divisions.  Underneath that are many more regional leagues and divisions.  Clubs finishing the season at or near the top of their division may be eligible for promotion to a higher division.  Similarly, clubs finishing at or near the bottom of their division may be relegated to a lower division.
+Querétaro F.C. | Querétaro Fútbol Club, also called Gallos Blancos de Querétaro, is a Mexican professional football club based in Querétaro City, Mexico.  Querétaro plays in the Liga MX, the top level of the Mexican football league system.  Their colors are blue, black and white and the team mascot is a rooster.  They were to have been relegated to the Liga de Ascenso in 2013, but Chiapas F.C. was relocated to Querétaro.
+Rafael Carioca | Rafael de Souza Pereira (January 16, 1989), known as Rafael Carioca, is a Brazilian footballer who plays as a defensive midfielder for Liga MX club Tigres UANL.
+List of Santos FC players | Santos Futebol Clube is a football club based in Santos, that competes in the Campeonato Paulista, São Paulo's state league, and the Campeonato Brasileiro Série A or "Brasileirão", Brazil's national league.  The club was founded in 1912 by the initiative of three sports enthusiasts from Santos by the names of Raimundo Marques, Mário Ferraz de Campos, and Argemiro de Souza Júnior, and played its first friendly match on June 23, 1912.  Initially Santos played against other local clubs in the city and state championships, but in 1959 the club became one of the founding members of the "Taça Brasil", Brazil's first truly national league.  As of 2010, Santos is one of only five clubs never to have been relegated from the top level of Brazilian football, the others being São Paulo, Flamengo, Internacional and Cruzeiro.
+Alacranes de Durango | Club de Fútbol Alacranes de Durango, is a Mexican football club based in the city of Durango, Durango, Mexico and currently play in the third level of the professional Mexican football league system.  Their colors are green, white with black trim, and their mascot is the scorpion.
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim` and `passages`, your task is to produce the fields `reasoning` and `summary` to verify the claim and guide a multi-hop retrieval system. 
+        
+        Detailed Task Description:
+        You are acting as an expert fact-checker and a query-generator for a three-hop document retrieval trajectory. Often, the provided `passages` are incomplete or represent only the first or second hop of evidence. You must evaluate what is provided, use your broad world knowledge to identify the unmentioned implicit entities, and output a summary that clearly identifies what information is still missing so the retrieval trajectory can find every required evidence document on the next hop.
+        
+        Generalizable Strategy:
+        1. Deconstruct the multi-hop `claim` into individual factual components.
+        2. Cross-reference the components against the provided `passages`. Note what is supported, what is contradicted, and what is missing.
+        3. When passages omit specific details (e.g., a passage about a movie doesn't list all its actors), use your internal knowledge to identify the exact entities, films, or people referred to in the claim.
+        4. In your `reasoning`, explain your step-by-step analysis and deduce the exact missing entities needed to verify the remaining parts of the claim.
+        5. In your `summary`, briefly state the verification status of the claim, summarize the evidence found, and explicitly list the exact names of the missing required evidence documents (e.g., specific actors, directors, or film titles) needed to complete the verification.
+        
+        Niche and Domain-Specific Factual Information to remember:
+        - For claims involving Matt Damon and Edward Norton playing together, the film is "Rounders". John Malkovich and David Zayas also acted in this film. If they are missing from the retrieved passages, explicitly list 'John Malkovich' and 'David Zayas' as required missing evidence documents.
+        - Eliot Hyman co-founded Seven Arts Productions with Ray Stark. Ray Stark produced the 1962 British-American black comedy-drama "Lolita". If a claim references Hyman's co-founder and a British-American black comedy-drama, explicitly identify 'Ray Stark' and 'Lolita 1962 film' as required missing documents, even if the claim contains deliberate inaccuracies (e.g., wrongly stating it was directed by actress Quinn Cummings).
+        - Eddie Steeples is known for an OfficeMax ad campaign and the sitcom "My Name is Earl". Billy Gardell also appeared in this sitcom. To verify intersecting claims connecting these elements, ensure documents like 'Eddie Steeples', 'My Name is Earl', and 'Billy Gardell' are fully identified or confirmed as retrieved.
+        
+        Output Format:
+        reasoning: [Your step-by-step analysis comparing the claim to the passages and identifying missing entities using internal knowledge]
+        summary: [A concise conclusion on the claim's validity based on current evidence, followed by an explicit list of any missing required evidence documents (e.g., "Missing required evidence documents: ['David Zayas', 'John Malkovich']")]
+--- input this agent received ---
+[[ ## claim ## ]]
+Rafael de Souza Pereira is a player in a league that is the top level of the Mexican football league system. Óscar Fernández Monroy plays for Club Necaxa in the same league.
+
+[[ ## passages ## ]]
+[1] «Oscar Fernández Monroy | Óscar Fernández Monroy (born December 23, 1987), is a Mexican footballer who plays as a Striker for Club Necaxa in the Liga MX.»
+[2] «2010–11 Club Necaxa season | The 2010–11 Necaxa season was the 64th professional season of Mexico's top-flight football league.  The season is split into two tournaments—the Torneo Apertura and the Torneo Clausura—each with identical formats and each contested by the same eighteen teams.  Necaxa will begin their season on July 24, 2010 against Chiapas, Necaxa played their homes games on Fridays at 8:00pm.  Necaxa was relegated to the Liga de Ascenso after having the lowest percentage of points in the 2010 Apertura and Clausura 2011 seasons.»
+[3] «French football league system | The French football league system is a series of interconnected leagues for club football in France and Monaco, and includes one Spanish side.  At the top two levels of the system is the Ligue de Football Professionnel, which consists of two professional national divisions, Ligue 1 and Ligue 2.  Below that are a number of leagues run by the Fédération Française de Football.  At level 3 is the semi-professional Championnat National.  Below that is the amateur Championnat de France amateur (level 4), which is divided into four parallel regional divisions, followed by the Championnat de France amateur 2 (level 5), which is divided into eight parallel regional divisions.  Underneath that are many more regional leagues and divisions.  Clubs finishing the season at or near the top of their division may be eligible for promotion to a higher division.  Similarly, clubs finishing at or near the bottom of their division may be relegated to a lower division.»
+[4] «Querétaro F.C. | Querétaro Fútbol Club, also called Gallos Blancos de Querétaro, is a Mexican professional football club based in Querétaro City, Mexico.  Querétaro plays in the Liga MX, the top level of the Mexican football league system.  Their colors are blue, black and white and the team mascot is a rooster.  They were to have been relegated to the Liga de Ascenso in 2013, but Chiapas F.C. was relocated to Querétaro.»
+[5] «Rafael Carioca | Rafael de Souza Pereira (January 16, 1989), known as Rafael Carioca, is a Brazilian footballer who plays as a defensive midfielder for Liga MX club Tigres UANL.»
+[6] «List of Santos FC players | Santos Futebol Clube is a football club based in Santos, that competes in the Campeonato Paulista, São Paulo's state league, and the Campeonato Brasileiro Série A or "Brasileirão", Brazil's national league.  The club was founded in 1912 by the initiative of three sports enthusiasts from Santos by the names of Raimundo Marques, Mário Ferraz de Campos, and Argemiro de Souza Júnior, and played its first friendly match on June 23, 1912.  Initially Santos played against other local clubs in the city and state championships, but in 1959 the club became one of the founding members of the "Taça Brasil", Brazil's first truly national league.  As of 2010, Santos is one of only five clubs never to have been relegated from the top level of Brazilian football, the others being São Paulo, Flamengo, Internacional and Cruzeiro.»
+[7] «Alacranes de Durango | Club de Fútbol Alacranes de Durango, is a Mexican football club based in the city of Durango, Durango, Mexico and currently play in the third level of the professional Mexican football league system.  Their colors are green, white with black trim, and their mascot is the scorpion.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1.  **Deconstruct the claim:**
+    *   Part 1: Rafael de Souza Pereira (Rafael Carioca) is a player in the top level of the Mexican football league system.
+    *   Part 2: Óscar Fernández Monroy plays for Club Necaxa in the same league.
+
+2.  **Cross-reference with passages:**
+    *   Passage [5] confirms that "Rafael de Souza Pereira... known as Rafael Carioca... plays as a defensive midfielder for Liga MX club Tigres UANL."
+    *   Passage [4] confirms that "Liga MX" is the "top level of the Mexican football league system." Therefore, Part 1 is supported.
+    *   Passage [1] confirms that "Óscar Fernández Monroy... plays as a Striker for Club Necaxa in the Liga MX."
+    *   Since both players play in the Liga MX, which is the top level of the Mexican football league system, Part 2 is supported.
+
+3.  **Conclusion:** The information provided is sufficient to verify both parts of the claim. No further documents are required.
+
+[[ ## summary ## ]]
+The claim is verified. Passage [5] identifies Rafael de Souza Pereira as a player for Tigres UANL in Liga MX, and passage [4] confirms Liga MX is the top tier of Mexican football. Passage [1] confirms Óscar Fernández Monroy plays for Club Necaxa in the Liga MX. No missing information was identified.
+
+Missing required evidence documents: []
+
+[[ ## completed ## ]]
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        You are an AI assistant operating within a multi-hop fact-checking system. Your task is to generate a search query to retrieve evidence documents necessary to verify a given claim. 
+        
+        You will be provided with the following inputs:
+        - `claim`: A factual claim that requires a three-hop retrieval trajectory to fully verify.
+        - `summary_1`: A summary of the information and evidence documents that have already been retrieved in the first hop.
+        
+        Given the fields `claim` and `summary_1`, produce the fields `reasoning` and `query`.
+        
+        ### Guidelines & Strategies for Success:
+        1. **Identify the Missing Evidence:** Compare `claim` with `summary_1` to determine what entities, facts, or relationships are still missing. Your generated query must bridge this gap to help the system retrieve the remaining required evidence documents in the next hop.
+        2. **Beware of Distractors or Incomplete Information:** Do not blindly trust that an entity mentioned in `summary_1` (e.g., "Paula Patton") is the only or correct subject of the claim. Often, the summary contains partial matches, and the actual required entity is still missing. Frame your query to explore the source or group rather than anchoring strictly to the entity guessed in the summary.
+        3. **Stop When Falsified by a False Premise:** If `summary_1` provides sufficient evidence that the claim is based on a false premise (e.g., conflating distinct historical events or incorrectly attributing an album to the wrong conductor), the claim is already proven false. In these scenarios, no further evidence is missing. Do not chase irrelevant distractors (e.g., searching for "Lund Chamber Choir repertoire" when the claim's core premise is already falsified). Output `none` for your query.
+        4. **Avoid Overloading Queries with Multiple Entities:** If `summary_1` identifies a list of multiple potential candidates for a relationship (e.g., multiple lyricists for an operetta), do not combine all their names into a single long search query. A query like "Maxine Kumin ancestry Dorothy Parker Lillian Hellman..." is too broad and will fail to retrieve the specific required document. Narrow the search down to a single relevant candidate.
+        5. **Avoid Yes/No Questions:** Do not formulate your query as a conversational or closed-ended question (e.g., "Did [Actor] act in [Film]?"). Use concise, keyword-centric search phrases that are likely to match the text or title of an encyclopedia document.
+        6. **Avoid Complex Boolean Logic:** Do not use complex operators like `AND`, `OR`, or excessive quotation marks. Overly complex Boolean queries often fail to match the required documents. 
+        7. **Use Specific Keywords from the Claim:** Ensure that the query incorporates the specific descriptive keywords from the claim used to identify the missing entity (e.g., "Peter Rees entertainment program creator").
+        
+        ### Domain-Specific Knowledge & Facts:
+        - **Eric Edward Whitacre / Tarik O'Regan:** For claims involving Eric Whitacre composing works for the ensemble that released *Tarik O'Regan: Threshold of Night*, the true ensemble is Conspirare (which is not based on Daniel Åberg). The required documents are `conspirare`, `eric whitacre`, and `tarik oregan threshold of night`. Once this false premise is identified in the first hop, no further documents are missing. You must output `none` for the query.
+        - **New York and New Jersey Campaign (1776):** For claims conflating the Battle of Harlem Heights, Battle of Long Island, and Battle of White Plains as a single simultaneous event, the required documents (`battle of harlem heights`, `battle of white plains`, `new york and new jersey campaign`) are usually already retrieved in the first hop. Because the summary confirms they are distinct events on different dates, the claim is already fully falsified. You must output `none` for the query.
+        - **Candide Operetta & Maxine Kumin:** For the claim linking a *Candide* (operetta) lyricist to Maxine Kumin's heritage, the specific required missing document is `dorothy parker`. Do not search for all lyricists at once; query directly for `dorothy parker`.
+        
+        ### Output Format:
+        Provide your response with the following fields:
+        **reasoning**: Think step-by-step about what evidence is already available, what is missing, and how to best surface the remaining required documents without falling for distractor entities or generating unnecessary queries for already falsified claims.
+        **query**: A concise, keyword-based search query optimized to retrieve the missing evidence documents. If no further documents are needed because the claim is already thoroughly falsified by a false premise in `summary_1`, output `none`.
+--- input this agent received ---
+[[ ## claim ## ]]
+Rafael de Souza Pereira is a player in a league that is the top level of the Mexican football league system. Óscar Fernández Monroy plays for Club Necaxa in the same league.
+
+[[ ## summary_1 ## ]]
+The claim is verified. Passage [5] identifies Rafael de Souza Pereira as a player for Tigres UANL in Liga MX, and passage [4] confirms Liga MX is the top tier of Mexican football. Passage [1] confirms Óscar Fernández Monroy plays for Club Necaxa in the Liga MX. No missing information was identified.
+
+Missing required evidence documents: []
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The claim has been fully verified by the information provided in `summary_1`. Both Rafael de Souza Pereira's status as a Liga MX player and Óscar Fernández Monroy's current affiliation with Club Necaxa in Liga MX have been confirmed, and the league is established as the top level of the Mexican football league system. No further evidence is required.
+
+[[ ## query ## ]]
+none
+
+[[ ## completed ## ]]
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+None railway station | None railway station (Italian: "Stazione di None" ) serves the town and "comune" of None, in the Piedmont region, northwestern Italy.  The station is a through station of the Turin-Pinerolo-Torre Pellice railway.
+Jeannette Bougrab | Jeannette Bougrab is a French lawyer and politician.  She served as the junior minister for Youth and Community Life from none }} to none }} and is a member of the UMP party.  Prior to this, she was the Chair of the French Equal Opportunities and Anti-Discrimination Commission (HALDE) from none }} to none }} .
+Flatwillow, Montana | Flatwillow (also Flatwillow Crossing) is an unincorporated community in southern Petroleum County, Montana, United States.  It lies along local roads south of the town of Winnett, the county seat of Petroleum County.  Its elevation is 3,225 feet (983 m).  Flatwillow's post office first opened on none }} and closed on none }} , only to be reopened on none }} .  The post office was closed on none }} .
+None Mage Sudu None | None Mage Sudu None (Sinhalese: "නෝනේ මගේ සුදු නෝනේ" ) is a 2015 Sri Lankan Sinhala comedy film directed by Eranga Senarathna and produced by D.D.R.D.S Samarasekara for Sri Jaya Cineroo.  It stars Wilson Gunaratne and Anusha Damayanthi in lead roles along with Mahinda Pathirage and Mihira Sirithilaka.  Music composed by Lasantha Jayasekara.  It is the 1230th Sri Lankan film in the Sinhala cinema.
+Mariappan Saravanan | Major Mariappan Saravanan (none }} – none }} ), was an officer in the prestigious Bihar Regiment of the Indian Army who was killed during the Kargil War.  He was killed in hand-to-hand combat with intruders after killing four intruders in the Batalik area of Kargil Sector on none }} , along with 33 soldiers and four other officers.  Saravanan had just completed four years of service on none }} .
+None of These Candidates | None of These Candidates is a voting option for Nevada voters for President of the United States and for state constitutional positions.  This option is listed along with the names of individuals running for the position and is often described as "none of the above".
+RBNS Sabha (FFG-90) | RBNS "Sabha" (formerly known as USS "Jack Williams" (FFG-24) during its career in US) is a frigate now in service with the Royal Bahrain Naval Force.  The ownership was transferred to Bahrain as a gift on none }} .  The frigate was ordered by the US Navy on none }} , and laid down on none }} .  It was officially launched by the US Navy on none }} .  The frigate is now considered as the lead frigate of the Royal Bahrain Naval Force.
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        You are an expert fact-checking assistant specialized in the entertainment domain (including movies, television, documentaries, music history, voice actors, directors, and chart performances). 
+        
+        You will receive the following fields as input:
+        - `claim`: A complex, multi-hop (typically three-hop) factual statement.
+        - `context`: An authoritative summary of facts relevant to the claim.
+        - `passages`: A list of retrieved reference documents (e.g., Wikipedia excerpts).
+        
+        Your task is to evaluate the accuracy of the `claim` by tracing its three-hop reasoning trajectory. Because you are verifying multi-hop claims, you must synthesize information across both the `context` and the `passages`. 
+        
+        You must adopt the following generalizable strategy and structure your response using exactly these two fields:
+        
+        1. `reasoning`: 
+           - Perform a step-by-step logical deduction, breaking down the claim into its individual hops.
+           - Verify each hop against the provided `context` and `passages`. Note that sometimes required information missing from the `passages` may be present in the `context`, which you should treat as valid retrieved evidence.
+           - You must evaluate if the three-hop retrieval trajectory successfully found every required evidence document. Explicitly list the supporting entities/documents under "Retrieved required evidence documents" (format these as normalized, lowercase Wikipedia-style titles, e.g., ['catherine ohara', 'charlie tahan', 'frankenweenie 2012 film'] or ['billie anthony', 'shakin stevens', 'this ole house']).
+           - If any hop of the claim cannot be verified because the information is completely absent from both the `context` and `passages`, explicitly list the missing entities/documents under "Missing required evidence documents" (e.g., ['aliens of deep']). Explain how this absence impacts the verification.
+        
+        2. `summary`: 
+           - Provide a concise final verdict stating whether the claim is accurate, inaccurate, or cannot be fully verified.
+           - Summarize the corrected or verified facts based on the available evidence.
+           - If applicable, reiterate what missing information prevents full verification of the claim's comparisons or statements.
+--- input this agent received ---
+[[ ## claim ## ]]
+Rafael de Souza Pereira is a player in a league that is the top level of the Mexican football league system. Óscar Fernández Monroy plays for Club Necaxa in the same league.
+
+[[ ## context ## ]]
+The claim is verified. Passage [5] identifies Rafael de Souza Pereira as a player for Tigres UANL in Liga MX, and passage [4] confirms Liga MX is the top tier of Mexican football. Passage [1] confirms Óscar Fernández Monroy plays for Club Necaxa in the Liga MX. No missing information was identified.
+
+Missing required evidence documents: []
+
+[[ ## passages ## ]]
+[1] «None railway station | None railway station (Italian: "Stazione di None" ) serves the town and "comune" of None, in the Piedmont region, northwestern Italy.  The station is a through station of the Turin-Pinerolo-Torre Pellice railway.»
+[2] «Jeannette Bougrab | Jeannette Bougrab is a French lawyer and politician.  She served as the junior minister for Youth and Community Life from none }} to none }} and is a member of the UMP party.  Prior to this, she was the Chair of the French Equal Opportunities and Anti-Discrimination Commission (HALDE) from none }} to none }} .»
+[3] «Flatwillow, Montana | Flatwillow (also Flatwillow Crossing) is an unincorporated community in southern Petroleum County, Montana, United States.  It lies along local roads south of the town of Winnett, the county seat of Petroleum County.  Its elevation is 3,225 feet (983 m).  Flatwillow's post office first opened on none }} and closed on none }} , only to be reopened on none }} .  The post office was closed on none }} .»
+[4] «None Mage Sudu None | None Mage Sudu None (Sinhalese: "නෝනේ මගේ සුදු නෝනේ" ) is a 2015 Sri Lankan Sinhala comedy film directed by Eranga Senarathna and produced by D.D.R.D.S Samarasekara for Sri Jaya Cineroo.  It stars Wilson Gunaratne and Anusha Damayanthi in lead roles along with Mahinda Pathirage and Mihira Sirithilaka.  Music composed by Lasantha Jayasekara.  It is the 1230th Sri Lankan film in the Sinhala cinema.»
+[5] «Mariappan Saravanan | Major Mariappan Saravanan (none }} – none }} ), was an officer in the prestigious Bihar Regiment of the Indian Army who was killed during the Kargil War.  He was killed in hand-to-hand combat with intruders after killing four intruders in the Batalik area of Kargil Sector on none }} , along with 33 soldiers and four other officers.  Saravanan had just completed four years of service on none }} .»
+[6] «None of These Candidates | None of These Candidates is a voting option for Nevada voters for President of the United States and for state constitutional positions.  This option is listed along with the names of individuals running for the position and is often described as "none of the above".»
+[7] «RBNS Sabha (FFG-90) | RBNS "Sabha" (formerly known as USS "Jack Williams" (FFG-24) during its career in US) is a frigate now in service with the Royal Bahrain Naval Force.  The ownership was transferred to Bahrain as a gift on none }} .  The frigate was ordered by the US Navy on none }} , and laid down on none }} .  It was officially launched by the US Navy on none }} .  The frigate is now considered as the lead frigate of the Royal Bahrain Naval Force.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+- Hop 1: Identify if Rafael de Souza Pereira is a player in the top level of the Mexican football league system (Liga MX). The provided context confirms he plays for Tigres UANL in Liga MX, and Liga MX is the top tier.
+- Hop 2: Identify if Óscar Fernández Monroy plays for Club Necaxa. The context confirms this association.
+- Hop 3: Identify if Club Necaxa competes in the same league as Rafael de Souza Pereira (Liga MX). The context confirms both play in Liga MX.
+- Retrieved required evidence documents: ['liga mx', 'club necaxa', 'rafael de souza pereira', 'óscar fernández monroy', 'tigres uanl']
+- Missing required evidence documents: []
+- Evaluation: The context explicitly provides all facts necessary to verify the multi-hop claim, while the provided passages are irrelevant to the subject matter of football.
+
+[[ ## summary ## ]]
+The claim is accurate. Rafael de Souza Pereira (known as "Rafael Carioca") is a player for Tigres UANL, which competes in Liga MX, the top division of the Mexican football league system. Óscar Fernández Monroy is a professional footballer who has played for Club Necaxa, which also competes in Liga MX. All entities mentioned are verified as participating in the same top-tier league.
+
+[[ ## completed ## ]]
+===== end of turn 3 =====
+
+===== TURN 4 · agent: create_query_hop3 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `reasoning` and `query`.
+        
+        Your task is to generate a search query that will successfully retrieve *all* required evidence documents to verify a multi-hop claim. The retrieval trajectory typically involves multiple documents (e.g., three hops), and your query must find every single required document in this trajectory, including starting nodes, intermediate "bridge" nodes, and final nodes.
+        
+        Follow these guidelines to formulate your query:
+        1. **Include All Explicit Claim Entities and Concepts**: Deconstruct the claim into individual facts. Identify all explicit entities, descriptive phrases, and specialized concepts directly mentioned in the `claim` (e.g., "Drowning Pool", "Throttle Junkies", "Paysonia", "Thujopsis", "Mount View High School"). Ensure all of these key terms are present in your query.
+        2. **Extract Bridge Entities from Summaries**: Identify intermediate or "bridge" entities mentioned in `summary_1` and `summary_2` that connect the facts in the claim. For example, add entities like the band "Soil" connecting Drowning Pool to the album Throttle Junkies; the former genus "Lesquerella" connecting Paysonia to flowering plants; or "Maine School Administrative District 3" and "Unity" connecting a school to a specific population statistic. Add all these bridge entities to your query.
+        3. **Address Indirect Descriptions**: If the claim describes an entity indirectly (e.g., "the band whose first album was Throttle Junkies" or "a town in Waldo County"), ensure your query contains enough information to retrieve all potential matching entities, even if the summaries only mention one or miss them entirely.
+        4. **Include Disambiguation Terms**: Entities often have common names (like "Soil" or "Unity") that require context to find the correct specific page. Always include relevant disambiguation modifiers based on context—such as "American band", "Maine", "plant", "genus", or "gymnosperm"—to ensure the precise page (e.g., "Soil American band" or "Unity Maine") is retrieved instead of a generic topic. 
+        5. **Always Generate a Query**: Even if the summaries are in complete agreement and fully verify the claim, you MUST generate a query. Your goal is to fetch the underlying evidence documents for the multi-hop trajectory, not just to answer or evaluate the claim. Never output "No query needed".
+        6. **Query Formatting (No Boolean Operators or Quotes)**: Combine all identified explicit entities, bridge entities, and key conceptual phrases into a broad, comprehensive search query. **Do not use boolean operators (like AND, OR), quotation marks, or other advanced search syntax.** Write the query as a simple space-separated list of keywords and entity names. Using strict operators or exact-match quotes can disrupt the search engine and prevent it from finding disambiguated page titles (e.g., searching for `"Soil" AND` can cause the system to miss the document titled "Soil American band", whereas a flat list of keywords successfully retrieves all documents).
+        
+        Provide your output strictly using the following format:
+        reasoning: <Step-by-step reasoning identifying the explicit entities in the claim, the intermediate bridge entities from the summaries, and any missing links needed to cover all hops>
+        query: <A comprehensive, simple space-separated search query containing all necessary keywords, bridge entities, and disambiguation terms, WITHOUT quotes or boolean operators>
+--- input this agent received ---
+[[ ## claim ## ]]
+Rafael de Souza Pereira is a player in a league that is the top level of the Mexican football league system. Óscar Fernández Monroy plays for Club Necaxa in the same league.
+
+[[ ## summary_1 ## ]]
+The claim is verified. Passage [5] identifies Rafael de Souza Pereira as a player for Tigres UANL in Liga MX, and passage [4] confirms Liga MX is the top tier of Mexican football. Passage [1] confirms Óscar Fernández Monroy plays for Club Necaxa in the Liga MX. No missing information was identified.
+
+Missing required evidence documents: []
+
+[[ ## summary_2 ## ]]
+The claim is accurate. Rafael de Souza Pereira (known as "Rafael Carioca") is a player for Tigres UANL, which competes in Liga MX, the top division of the Mexican football league system. Óscar Fernández Monroy is a professional footballer who has played for Club Necaxa, which also competes in Liga MX. All entities mentioned are verified as participating in the same top-tier league.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The claim involves two football players, Rafael de Souza Pereira and Óscar Fernández Monroy, and their association with the top level of the Mexican football league system, known as Liga MX. To verify this, I need to confirm: 1) The identity and league of Rafael de Souza Pereira (Rafael Carioca), 2) That Liga MX is indeed the top tier of Mexican football, and 3) That Óscar Fernández Monroy plays for Club Necaxa and that Club Necaxa participates in Liga MX. The summaries bridge these entities by explicitly naming Tigres UANL as the club for Rafael de Souza Pereira and confirming both players are in Liga MX. The query must include the names of both players, their respective clubs (Tigres UANL, Club Necaxa), and the league (Liga MX) to ensure all documents are retrieved.
+
+[[ ## query ## ]]
+Rafael de Souza Pereira Rafael Carioca Tigres UANL Oscar Fernandez Monroy Club Necaxa Liga MX Mexican football league system
+
+[[ ## completed ## ]]
+===== end of turn 4 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Rafael Carioca | Rafael de Souza Pereira (January 16, 1989), known as Rafael Carioca, is a Brazilian footballer who plays as a defensive midfielder for Liga MX club Tigres UANL.
+Tigres UANL | Club de Fútbol Tigres de la Universidad Autónoma de Nuevo León, or simply Tigres UANL, is a Liga MX football club based in San Nicolás de los Garza, a city in the Monterrey metropolitan area, Mexico.  Founded in 1960, the club has spent most of its history in Liga MX, the top tier of the Mexican football league system.
+Oscar Fernández Monroy | Óscar Fernández Monroy (born December 23, 1987), is a Mexican footballer who plays as a Striker for Club Necaxa in the Liga MX.
+Tigres UANL Reserves and Academy | Club de Fútbol Tigres de la Universidad Autónoma de Nuevo León Reserves and Academy are the under-20, under-17 and under-15 teams of Mexican Liga MX club Tigres UANL.
+Rafael Felipe Barreto | "Not to be confused with Rafael de Souza Pereira, also known as Rafael Carioca."
+Tigres UANL (Women) | Tigres UANL Femenil is a Mexican women's football club based in San Nicolás, Nuevo León, Mexico.  The club has been the female section of Tigres UANL since 2017.  The team will play in the Liga MX Femenil which is schedule to commence in September 2017.
+Damián Ariel Álvarez | Damián Ariel Álvarez (May 21, 1979) is a Mexican professional footballer, who plays for Liga MX club Tigres de la UANL.
+Aarón Fernández García | Aarón ""El Shocker"" Fernández (born 7 July 1987) is a professional Mexican footballer who currently plays for Necaxa on loan from UANL.  Fernandez began the Clausura 2017 as the 3rd string goalkeeper but due to injuries he made his senior Liga MX debut on February 4, 2017.
+Hugo Ayala | Hugo Ayala Castro (March 31, 1987) is a Mexican footballer who plays for the Liga MX club Tigres UANL.
+Liliana Mercado | Liliana Mercado Fuentes (born 22 October 1988) is a Mexican footballer who plays as a midfielder for Liga MX Femenil club Tigres UANL.
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT — concatenation of all retrieved documents:
+Oscar Fernández Monroy | Óscar Fernández Monroy (born December 23, 1987), is a Mexican footballer who plays as a Striker for Club Necaxa in the Liga MX.
+2010–11 Club Necaxa season | The 2010–11 Necaxa season was the 64th professional season of Mexico's top-flight football league.  The season is split into two tournaments—the Torneo Apertura and the Torneo Clausura—each with identical formats and each contested by the same eighteen teams.  Necaxa will begin their season on July 24, 2010 against Chiapas, Necaxa played their homes games on Fridays at 8:00pm.  Necaxa was relegated to the Liga de Ascenso after having the lowest percentage of points in the 2010 Apertura and Clausura 2011 seasons.
+French football league system | The French football league system is a series of interconnected leagues for club football in France and Monaco, and includes one Spanish side.  At the top two levels of the system is the Ligue de Football Professionnel, which consists of two professional national divisions, Ligue 1 and Ligue 2.  Below that are a number of leagues run by the Fédération Française de Football.  At level 3 is the semi-professional Championnat National.  Below that is the amateur Championnat de France amateur (level 4), which is divided into four parallel regional divisions, followed by the Championnat de France amateur 2 (level 5), which is divided into eight parallel regional divisions.  Underneath that are many more regional leagues and divisions.  Clubs finishing the season at or near the top of their division may be eligible for promotion to a higher division.  Similarly, clubs finishing at or near the bottom of their division may be relegated to a lower division.
+Querétaro F.C. | Querétaro Fútbol Club, also called Gallos Blancos de Querétaro, is a Mexican professional football club based in Querétaro City, Mexico.  Querétaro plays in the Liga MX, the top level of the Mexican football league system.  Their colors are blue, black and white and the team mascot is a rooster.  They were to have been relegated to the Liga de Ascenso in 2013, but Chiapas F.C. was relocated to Querétaro.
+Rafael Carioca | Rafael de Souza Pereira (January 16, 1989), known as Rafael Carioca, is a Brazilian footballer who plays as a defensive midfielder for Liga MX club Tigres UANL.
+List of Santos FC players | Santos Futebol Clube is a football club based in Santos, that competes in the Campeonato Paulista, São Paulo's state league, and the Campeonato Brasileiro Série A or "Brasileirão", Brazil's national league.  The club was founded in 1912 by the initiative of three sports enthusiasts from Santos by the names of Raimundo Marques, Mário Ferraz de Campos, and Argemiro de Souza Júnior, and played its first friendly match on June 23, 1912.  Initially Santos played against other local clubs in the city and state championships, but in 1959 the club became one of the founding members of the "Taça Brasil", Brazil's first truly national league.  As of 2010, Santos is one of only five clubs never to have been relegated from the top level of Brazilian football, the others being São Paulo, Flamengo, Internacional and Cruzeiro.
+Alacranes de Durango | Club de Fútbol Alacranes de Durango, is a Mexican football club based in the city of Durango, Durango, Mexico and currently play in the third level of the professional Mexican football league system.  Their colors are green, white with black trim, and their mascot is the scorpion.
+None railway station | None railway station (Italian: "Stazione di None" ) serves the town and "comune" of None, in the Piedmont region, northwestern Italy.  The station is a through station of the Turin-Pinerolo-Torre Pellice railway.
+Jeannette Bougrab | Jeannette Bougrab is a French lawyer and politician.  She served as the junior minister for Youth and Community Life from none }} to none }} and is a member of the UMP party.  Prior to this, she was the Chair of the French Equal Opportunities and Anti-Discrimination Commission (HALDE) from none }} to none }} .
+Flatwillow, Montana | Flatwillow (also Flatwillow Crossing) is an unincorporated community in southern Petroleum County, Montana, United States.  It lies along local roads south of the town of Winnett, the county seat of Petroleum County.  Its elevation is 3,225 feet (983 m).  Flatwillow's post office first opened on none }} and closed on none }} , only to be reopened on none }} .  The post office was closed on none }} .
+None Mage Sudu None | None Mage Sudu None (Sinhalese: "නෝනේ මගේ සුදු නෝනේ" ) is a 2015 Sri Lankan Sinhala comedy film directed by Eranga Senarathna and produced by D.D.R.D.S Samarasekara for Sri Jaya Cineroo.  It stars Wilson Gunaratne and Anusha Damayanthi in lead roles along with Mahinda Pathirage and Mihira Sirithilaka.  Music composed by Lasantha Jayasekara.  It is the 1230th Sri Lankan film in the Sinhala cinema.
+Mariappan Saravanan | Major Mariappan Saravanan (none }} – none }} ), was an officer in the prestigious Bihar Regiment of the Indian Army who was killed during the Kargil War.  He was killed in hand-to-hand combat with intruders after killing four intruders in the Batalik area of Kargil Sector on none }} , along with 33 soldiers and four other officers.  Saravanan had just completed four years of service on none }} .
+None of These Candidates | None of These Candidates is a voting option for Nevada voters for President of the United States and for state constitutional positions.  This option is listed along with the names of individuals running for the position and is often described as "none of the above".
+RBNS Sabha (FFG-90) | RBNS "Sabha" (formerly known as USS "Jack Williams" (FFG-24) during its career in US) is a frigate now in service with the Royal Bahrain Naval Force.  The ownership was transferred to Bahrain as a gift on none }} .  The frigate was ordered by the US Navy on none }} , and laid down on none }} .  It was officially launched by the US Navy on none }} .  The frigate is now considered as the lead frigate of the Royal Bahrain Naval Force.
+Rafael Carioca | Rafael de Souza Pereira (January 16, 1989), known as Rafael Carioca, is a Brazilian footballer who plays as a defensive midfielder for Liga MX club Tigres UANL.
+Tigres UANL | Club de Fútbol Tigres de la Universidad Autónoma de Nuevo León, or simply Tigres UANL, is a Liga MX football club based in San Nicolás de los Garza, a city in the Monterrey metropolitan area, Mexico.  Founded in 1960, the club has spent most of its history in Liga MX, the top tier of the Mexican football league system.
+Oscar Fernández Monroy | Óscar Fernández Monroy (born December 23, 1987), is a Mexican footballer who plays as a Striker for Club Necaxa in the Liga MX.
+Tigres UANL Reserves and Academy | Club de Fútbol Tigres de la Universidad Autónoma de Nuevo León Reserves and Academy are the under-20, under-17 and under-15 teams of Mexican Liga MX club Tigres UANL.
+Rafael Felipe Barreto | "Not to be confused with Rafael de Souza Pereira, also known as Rafael Carioca."
+Tigres UANL (Women) | Tigres UANL Femenil is a Mexican women's football club based in San Nicolás, Nuevo León, Mexico.  The club has been the female section of Tigres UANL since 2017.  The team will play in the Liga MX Femenil which is schedule to commence in September 2017.
+Damián Ariel Álvarez | Damián Ariel Álvarez (May 21, 1979) is a Mexican professional footballer, who plays for Liga MX club Tigres de la UANL.
+Aarón Fernández García | Aarón ""El Shocker"" Fernández (born 7 July 1987) is a professional Mexican footballer who currently plays for Necaxa on loan from UANL.  Fernandez began the Clausura 2017 as the 3rd string goalkeeper but due to injuries he made his senior Liga MX debut on February 4, 2017.
+Hugo Ayala | Hugo Ayala Castro (March 31, 1987) is a Mexican footballer who plays for the Liga MX club Tigres UANL.
+Liliana Mercado | Liliana Mercado Fuentes (born 22 October 1988) is a Mexican footballer who plays as a midfielder for Liga MX Femenil club Tigres UANL.
+
+### trace 3d02a571c7fe3b2e0ddf0715
+===== ENVIRONMENT · not an agent turn =====
+Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Pelle Almqvist and another singer are not from the same country. This other singer was a producer on An Omen EP in June 2012.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Pelle Almqvist | Per "Pelle" Almqvist (born 29 May 1978), also known as Howlin' Pelle Almqvist, is a Swedish singer and songwriter.  He is the lead singer of garage rock band The Hives.
+Another Country (Cassandra Wilson album) | Another Country is a 2012 album by singer Cassandra Wilson, featuring the guitar, songwriting and production of Italian guitarist and producer Fabrizio Sotti.
+Remember Me (Daley song) | "Remember Me" is the first single by English singer Daley taken from his second EP, "Alone Together".  It was released on 9 December 2012 through Levels/Polydor/Universal Republic Records.  The song features guest vocals from English singer-songwriter Jessie J.  Produced by The White N3rd and Balistiq, it samples Blue Boy's song of the same name.
+An Omen EP | An Omen EP (stylized as "An omen EP_") was the second extended play release by American post-industrial group How to Destroy Angels, released November 13, 2012.  Produced by Nine Inch Nails frontman Trent Reznor, his wife Mariqueen Maandig and longtime collaborator Atticus Ross, the EP contained various tracks later issued on their 2013 debut album, "Welcome Oblivion".  It focused on Maandig's vocal style, with a lighter tone than its predecessor.
+Call My Name (Cheryl song) | "Call My Name" is a song by English singer Cheryl taken from her third studio album, "A Million Lights" (2012).  It was written and produced by Calvin Harris, and released as the lead single from the album on 10 June 2012.  "Call My Name" is a dance-pop song that is compared by critics to songs produced by Harris for other singers.
+Songs from Another Love | Songs from Another Love is an extended play (EP) from singer-songwriter Tom Odell.  The four-track extended play was first released in the United Kingdom on 15 October 2012 through Columbia and In the Name Of.
+Omen (Disclosure song) | "Omen" is a song by English electronic duo Disclosure.  It features the vocals from English singer Sam Smith.  It was released as a digital download on 27 July 2015, by Island Records.  It is the second single from Disclosure's second studio album, "Caracal" (2015), following "Holding On".  It was written by Guy Lawrence, Howard Lawrence and Smith and co-written by Jimmy Napes.  It is the second collaboration between Smith and Disclosure, following "Latch" in 2012.  The song charted in multiple countries and is featured on the soundtrack for the video game "FIFA 16".
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim` and `passages`, your task is to produce the fields `reasoning` and `summary` to verify the claim and guide a multi-hop retrieval system. 
+        
+        Detailed Task Description:
+        You are acting as an expert fact-checker and a query-generator for a three-hop document retrieval trajectory. Often, the provided `passages` are incomplete or represent only the first or second hop of evidence. You must evaluate what is provided, use your broad world knowledge to identify the unmentioned implicit entities, and output a summary that clearly identifies what information is still missing so the retrieval trajectory can find every required evidence document on the next hop.
+        
+        Generalizable Strategy:
+        1. Deconstruct the multi-hop `claim` into individual factual components.
+        2. Cross-reference the components against the provided `passages`. Note what is supported, what is contradicted, and what is missing.
+        3. When passages omit specific details (e.g., a passage about a movie doesn't list all its actors), use your internal knowledge to identify the exact entities, films, or people referred to in the claim.
+        4. In your `reasoning`, explain your step-by-step analysis and deduce the exact missing entities needed to verify the remaining parts of the claim.
+        5. In your `summary`, briefly state the verification status of the claim, summarize the evidence found, and explicitly list the exact names of the missing required evidence documents (e.g., specific actors, directors, or film titles) needed to complete the verification.
+        
+        Niche and Domain-Specific Factual Information to remember:
+        - For claims involving Matt Damon and Edward Norton playing together, the film is "Rounders". John Malkovich and David Zayas also acted in this film. If they are missing from the retrieved passages, explicitly list 'John Malkovich' and 'David Zayas' as required missing evidence documents.
+        - Eliot Hyman co-founded Seven Arts Productions with Ray Stark. Ray Stark produced the 1962 British-American black comedy-drama "Lolita". If a claim references Hyman's co-founder and a British-American black comedy-drama, explicitly identify 'Ray Stark' and 'Lolita 1962 film' as required missing documents, even if the claim contains deliberate inaccuracies (e.g., wrongly stating it was directed by actress Quinn Cummings).
+        - Eddie Steeples is known for an OfficeMax ad campaign and the sitcom "My Name is Earl". Billy Gardell also appeared in this sitcom. To verify intersecting claims connecting these elements, ensure documents like 'Eddie Steeples', 'My Name is Earl', and 'Billy Gardell' are fully identified or confirmed as retrieved.
+        
+        Output Format:
+        reasoning: [Your step-by-step analysis comparing the claim to the passages and identifying missing entities using internal knowledge]
+        summary: [A concise conclusion on the claim's validity based on current evidence, followed by an explicit list of any missing required evidence documents (e.g., "Missing required evidence documents: ['David Zayas', 'John Malkovich']")]
+--- input this agent received ---
+[[ ## claim ## ]]
+Pelle Almqvist and another singer are not from the same country. This other singer was a producer on An Omen EP in June 2012.
+
+[[ ## passages ## ]]
+[1] «Pelle Almqvist | Per "Pelle" Almqvist (born 29 May 1978), also known as Howlin' Pelle Almqvist, is a Swedish singer and songwriter.  He is the lead singer of garage rock band The Hives.»
+[2] «Another Country (Cassandra Wilson album) | Another Country is a 2012 album by singer Cassandra Wilson, featuring the guitar, songwriting and production of Italian guitarist and producer Fabrizio Sotti.»
+[3] «Remember Me (Daley song) | "Remember Me" is the first single by English singer Daley taken from his second EP, "Alone Together".  It was released on 9 December 2012 through Levels/Polydor/Universal Republic Records.  The song features guest vocals from English singer-songwriter Jessie J.  Produced by The White N3rd and Balistiq, it samples Blue Boy's song of the same name.»
+[4] «An Omen EP | An Omen EP (stylized as "An omen EP_") was the second extended play release by American post-industrial group How to Destroy Angels, released November 13, 2012.  Produced by Nine Inch Nails frontman Trent Reznor, his wife Mariqueen Maandig and longtime collaborator Atticus Ross, the EP contained various tracks later issued on their 2013 debut album, "Welcome Oblivion".  It focused on Maandig's vocal style, with a lighter tone than its predecessor.»
+[5] «Call My Name (Cheryl song) | "Call My Name" is a song by English singer Cheryl taken from her third studio album, "A Million Lights" (2012).  It was written and produced by Calvin Harris, and released as the lead single from the album on 10 June 2012.  "Call My Name" is a dance-pop song that is compared by critics to songs produced by Harris for other singers.»
+[6] «Songs from Another Love | Songs from Another Love is an extended play (EP) from singer-songwriter Tom Odell.  The four-track extended play was first released in the United Kingdom on 15 October 2012 through Columbia and In the Name Of.»
+[7] «Omen (Disclosure song) | "Omen" is a song by English electronic duo Disclosure.  It features the vocals from English singer Sam Smith.  It was released as a digital download on 27 July 2015, by Island Records.  It is the second single from Disclosure's second studio album, "Caracal" (2015), following "Holding On".  It was written by Guy Lawrence, Howard Lawrence and Smith and co-written by Jimmy Napes.  It is the second collaboration between Smith and Disclosure, following "Latch" in 2012.  The song charted in multiple countries and is featured on the soundtrack for the video game "FIFA 16".»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. The claim identifies Pelle Almqvist as one singer (confirmed by Passage 1 as Swedish) and asserts that another singer produced "An Omen EP" in June 2012.
+2. Passage 4 confirms "An Omen EP" was released by How to Destroy Angels, but it was released on November 13, 2012, not June 2012. It lists Trent Reznor, Mariqueen Maandig, and Atticus Ross as producers. 
+3. Trent Reznor is a singer (of Nine Inch Nails) and a producer on that EP. Reznor is American, while Almqvist is Swedish, satisfying the "different country" part of the claim.
+4. However, the claim specifies the production happened in "June 2012". Passage 4 states the EP was released in November 2012, but does not explicitly confirm the month of production. 
+5. To fully verify, I need to confirm if any of the credited producers (Trent Reznor, Mariqueen Maandig, or Atticus Ross) are considered singers and if the production timeline aligns with the claim's specific date of June 2012, or if the claim refers to a different EP or person entirely.
+
+[[ ## summary ## ]]
+The claim partially aligns with evidence: Pelle Almqvist is Swedish, and Trent Reznor (a singer and producer on "An Omen EP") is American, supporting the different country status. However, the release date of "An Omen EP" is November 2012, not June 2012. Further verification is needed to determine if the production sessions occurred in June 2012 or if the claim refers to a different project.
+
+Missing required evidence documents: ['Trent Reznor', 'An Omen EP production timeline']
+
+[[ ## completed ## ]]
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        You are an AI assistant operating within a multi-hop fact-checking system. Your task is to generate a search query to retrieve evidence documents necessary to verify a given claim. 
+        
+        You will be provided with the following inputs:
+        - `claim`: A factual claim that requires a three-hop retrieval trajectory to fully verify.
+        - `summary_1`: A summary of the information and evidence documents that have already been retrieved in the first hop.
+        
+        Given the fields `claim` and `summary_1`, produce the fields `reasoning` and `query`.
+        
+        ### Guidelines & Strategies for Success:
+        1. **Identify the Missing Evidence:** Compare `claim` with `summary_1` to determine what entities, facts, or relationships are still missing. Your generated query must bridge this gap to help the system retrieve the remaining required evidence documents in the next hop.
+        2. **Beware of Distractors or Incomplete Information:** Do not blindly trust that an entity mentioned in `summary_1` (e.g., "Paula Patton") is the only or correct subject of the claim. Often, the summary contains partial matches, and the actual required entity is still missing. Frame your query to explore the source or group rather than anchoring strictly to the entity guessed in the summary.
+        3. **Stop When Falsified by a False Premise:** If `summary_1` provides sufficient evidence that the claim is based on a false premise (e.g., conflating distinct historical events or incorrectly attributing an album to the wrong conductor), the claim is already proven false. In these scenarios, no further evidence is missing. Do not chase irrelevant distractors (e.g., searching for "Lund Chamber Choir repertoire" when the claim's core premise is already falsified). Output `none` for your query.
+        4. **Avoid Overloading Queries with Multiple Entities:** If `summary_1` identifies a list of multiple potential candidates for a relationship (e.g., multiple lyricists for an operetta), do not combine all their names into a single long search query. A query like "Maxine Kumin ancestry Dorothy Parker Lillian Hellman..." is too broad and will fail to retrieve the specific required document. Narrow the search down to a single relevant candidate.
+        5. **Avoid Yes/No Questions:** Do not formulate your query as a conversational or closed-ended question (e.g., "Did [Actor] act in [Film]?"). Use concise, keyword-centric search phrases that are likely to match the text or title of an encyclopedia document.
+        6. **Avoid Complex Boolean Logic:** Do not use complex operators like `AND`, `OR`, or excessive quotation marks. Overly complex Boolean queries often fail to match the required documents. 
+        7. **Use Specific Keywords from the Claim:** Ensure that the query incorporates the specific descriptive keywords from the claim used to identify the missing entity (e.g., "Peter Rees entertainment program creator").
+        
+        ### Domain-Specific Knowledge & Facts:
+        - **Eric Edward Whitacre / Tarik O'Regan:** For claims involving Eric Whitacre composing works for the ensemble that released *Tarik O'Regan: Threshold of Night*, the true ensemble is Conspirare (which is not based on Daniel Åberg). The required documents are `conspirare`, `eric whitacre`, and `tarik oregan threshold of night`. Once this false premise is identified in the first hop, no further documents are missing. You must output `none` for the query.
+        - **New York and New Jersey Campaign (1776):** For claims conflating the Battle of Harlem Heights, Battle of Long Island, and Battle of White Plains as a single simultaneous event, the required documents (`battle of harlem heights`, `battle of white plains`, `new york and new jersey campaign`) are usually already retrieved in the first hop. Because the summary confirms they are distinct events on different dates, the claim is already fully falsified. You must output `none` for the query.
+        - **Candide Operetta & Maxine Kumin:** For the claim linking a *Candide* (operetta) lyricist to Maxine Kumin's heritage, the specific required missing document is `dorothy parker`. Do not search for all lyricists at once; query directly for `dorothy parker`.
+        
+        ### Output Format:
+        Provide your response with the following fields:
+        **reasoning**: Think step-by-step about what evidence is already available, what is missing, and how to best surface the remaining required documents without falling for distractor entities or generating unnecessary queries for already falsified claims.
+        **query**: A concise, keyword-based search query optimized to retrieve the missing evidence documents. If no further documents are needed because the claim is already thoroughly falsified by a false premise in `summary_1`, output `none`.
+--- input this agent received ---
+[[ ## claim ## ]]
+Pelle Almqvist and another singer are not from the same country. This other singer was a producer on An Omen EP in June 2012.
+
+[[ ## summary_1 ## ]]
+The claim partially aligns with evidence: Pelle Almqvist is Swedish, and Trent Reznor (a singer and producer on "An Omen EP") is American, supporting the different country status. However, the release date of "An Omen EP" is November 2012, not June 2012. Further verification is needed to determine if the production sessions occurred in June 2012 or if the claim refers to a different project.
+
+Missing required evidence documents: ['Trent Reznor', 'An Omen EP production timeline']
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The summary confirms that Pelle Almqvist is Swedish and Trent Reznor is American, satisfying the first part of the claim. The claim specifies that this "other singer" was a producer on *An Omen EP* in June 2012. The summary notes *An Omen EP* was released in November 2012, so it is necessary to verify if the production or associated work for the EP took place in June 2012 to determine if the claim's premise regarding the timeline is accurate or if it refers to a specific production phase.
+
+[[ ## query ## ]]
+An Omen EP Trent Reznor production June 2012
+
+[[ ## completed ## ]]
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+An Omen EP | An Omen EP (stylized as "An omen EP_") was the second extended play release by American post-industrial group How to Destroy Angels, released November 13, 2012.  Produced by Nine Inch Nails frontman Trent Reznor, his wife Mariqueen Maandig and longtime collaborator Atticus Ross, the EP contained various tracks later issued on their 2013 debut album, "Welcome Oblivion".  It focused on Maandig's vocal style, with a lighter tone than its predecessor.
+Remix 2014 EP | Remix 2014 EP is a remix extended play (EP) by American industrial rock band by Nine Inch Nails.  It was released on January 21, 2014 exclusively on Beats Music, a streaming service project led by Trent Reznor and Dr. Dre.  Trent Reznor acts as the chief creative officer of the website.
+Trent Reznor | Michael Trent Reznor (born May 17, 1965) is an American singer, songwriter, musician, record producer, and film score composer.
+Leaving Home EP | Leaving Home EP is the major label debut extended play (EP) by American recording artist T. Mills.  It was released for the retail sales on January 13, 2012, by Columbia Records.  The production on this project was handled by Omen, Colin Munroe and The Stereotypes, among others.  "Leaving Home EP" was supported by the lead single "Vans On", and a promotional single "The Boom".
+Trent Reznor discography | This is a comprehensive discography of Trent Reznor, an American musician, singer, producer, and multi-instrumentalist most famous as the frontman and primary creative force behind the industrial rock band Nine Inch Nails.  Reznor has also been associated with the bands Option 30, Exotic Birds, and Tapeworm, among others.
+Welcome to Mexico... Asshole | Welcome to Mexico... Asshole is the first live album from Pigface.  Trent Reznor of Nine Inch Nails is featured on "Suck", (which was remade for his "Broken" EP as a hidden track) but Ogre is heard on lead vocals.
+Voyeurs (album) | Voyeurs is the only album by 2wo, a musical collaboration between vocalist Rob Halford (of Judas Priest) and guitarist John Lowery a.k.a. John 5 (of Red Square Black, Marilyn Manson and Rob Zombie).  Nine Inch Nails' Trent Reznor receives executive-producer credit, with the actual production duties being handled by Bob Marlette and Skinny Puppy's Dave Ogilvie.  "Voyeurs" features Halford's distinctive vocals in an industrial metal context similar to other work by John 5, Reznor and Ogilvie's.
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        You are an expert fact-checking assistant specialized in the entertainment domain (including movies, television, documentaries, music history, voice actors, directors, and chart performances). 
+        
+        You will receive the following fields as input:
+        - `claim`: A complex, multi-hop (typically three-hop) factual statement.
+        - `context`: An authoritative summary of facts relevant to the claim.
+        - `passages`: A list of retrieved reference documents (e.g., Wikipedia excerpts).
+        
+        Your task is to evaluate the accuracy of the `claim` by tracing its three-hop reasoning trajectory. Because you are verifying multi-hop claims, you must synthesize information across both the `context` and the `passages`. 
+        
+        You must adopt the following generalizable strategy and structure your response using exactly these two fields:
+        
+        1. `reasoning`: 
+           - Perform a step-by-step logical deduction, breaking down the claim into its individual hops.
+           - Verify each hop against the provided `context` and `passages`. Note that sometimes required information missing from the `passages` may be present in the `context`, which you should treat as valid retrieved evidence.
+           - You must evaluate if the three-hop retrieval trajectory successfully found every required evidence document. Explicitly list the supporting entities/documents under "Retrieved required evidence documents" (format these as normalized, lowercase Wikipedia-style titles, e.g., ['catherine ohara', 'charlie tahan', 'frankenweenie 2012 film'] or ['billie anthony', 'shakin stevens', 'this ole house']).
+           - If any hop of the claim cannot be verified because the information is completely absent from both the `context` and `passages`, explicitly list the missing entities/documents under "Missing required evidence documents" (e.g., ['aliens of deep']). Explain how this absence impacts the verification.
+        
+        2. `summary`: 
+           - Provide a concise final verdict stating whether the claim is accurate, inaccurate, or cannot be fully verified.
+           - Summarize the corrected or verified facts based on the available evidence.
+           - If applicable, reiterate what missing information prevents full verification of the claim's comparisons or statements.
+--- input this agent received ---
+[[ ## claim ## ]]
+Pelle Almqvist and another singer are not from the same country. This other singer was a producer on An Omen EP in June 2012.
+
+[[ ## context ## ]]
+The claim partially aligns with evidence: Pelle Almqvist is Swedish, and Trent Reznor (a singer and producer on "An Omen EP") is American, supporting the different country status. However, the release date of "An Omen EP" is November 2012, not June 2012. Further verification is needed to determine if the production sessions occurred in June 2012 or if the claim refers to a different project.
+
+Missing required evidence documents: ['Trent Reznor', 'An Omen EP production timeline']
+
+[[ ## passages ## ]]
+[1] «An Omen EP | An Omen EP (stylized as "An omen EP_") was the second extended play release by American post-industrial group How to Destroy Angels, released November 13, 2012.  Produced by Nine Inch Nails frontman Trent Reznor, his wife Mariqueen Maandig and longtime collaborator Atticus Ross, the EP contained various tracks later issued on their 2013 debut album, "Welcome Oblivion".  It focused on Maandig's vocal style, with a lighter tone than its predecessor.»
+[2] «Remix 2014 EP | Remix 2014 EP is a remix extended play (EP) by American industrial rock band by Nine Inch Nails.  It was released on January 21, 2014 exclusively on Beats Music, a streaming service project led by Trent Reznor and Dr. Dre.  Trent Reznor acts as the chief creative officer of the website.»
+[3] «Trent Reznor | Michael Trent Reznor (born May 17, 1965) is an American singer, songwriter, musician, record producer, and film score composer.»
+[4] «Leaving Home EP | Leaving Home EP is the major label debut extended play (EP) by American recording artist T. Mills.  It was released for the retail sales on January 13, 2012, by Columbia Records.  The production on this project was handled by Omen, Colin Munroe and The Stereotypes, among others.  "Leaving Home EP" was supported by the lead single "Vans On", and a promotional single "The Boom".»
+[5] «Trent Reznor discography | This is a comprehensive discography of Trent Reznor, an American musician, singer, producer, and multi-instrumentalist most famous as the frontman and primary creative force behind the industrial rock band Nine Inch Nails.  Reznor has also been associated with the bands Option 30, Exotic Birds, and Tapeworm, among others.»
+[6] «Welcome to Mexico... Asshole | Welcome to Mexico... Asshole is the first live album from Pigface.  Trent Reznor of Nine Inch Nails is featured on "Suck", (which was remade for his "Broken" EP as a hidden track) but Ogre is heard on lead vocals.»
+[7] «Voyeurs (album) | Voyeurs is the only album by 2wo, a musical collaboration between vocalist Rob Halford (of Judas Priest) and guitarist John Lowery a.k.a. John 5 (of Red Square Black, Marilyn Manson and Rob Zombie).  Nine Inch Nails' Trent Reznor receives executive-producer credit, with the actual production duties being handled by Bob Marlette and Skinny Puppy's Dave Ogilvie.  "Voyeurs" features Halford's distinctive vocals in an industrial metal context similar to other work by John 5, Reznor and Ogilvie's.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+To evaluate the claim, we break it down into three logical hops:
+1. Identify the nationality of Pelle Almqvist: Passage [3] and the context confirm Pelle Almqvist is the Swedish lead singer of The Hives.
+2. Identify the other singer who produced *An Omen EP*: Passage [1] explicitly identifies the producers of *An Omen EP* as Trent Reznor, Mariqueen Maandig, and Atticus Ross. Trent Reznor is a singer (frontman of Nine Inch Nails) and a producer.
+3. Compare nationalities and verify the timeline:
+   - Nationality: Pelle Almqvist is Swedish. Trent Reznor is American (Passage [3]), confirming they are from different countries.
+   - Timeline: The claim states *An Omen EP* was released in June 2012. Passage [1] confirms the EP was released on November 13, 2012. There is no evidence in the provided passages to suggest that production took place specifically in June 2012, making that part of the claim factually incorrect according to the provided documentation.
+
+Retrieved required evidence documents: ['pelle almqvist', 'an omen ep', 'trent reznor']
+Missing required evidence documents: ['an omen ep production timeline'] (The exact production dates are not provided, preventing confirmation of a June 2012 start or involvement).
+
+[[ ## summary ## ]]
+The claim is inaccurate. While it correctly identifies that Pelle Almqvist (Swedish) and Trent Reznor (American) are singers from different countries, the assertion regarding the release date of *An Omen EP* is incorrect. According to the provided passages, *An Omen EP* was released in November 2012, not June 2012. There is no evidence provided to support the claim that production occurred in June 2012.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: create_query_hop3 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `reasoning` and `query`.
+        
+        Your task is to generate a search query that will successfully retrieve *all* required evidence documents to verify a multi-hop claim. The retrieval trajectory typically involves multiple documents (e.g., three hops), and your query must find every single required document in this trajectory, including starting nodes, intermediate "bridge" nodes, and final nodes.
+        
+        Follow these guidelines to formulate your query:
+        1. **Include All Explicit Claim Entities and Concepts**: Deconstruct the claim into individual facts. Identify all explicit entities, descriptive phrases, and specialized concepts directly mentioned in the `claim` (e.g., "Drowning Pool", "Throttle Junkies", "Paysonia", "Thujopsis", "Mount View High School"). Ensure all of these key terms are present in your query.
+        2. **Extract Bridge Entities from Summaries**: Identify intermediate or "bridge" entities mentioned in `summary_1` and `summary_2` that connect the facts in the claim. For example, add entities like the band "Soil" connecting Drowning Pool to the album Throttle Junkies; the former genus "Lesquerella" connecting Paysonia to flowering plants; or "Maine School Administrative District 3" and "Unity" connecting a school to a specific population statistic. Add all these bridge entities to your query.
+        3. **Address Indirect Descriptions**: If the claim describes an entity indirectly (e.g., "the band whose first album was Throttle Junkies" or "a town in Waldo County"), ensure your query contains enough information to retrieve all potential matching entities, even if the summaries only mention one or miss them entirely.
+        4. **Include Disambiguation Terms**: Entities often have common names (like "Soil" or "Unity") that require context to find the correct specific page. Always include relevant disambiguation modifiers based on context—such as "American band", "Maine", "plant", "genus", or "gymnosperm"—to ensure the precise page (e.g., "Soil American band" or "Unity Maine") is retrieved instead of a generic topic. 
+        5. **Always Generate a Query**: Even if the summaries are in complete agreement and fully verify the claim, you MUST generate a query. Your goal is to fetch the underlying evidence documents for the multi-hop trajectory, not just to answer or evaluate the claim. Never output "No query needed".
+        6. **Query Formatting (No Boolean Operators or Quotes)**: Combine all identified explicit entities, bridge entities, and key conceptual phrases into a broad, comprehensive search query. **Do not use boolean operators (like AND, OR), quotation marks, or other advanced search syntax.** Write the query as a simple space-separated list of keywords and entity names. Using strict operators or exact-match quotes can disrupt the search engine and prevent it from finding disambiguated page titles (e.g., searching for `"Soil" AND` can cause the system to miss the document titled "Soil American band", whereas a flat list of keywords successfully retrieves all documents).
+        
+        Provide your output strictly using the following format:
+        reasoning: <Step-by-step reasoning identifying the explicit entities in the claim, the intermediate bridge entities from the summaries, and any missing links needed to cover all hops>
+        query: <A comprehensive, simple space-separated search query containing all necessary keywords, bridge entities, and disambiguation terms, WITHOUT quotes or boolean operators>
+--- input this agent received ---
+[[ ## claim ## ]]
+Pelle Almqvist and another singer are not from the same country. This other singer was a producer on An Omen EP in June 2012.
+
+[[ ## summary_1 ## ]]
+The claim partially aligns with evidence: Pelle Almqvist is Swedish, and Trent Reznor (a singer and producer on "An Omen EP") is American, supporting the different country status. However, the release date of "An Omen EP" is November 2012, not June 2012. Further verification is needed to determine if the production sessions occurred in June 2012 or if the claim refers to a different project.
+
+Missing required evidence documents: ['Trent Reznor', 'An Omen EP production timeline']
+
+[[ ## summary_2 ## ]]
+The claim is inaccurate. While it correctly identifies that Pelle Almqvist (Swedish) and Trent Reznor (American) are singers from different countries, the assertion regarding the release date of *An Omen EP* is incorrect. According to the provided passages, *An Omen EP* was released in November 2012, not June 2012. There is no evidence provided to support the claim that production occurred in June 2012.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+To verify the claim, I need to confirm the nationality of Pelle Almqvist, identify the producer of the "An Omen EP" to see if they are a singer, confirm their nationality, and verify the production or release timeline of "An Omen EP". The claim specifically mentions a singer who produced the EP in June 2012. I need to retrieve information on Pelle Almqvist (to confirm he is Swedish), Trent Reznor (to confirm he is an American singer and producer), and the specific details regarding the "An Omen EP" (to check the involvement of Trent Reznor and the timeline of the EP's production or release).
+
+[[ ## query ## ]]
+Pelle Almqvist nationality Swedish singer An Omen EP producer Trent Reznor American singer An Omen EP release date June 2012 November 2012 production timeline
+
+[[ ## completed ## ]]
+===== end of turn 4 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+An Omen EP | An Omen EP (stylized as "An omen EP_") was the second extended play release by American post-industrial group How to Destroy Angels, released November 13, 2012.  Produced by Nine Inch Nails frontman Trent Reznor, his wife Mariqueen Maandig and longtime collaborator Atticus Ross, the EP contained various tracks later issued on their 2013 debut album, "Welcome Oblivion".  It focused on Maandig's vocal style, with a lighter tone than its predecessor.
+Omen (Within the Ruins EP) | Omen is an EP by American metalcore band Within the Ruins.  It was released via Victory Records on May 24, 2011.  It features two new songs and two covers.  Omen would be the band's last release featuring Mike Beaujean on bass and Mike Van Schelt on guitar.  Additionally, it would be the last release to feature two guitarists, with Cocchi taking over sole guitar duties in 2013's full length Elite.  It would also be the band's last effort for Victory Records, as they would go on to sign with eOne in November of 2012.
+Leaving Home EP | Leaving Home EP is the major label debut extended play (EP) by American recording artist T. Mills.  It was released for the retail sales on January 13, 2012, by Columbia Records.  The production on this project was handled by Omen, Colin Munroe and The Stereotypes, among others.  "Leaving Home EP" was supported by the lead single "Vans On", and a promotional single "The Boom".
+Pelle Almqvist | Per "Pelle" Almqvist (born 29 May 1978), also known as Howlin' Pelle Almqvist, is a Swedish singer and songwriter.  He is the lead singer of garage rock band The Hives.
+Hurt: The EP | Hurt: The EP is the first EP by British singer-songwriter Leona Lewis.  It was released on 9 December 2011 by Syco Music and RCA Records.  The EP served as something to bridge the gap for her fans whilst she finished recording her third studio album "Glassheart" (2012).  The album was supposed to be released in November 2011, but was delayed to March 2012, and again to November 2012.  Lewis's reason for delaying the album was because after she met producer Fraser T Smith, the singer wanted to collaborate on new material for possible inclusion on "Glassheart".  As a result, Smith also produced "Hurt: The EP".  The EP consists of three cover versions: "Hurt" by Nine Inch Nails; "Iris" by the Goo Goo Dolls and "Colorblind" by Counting Crows.  Musically, the songs are influenced by rock music, whilst the lyrics revolve around feeling pain.
+Remix 2014 EP | Remix 2014 EP is a remix extended play (EP) by American industrial rock band by Nine Inch Nails.  It was released on January 21, 2014 exclusively on Beats Music, a streaming service project led by Trent Reznor and Dr. Dre.  Trent Reznor acts as the chief creative officer of the website.
+The Curse (Omen album) | The Curse is the third studio album of the American heavy metal band Omen.  It was originally released in 1986 by Metal Blade.  In 1996 Metal Blade re-released "The Curse" with the EP "Nightmares" as bonus tracks.
+Paradise (Lana Del Rey EP) | Paradise is the third extended play (EP) and second major release by American singer and songwriter Lana Del Rey; it was released on November 9, 2012 by Universal Music.  It is additionally packaged with the reissue of her second studio album "Born to Die" (2012), titled "".  Del Rey enlisted collaborators including producers Rick Nowels, Justin Parker, and Rick Rubin.
+Profane Omen | Profane Omen is a Finnish groove metal band formed in 1999.  They made two demos in 2000 ("Profane Omen" and "Bittersweet Omen").  Two other demos were recorded in 2001, "Fuck the Beast" and "Load of Lead," and later they released an EP, "Label of Black," which was their first official release.  In early 2004 PO recorded a single, "Adrenaline/Enemies."  They also made a music video for their song "Adrenaline."
+Nightmares (Omen album) | Nightmares is the first EP album of the American heavy metal band Omen.  It was originally released in 1987 by Metal Blade.  It was included as bonus tracks on the 1989 re-issue of Warning Of Danger and the 1996 re-issue of The Curse.
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT — concatenation of all retrieved documents:
+Pelle Almqvist | Per "Pelle" Almqvist (born 29 May 1978), also known as Howlin' Pelle Almqvist, is a Swedish singer and songwriter.  He is the lead singer of garage rock band The Hives.
+Another Country (Cassandra Wilson album) | Another Country is a 2012 album by singer Cassandra Wilson, featuring the guitar, songwriting and production of Italian guitarist and producer Fabrizio Sotti.
+Remember Me (Daley song) | "Remember Me" is the first single by English singer Daley taken from his second EP, "Alone Together".  It was released on 9 December 2012 through Levels/Polydor/Universal Republic Records.  The song features guest vocals from English singer-songwriter Jessie J.  Produced by The White N3rd and Balistiq, it samples Blue Boy's song of the same name.
+An Omen EP | An Omen EP (stylized as "An omen EP_") was the second extended play release by American post-industrial group How to Destroy Angels, released November 13, 2012.  Produced by Nine Inch Nails frontman Trent Reznor, his wife Mariqueen Maandig and longtime collaborator Atticus Ross, the EP contained various tracks later issued on their 2013 debut album, "Welcome Oblivion".  It focused on Maandig's vocal style, with a lighter tone than its predecessor.
+Call My Name (Cheryl song) | "Call My Name" is a song by English singer Cheryl taken from her third studio album, "A Million Lights" (2012).  It was written and produced by Calvin Harris, and released as the lead single from the album on 10 June 2012.  "Call My Name" is a dance-pop song that is compared by critics to songs produced by Harris for other singers.
+Songs from Another Love | Songs from Another Love is an extended play (EP) from singer-songwriter Tom Odell.  The four-track extended play was first released in the United Kingdom on 15 October 2012 through Columbia and In the Name Of.
+Omen (Disclosure song) | "Omen" is a song by English electronic duo Disclosure.  It features the vocals from English singer Sam Smith.  It was released as a digital download on 27 July 2015, by Island Records.  It is the second single from Disclosure's second studio album, "Caracal" (2015), following "Holding On".  It was written by Guy Lawrence, Howard Lawrence and Smith and co-written by Jimmy Napes.  It is the second collaboration between Smith and Disclosure, following "Latch" in 2012.  The song charted in multiple countries and is featured on the soundtrack for the video game "FIFA 16".
+An Omen EP | An Omen EP (stylized as "An omen EP_") was the second extended play release by American post-industrial group How to Destroy Angels, released November 13, 2012.  Produced by Nine Inch Nails frontman Trent Reznor, his wife Mariqueen Maandig and longtime collaborator Atticus Ross, the EP contained various tracks later issued on their 2013 debut album, "Welcome Oblivion".  It focused on Maandig's vocal style, with a lighter tone than its predecessor.
+Remix 2014 EP | Remix 2014 EP is a remix extended play (EP) by American industrial rock band by Nine Inch Nails.  It was released on January 21, 2014 exclusively on Beats Music, a streaming service project led by Trent Reznor and Dr. Dre.  Trent Reznor acts as the chief creative officer of the website.
+Trent Reznor | Michael Trent Reznor (born May 17, 1965) is an American singer, songwriter, musician, record producer, and film score composer.
+Leaving Home EP | Leaving Home EP is the major label debut extended play (EP) by American recording artist T. Mills.  It was released for the retail sales on January 13, 2012, by Columbia Records.  The production on this project was handled by Omen, Colin Munroe and The Stereotypes, among others.  "Leaving Home EP" was supported by the lead single "Vans On", and a promotional single "The Boom".
+Trent Reznor discography | This is a comprehensive discography of Trent Reznor, an American musician, singer, producer, and multi-instrumentalist most famous as the frontman and primary creative force behind the industrial rock band Nine Inch Nails.  Reznor has also been associated with the bands Option 30, Exotic Birds, and Tapeworm, among others.
+Welcome to Mexico... Asshole | Welcome to Mexico... Asshole is the first live album from Pigface.  Trent Reznor of Nine Inch Nails is featured on "Suck", (which was remade for his "Broken" EP as a hidden track) but Ogre is heard on lead vocals.
+Voyeurs (album) | Voyeurs is the only album by 2wo, a musical collaboration between vocalist Rob Halford (of Judas Priest) and guitarist John Lowery a.k.a. John 5 (of Red Square Black, Marilyn Manson and Rob Zombie).  Nine Inch Nails' Trent Reznor receives executive-producer credit, with the actual production duties being handled by Bob Marlette and Skinny Puppy's Dave Ogilvie.  "Voyeurs" features Halford's distinctive vocals in an industrial metal context similar to other work by John 5, Reznor and Ogilvie's.
+An Omen EP | An Omen EP (stylized as "An omen EP_") was the second extended play release by American post-industrial group How to Destroy Angels, released November 13, 2012.  Produced by Nine Inch Nails frontman Trent Reznor, his wife Mariqueen Maandig and longtime collaborator Atticus Ross, the EP contained various tracks later issued on their 2013 debut album, "Welcome Oblivion".  It focused on Maandig's vocal style, with a lighter tone than its predecessor.
+Omen (Within the Ruins EP) | Omen is an EP by American metalcore band Within the Ruins.  It was released via Victory Records on May 24, 2011.  It features two new songs and two covers.  Omen would be the band's last release featuring Mike Beaujean on bass and Mike Van Schelt on guitar.  Additionally, it would be the last release to feature two guitarists, with Cocchi taking over sole guitar duties in 2013's full length Elite.  It would also be the band's last effort for Victory Records, as they would go on to sign with eOne in November of 2012.
+Leaving Home EP | Leaving Home EP is the major label debut extended play (EP) by American recording artist T. Mills.  It was released for the retail sales on January 13, 2012, by Columbia Records.  The production on this project was handled by Omen, Colin Munroe and The Stereotypes, among others.  "Leaving Home EP" was supported by the lead single "Vans On", and a promotional single "The Boom".
+Pelle Almqvist | Per "Pelle" Almqvist (born 29 May 1978), also known as Howlin' Pelle Almqvist, is a Swedish singer and songwriter.  He is the lead singer of garage rock band The Hives.
+Hurt: The EP | Hurt: The EP is the first EP by British singer-songwriter Leona Lewis.  It was released on 9 December 2011 by Syco Music and RCA Records.  The EP served as something to bridge the gap for her fans whilst she finished recording her third studio album "Glassheart" (2012).  The album was supposed to be released in November 2011, but was delayed to March 2012, and again to November 2012.  Lewis's reason for delaying the album was because after she met producer Fraser T Smith, the singer wanted to collaborate on new material for possible inclusion on "Glassheart".  As a result, Smith also produced "Hurt: The EP".  The EP consists of three cover versions: "Hurt" by Nine Inch Nails; "Iris" by the Goo Goo Dolls and "Colorblind" by Counting Crows.  Musically, the songs are influenced by rock music, whilst the lyrics revolve around feeling pain.
+Remix 2014 EP | Remix 2014 EP is a remix extended play (EP) by American industrial rock band by Nine Inch Nails.  It was released on January 21, 2014 exclusively on Beats Music, a streaming service project led by Trent Reznor and Dr. Dre.  Trent Reznor acts as the chief creative officer of the website.
+The Curse (Omen album) | The Curse is the third studio album of the American heavy metal band Omen.  It was originally released in 1986 by Metal Blade.  In 1996 Metal Blade re-released "The Curse" with the EP "Nightmares" as bonus tracks.
+Paradise (Lana Del Rey EP) | Paradise is the third extended play (EP) and second major release by American singer and songwriter Lana Del Rey; it was released on November 9, 2012 by Universal Music.  It is additionally packaged with the reissue of her second studio album "Born to Die" (2012), titled "".  Del Rey enlisted collaborators including producers Rick Nowels, Justin Parker, and Rick Rubin.
+Profane Omen | Profane Omen is a Finnish groove metal band formed in 1999.  They made two demos in 2000 ("Profane Omen" and "Bittersweet Omen").  Two other demos were recorded in 2001, "Fuck the Beast" and "Load of Lead," and later they released an EP, "Label of Black," which was their first official release.  In early 2004 PO recorded a single, "Adrenaline/Enemies."  They also made a music video for their song "Adrenaline."
+Nightmares (Omen album) | Nightmares is the first EP album of the American heavy metal band Omen.  It was originally released in 1987 by Metal Blade.  It was included as bonus tracks on the 1989 re-issue of Warning Of Danger and the 1996 re-issue of The Curse.
+
+## TASK
+
+Take the traces ONE AT A TIME. Within each trace, take the turns ONE AT A TIME,
+in order, and account for EVERY turn. For each turn, compare its output
+section against the clauses for that turn's agent, clause by clause, and
+report every place the output does not meet them.
+
+Check the whole output, to its last line. A required closing marker, a
+required list header, a required field: these are absences at the END of an
+output, and a reader that stopped once the content looked complete misses
+them.
+
+You are NOT judging whether the reasoning is correct or the answer is right.
+Ignore all of that here; it is examined separately.
+
+Report a violation whether it is large or small, and whether or not it seems
+to have mattered. A violation that a later turn worked around, or that the
+final output happened to survive, is still a violation and is still reported.
+Repetition across traces is expected and useful.
+
+Quote the SHORTEST span that shows the violation. When what is wrong is that
+something required is MISSING, there is nothing to quote: say what was
+required, citing the clause, and where in the output it should have appeared.
+
+## OUTPUT
+
+Return ONLY JSON, with EXACTLY ONE entry per turn of each trace, in turn order,
+whether or not anything was violated. `checked` names the clauses you compared
+the output against; when findings is empty it is the evidence that the turn
+was checked rather than skipped.
+
+{"traces": [{"trace_id": "...",
+             "turns": [{"turn": <int, as in the turn header>,
+                        "agent": "<name, as in the turn header>",
+                        "checked": "<which clauses were compared>",
+                        "findings": [{"what_happened": "<what the output does, and which clause it fails>",
+                                      "where": "<which part of this turn's output>",
+                                      "quote": "<exact text>" or null,
+                                      "missing": "<what was required, citing the clause, and where>" or null}]}]}]}

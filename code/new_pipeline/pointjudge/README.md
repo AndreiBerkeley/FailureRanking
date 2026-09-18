@@ -19,6 +19,18 @@ the mistake. Two findings are the same point only when their evidence agrees, so
 one step can carry several points, including several of the same kind. An absence
 is evidenced by saying what is missing and where it was owed.
 
+## The program's success rule
+
+Every pass (both readers, the mode assignment, the decider) also sees "How this
+program's output is scored": the `success_rule` from the benchmark's
+`structure.json`, when it declares one (hover does since 2026-09-17; a structure
+without one gets no section). It is the scoring definition of the task — for
+hover, retrieved document titles, a mention inside another document not counting —
+not any task's outcome, so it is gold-free. It is there because a reader that does
+not know what the output is scored on judges "what this step needed" by its own
+reading of the task, and on hover took a passage that mentions an entity for the
+entity's document. `summary.json` records `success_rule_in_view`.
+
 ## The five calls
 
 | | |

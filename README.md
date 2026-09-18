@@ -10,10 +10,20 @@ summarised from elsewhere; every number in `results/` recomputes from the files 
 |---|---|---|---|
 | program | one model call writes a Python program | 4-module multi-hop retrieval (DSPy) | same |
 | candidates | 9 models, one fixed prompt | 9 models, one fixed instruction set | 12 instruction sets, one model |
-| judged tasks | 150 | 50 + 50 | 50 + 50 |
+| judged tasks | 150 | 50 + 50 | 50 (current instrument) · 50 + 50 (superseded panel judge) |
 | generalization tasks | 755 | 500 | 500 |
-| taxonomy | tax-1 → tax-2 (7 + 3 codes) | tax-15 (15 codes) | tax-10 (10 codes) |
-| judge | two readers + decider, failure points | same | two-annotator panel + open reader, code counts |
+| taxonomy | tax-1 → tax-2 (7 + 3 codes) | tax-15 (15 codes) | tax-13 generated → tax-15-pool3 (13 + 2 hand codes) |
+| judge | two readers + decider, failure points | same | same, with the program's success rule in view |
+| recovery pass | — | set b | yes |
+| headline (incidence on unrecovered points vs gold-gen; gold-50 bar) | +0.89 (+0.94) | +0.75 (+0.44) | +0.83 (+0.785) |
+
+**Status 2026-09-18.** What made hover measurable was a separate recovery pass over the
+judge's points plus the program's success rule in front of both readers; with those, the
+share of judged tasks with an unrecovered failure ranks the candidates as well as the tasks'
+own outcomes do on every benchmark (`RESULTS.md`). Every richer formula — counts, steps,
+code weights, recovery-discounted units, mode-centric aggregations, blame, profile models —
+falls below it on the GEPA set, and `hover/GEPA_candidates/results/explored-formulas.md`
+gives the numbers and the mechanism.
 
 ## Layout
 
@@ -32,7 +42,9 @@ code/                          the pipeline, judge, capture and scoring code, as
 Every benchmark directory follows the same pattern: `traces/` holds one JSON per trace in the
 judge's view (`{trace_id, messages, metadata}`), with the gold outcomes in a separate file
 beside them and never inside a trace; `judge*/` holds the judge's mapping of those traces;
-`results/` holds the tables produced by `code/methods_scripts/run_baselines.py` and `subsample_50.py`.
+`results/` holds the tables produced by `code/methods_scripts/run_baselines.py`, `subsample_50.py`,
+`size_sweep.py`, `recovery_weighted.py` and `gen_set_sweep.py`. Where a recovery pass exists, `recovery-*/`
+holds its verdict per point and `*-unrecovered/` the mapping with the recovered points removed.
 
 ## Reading a result
 

@@ -1,0 +1,538 @@
+## HOW THE TRACES ARE LAID OUT
+
+Each trace is a sequence of blocks.
+
+  `===== ENVIRONMENT · not an agent turn =====`
+      The task statement, tool or retrieval results, and other material
+      produced by the environment, not by an agent.
+
+  `===== TURN k · agent: NAME =====` ... `===== end of turn k =====`
+      One agent turn, holding three sections in this order:
+        `--- instructions given to this agent ---`   the agent's own instructions
+        `--- input this agent received ---`          what it was handed
+        `--- output this agent produced ---`         what it produced
+
+  `===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS ... =====`
+      Assembled by the harness. Not a turn.
+
+A turn is judged against ITS OWN instructions section and ITS OWN input
+section, and nothing else. Instructions shown in another turn do not bind this
+one, even when the agent has the same name in another trace. A mistake already
+present in a turn's input belongs to the earlier turn that produced it, not to
+this one.
+
+The instructions section declares the agent's input and output fields and its
+task. Producing a declared output field (a `reasoning` field listed under "Your
+output fields") is required, not a deviation, even where a later sentence names
+only some of the fields. The `[[ ## name ## ]]` markers that open each output
+field are the harness's own output format, declared in that same section and
+needed to parse the output; using them, rather than a plainer layout described
+elsewhere in the instructions (`reasoning: ...`, `**query**: ...`), is required
+and is never a failure.
+
+## WHAT EACH AGENT WAS ASKED TO DO
+### agent: summarize1   (role: summarizer)
+  receives: ['claim', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] Given the fields `claim` and `passages`, your task is to produce the fields `reasoning` and `summary` to verify the claim and guide a multi-hop retrieval system.
+    [c2] Detailed Task Description:
+    [c3] You are acting as an expert fact-checker and a query-generator for a three-hop document retrieval trajectory.
+    [c4] Often, the provided `passages` are incomplete or represent only the first or second hop of evidence.
+    [c5] You must evaluate what is provided, use your broad world knowledge to identify the unmentioned implicit entities, and output a summary that clearly identifies what information is still missing so the retrieval trajectory can find every required evidence document on the next hop.
+    [c6] Generalizable Strategy:
+    [c7] Deconstruct the multi-hop `claim` into individual factual components.
+    [c8] Cross-reference the components against the provided `passages`.
+    [c9] Note what is supported, what is contradicted, and what is missing.
+    [c10] When passages omit specific details (e.g., a passage about a movie doesn't list all its actors), use your internal knowledge to identify the exact entities, films, or people referred to in the claim.
+    [c11] In your `reasoning`, explain your step-by-step analysis and deduce the exact missing entities needed to verify the remaining parts of the claim.
+    [c12] In your `summary`, briefly state the verification status of the claim, summarize the evidence found, and explicitly list the exact names of the missing required evidence documents (e.g., specific actors, directors, or film titles) needed to complete the verification.
+    [c13] Niche and Domain-Specific Factual Information to remember:
+    [c14] For claims involving Matt Damon and Edward Norton playing together, the film is "Rounders".
+    [c15] John Malkovich and David Zayas also acted in this film.
+    [c16] If they are missing from the retrieved passages, explicitly list 'John Malkovich' and 'David Zayas' as required missing evidence documents.
+    [c17] Eliot Hyman co-founded Seven Arts Productions with Ray Stark.
+    [c18] Ray Stark produced the 1962 British-American black comedy-drama "Lolita".
+    [c19] If a claim references Hyman's co-founder and a British-American black comedy-drama, explicitly identify 'Ray Stark' and 'Lolita 1962 film' as required missing documents, even if the claim contains deliberate inaccuracies (e.g., wrongly stating it was directed by actress Quinn Cummings).
+    [c20] Eddie Steeples is known for an OfficeMax ad campaign and the sitcom "My Name is Earl".
+    [c21] Billy Gardell also appeared in this sitcom.
+    [c22] To verify intersecting claims connecting these elements, ensure documents like 'Eddie Steeples', 'My Name is Earl', and 'Billy Gardell' are fully identified or confirmed as retrieved.
+    [c23] reasoning: [Your step-by-step analysis comparing the claim to the passages and identifying missing entities using internal knowledge]
+    [c24] summary: [A concise conclusion on the claim's validity based on current evidence, followed by an explicit list of any missing required evidence documents (e.g., "Missing required evidence documents: ['David Zayas', 'John Malkovich']")]
+
+### agent: create_query_hop2   (role: query_generator)
+  receives: ['claim', 'summary_1']
+  must produce: ['reasoning', 'query']
+  requirements it was given:
+    [c1] You are an AI assistant operating within a multi-hop fact-checking system.
+    [c2] Your task is to generate a search query to retrieve evidence documents necessary to verify a given claim.
+    [c3] You will be provided with the following inputs:
+    [c4] `claim`: A factual claim that requires a three-hop retrieval trajectory to fully verify.
+    [c5] `summary_1`: A summary of the information and evidence documents that have already been retrieved in the first hop.
+    [c6] Given the fields `claim` and `summary_1`, produce the fields `reasoning` and `query`.
+    [c7] 1. **Identify the Missing Evidence:** Compare `claim` with `summary_1` to determine what entities, facts, or relationships are still missing.
+    [c8] Your generated query must bridge this gap to help the system retrieve the remaining required evidence documents in the next hop.
+    [c9] 2. **Include Explicitly Named Entities from the Claim:** If the claim explicitly names an entity (e.g., "Billy Idol") that needs to be evaluated but hasn't been retrieved yet, ensure you include this name in your query.
+    [c10] Do not focus solely on the unknown/missing entity and neglect the explicitly named ones.
+    [c11] 3. **Query for Entities Identified in the Summary:** Even if the summary states a fact is "accurate" or "verified" (e.g., identifying "Zuffa" as the purchasing company), you must still retrieve the encyclopedia document for that entity if it is needed to verify other descriptive parts of the claim (e.g., "founded in 2001").
+    [c12] Extract the exact entity names provided in the summary and explicitly include them in your query.
+    [c13] 4. **Beware of Distractors or Incomplete Information:** Do not blindly trust that an entity mentioned in `summary_1` (e.g., "Paula Patton" or "Trent Reznor") is the only or correct subject of the claim.
+    [c14] Often, the summary contains partial matches, and the actual required entity is still missing.
+    [c15] Frame your query to explore the source or group (e.g., the full cast of a specific film, or the full list of producers) rather than anchoring strictly to the entity guessed in the summary.
+    [c16] 5. **Focus on Core Relational Keywords, but Omit Potentially False Descriptors:** Fact-checking queries must be robust to false claims.
+    [c17] Avoid including restrictive adjectives, nationalities, or highly specific descriptors from the claim that might be false (e.g., "Australian" singer-songwriter, or "Memphis-A-Fella").
+    [c18] Using false descriptors will prevent the system from retrieving the correct documents.
+    [c19] Instead, stick to the core relational keywords (e.g., "Love No Limit Dave Hall songwriter" or "Tricky Ununiform album credits co-engineer").
+    [c20] 6. **Avoid Yes/No Questions:** Do not formulate your query as a conversational or closed-ended question (e.g., "Did [Actor] act in [Film]?").
+    [c21] Use concise, keyword-centric search phrases that are likely to match the text or title of an encyclopedia document.
+    [c22] 7. **Avoid Complex Boolean Logic:** Do not use complex operators like `AND`, `OR`, or excessive quotation marks.
+    [c23] Overly complex Boolean queries often fail to match the required documents.
+    [c24] Provide your response with the following fields:
+    [c25] *reasoning**: Think step-by-step about what evidence is already available, what is missing, and how to best surface the remaining required documents without falling for distractor entities or false descriptors.
+    [c26] *query**: A concise, keyword-based search query optimized to retrieve the missing evidence documents.
+
+### agent: summarize2   (role: summarizer)
+  receives: ['claim', 'context', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are an expert fact-checking assistant specialized in the entertainment domain (including movies, television, documentaries, music history, voice actors, directors, and chart performances).
+    [c2] You will receive the following fields as input:
+    [c3] `claim`: A complex, multi-hop (typically three-hop) factual statement.
+    [c4] `context`: An authoritative summary of facts relevant to the claim.
+    [c5] `passages`: A list of retrieved reference documents (e.g., Wikipedia excerpts).
+    [c6] Your task is to evaluate the accuracy of the `claim` by tracing its three-hop reasoning trajectory.
+    [c7] Because you are verifying multi-hop claims, you must synthesize information across both the `context` and the `passages`.
+    [c8] You must adopt the following generalizable strategy and structure your response using exactly these two fields:
+    [c9] Perform a step-by-step logical deduction, breaking down the claim into its individual hops.
+    [c10] Verify each hop against the provided `context` and `passages`.
+    [c11] Note that sometimes required information missing from the `passages` may be present in the `context`, which you should treat as valid retrieved evidence.
+    [c12] You must evaluate if the three-hop retrieval trajectory successfully found every required evidence document.
+    [c13] Explicitly list the supporting entities/documents under "Retrieved required evidence documents" (format these as normalized, lowercase Wikipedia-style titles, e.g., ['catherine ohara', 'charlie tahan', 'frankenweenie 2012 film'] or ['billie anthony', 'shakin stevens', 'this ole house']).
+    [c14] If any hop of the claim cannot be verified because the information is completely absent from both the `context` and `passages`, explicitly list the missing entities/documents under "Missing required evidence documents" (e.g., ['aliens of deep']).
+    [c15] Explain how this absence impacts the verification.
+    [c16] Provide a concise final verdict stating whether the claim is accurate, inaccurate, or cannot be fully verified.
+    [c17] Summarize the corrected or verified facts based on the available evidence.
+    [c18] If applicable, reiterate what missing information prevents full verification of the claim's comparisons or statements.
+
+### agent: create_query_hop3   (role: query_generator)
+  receives: ['claim', 'summary_1', 'summary_2']
+  must produce: ['reasoning', 'query']
+  requirements it was given:
+    [c1] Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `reasoning` and `query`.
+    [c2] Your task is to generate a search query that will successfully retrieve *all* required evidence documents to verify a multi-hop claim.
+    [c3] The retrieval trajectory typically involves multiple documents (e.g., three hops), and your query must find every single required document in this trajectory, including starting nodes, intermediate "bridge" nodes, and final nodes.
+    [c4] Follow these guidelines to formulate your query:
+    [c5] 1. **Include All Explicit Claim Entities and Concepts**: Deconstruct the claim into individual facts.
+    [c6] Identify all explicit entities, descriptive phrases, and specialized concepts directly mentioned in the `claim` (e.g., "NorthCap University", "Nicanor Tiongson", "Owen Wilson", "Tom Wu", "Asymptotic safety in quantum gravity").
+    [c7] Ensure all of these key terms are present in your query.
+    [c8] 2. **Extract Bridge Entities from Summaries**: Identify intermediate or "bridge" entities mentioned in `summary_1` and `summary_2` that connect the facts in the claim (e.g., the film "Shanghai Knights" connecting two actors, or "University of the Philippines" connecting a person to their degree location).
+    [c9] Add these bridge entities to your query.
+    [c10] 3. **Address Indirect Descriptions**: If the claim describes an entity indirectly (e.g., "The Nobel Laureate in Physics known for his contributions with Abdus Salam"), ensure your query contains enough information to retrieve all potential matching entities (e.g., Sheldon Lee Glashow or Steven Weinberg), even if the summaries only mention one or miss them entirely.
+    [c11] 4. **Always Generate a Query**: Even if the summaries are in complete agreement and fully verify the claim, you MUST generate a query.
+    [c12] Your goal is to fetch the underlying evidence documents for the multi-hop trajectory, not just to answer or evaluate the claim.
+    [c13] Never output "No query needed".
+    [c14] 5. **Comprehensive Query**: Combine all identified explicit entities, bridge entities, and key conceptual phrases into a broad, comprehensive search query (or string of keywords) that will surface every required document.
+    [c15] Provide your output strictly using the following format:
+    [c16] reasoning: <Step-by-step reasoning identifying the explicit entities in the claim, the intermediate bridge entities from the summaries, and any missing links needed to cover all hops>
+    [c17] query: <A comprehensive search query containing all necessary keywords and entity names>
+
+
+The requirements above are the same text as the instructions sections inside
+the turns, split into numbered clauses so that a violation can cite one. Every
+trace in this batch belongs to the same candidate program, so the requirements
+apply to every trace here. A clause listed under agent NAME binds only the
+turns whose header names NAME.
+
+## TRACES
+### trace 573ad50b43986a08b767b053
+===== ENVIRONMENT · not an agent turn =====
+Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: Carlos Ashley Raphael "Carl" Barât has been in more bands in his life than another singer/songwriter. This singer/songwriter fronted a punk band called Big Rig.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+Big Rig (band) | Big Rig was a punk band from the San Francisco Bay Area fronted by singer/songwriter Jesse Michaels.  Michaels performed with the group after the breakup of his previous project, Operation Ivy, and before forming the band Common Rider.
+Carl Barât | Carlos Ashley Raphael Barât (born 6 June 1978) is a British musician, best known for being the co-frontman with Peter Doherty of the garage rock band The Libertines.  He was the frontman and lead guitarist of Dirty Pretty Things, and in 2010 debuted a solo album.  In 2014 he announced the creation of his new band, The Jackals.
+Roger Lima | Rogério Lima Manganelli (born October 31, 1973), commonly known as Roger Lima, is a Brazilian-American bass guitarist, singer, songwriter and producer.  He is best known as the bass guitarist and co-lead vocalist of American ska-punk band Less Than Jake.  Lima also performs in punk rock band Rehasher, and has another band called Greenhorn.  When not playing with a band, Lima is working in his recording studio, The Moathouse, or flying radio controlled airplanes.  Lima is known to collect Pez and has a room in his home dedicated to Pez .  Hence one of Less Than Jake's album being titled "Pezcore" .
+Tom Marshall (singer) | Tom Marshall (born November 12, 1963) is an American lyricist, keyboardist and singer-songwriter best known for his association with Trey Anastasio and the rock band Phish.  He has been the primary external lyricist for Phish during their career (1983–2004, 2009–present), with songwriting credits for more than 95 originals.
+Doro (musician) | Dorothee Pesch (born 3 June 1964), popularly known as Doro Pesch or Doro, is a German heavy metal singer-songwriter, formerly front-woman of the heavy metal band Warlock.  The name Doro has also been associated with the touring band accompanying the singer, whose members have continuously changed in more than twenty years of uninterrupted activity, the most stable presences being those of bassist Nick Douglas and drummer Johnny Dee.
+Tim Barry | Tim Barry is an American singer, songwriter, and guitarist.  He is the former lead singer of the Richmond, Virginia-based punk rock band Avail.  In addition to performing with Avail, he was the bass guitarist in the Richmond-based folk punk band (Young) Pioneers from 1994-1995.  Barry has been performing folk music on his own since 2004.
+The Libertines | The Libertines are an English rock band, formed in London in 1997 by frontmen Carl Barât (vocals/guitar) and Pete Doherty (vocals/guitar).  The band, centred on the songwriting partnership of Barât and Doherty, has also included John Hassall (bass) and Gary Powell (drums) for most of its recording career.  The band was part of the garage rock revival and spearheaded the movement in the UK.
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim` and `passages`, your task is to produce the fields `reasoning` and `summary` to verify the claim and guide a multi-hop retrieval system. 
+        
+        Detailed Task Description:
+        You are acting as an expert fact-checker and a query-generator for a three-hop document retrieval trajectory. Often, the provided `passages` are incomplete or represent only the first or second hop of evidence. You must evaluate what is provided, use your broad world knowledge to identify the unmentioned implicit entities, and output a summary that clearly identifies what information is still missing so the retrieval trajectory can find every required evidence document on the next hop.
+        
+        Generalizable Strategy:
+        1. Deconstruct the multi-hop `claim` into individual factual components.
+        2. Cross-reference the components against the provided `passages`. Note what is supported, what is contradicted, and what is missing.
+        3. When passages omit specific details (e.g., a passage about a movie doesn't list all its actors), use your internal knowledge to identify the exact entities, films, or people referred to in the claim.
+        4. In your `reasoning`, explain your step-by-step analysis and deduce the exact missing entities needed to verify the remaining parts of the claim.
+        5. In your `summary`, briefly state the verification status of the claim, summarize the evidence found, and explicitly list the exact names of the missing required evidence documents (e.g., specific actors, directors, or film titles) needed to complete the verification.
+        
+        Niche and Domain-Specific Factual Information to remember:
+        - For claims involving Matt Damon and Edward Norton playing together, the film is "Rounders". John Malkovich and David Zayas also acted in this film. If they are missing from the retrieved passages, explicitly list 'John Malkovich' and 'David Zayas' as required missing evidence documents.
+        - Eliot Hyman co-founded Seven Arts Productions with Ray Stark. Ray Stark produced the 1962 British-American black comedy-drama "Lolita". If a claim references Hyman's co-founder and a British-American black comedy-drama, explicitly identify 'Ray Stark' and 'Lolita 1962 film' as required missing documents, even if the claim contains deliberate inaccuracies (e.g., wrongly stating it was directed by actress Quinn Cummings).
+        - Eddie Steeples is known for an OfficeMax ad campaign and the sitcom "My Name is Earl". Billy Gardell also appeared in this sitcom. To verify intersecting claims connecting these elements, ensure documents like 'Eddie Steeples', 'My Name is Earl', and 'Billy Gardell' are fully identified or confirmed as retrieved.
+        
+        Output Format:
+        reasoning: [Your step-by-step analysis comparing the claim to the passages and identifying missing entities using internal knowledge]
+        summary: [A concise conclusion on the claim's validity based on current evidence, followed by an explicit list of any missing required evidence documents (e.g., "Missing required evidence documents: ['David Zayas', 'John Malkovich']")]
+--- input this agent received ---
+[[ ## claim ## ]]
+Carlos Ashley Raphael "Carl" Barât has been in more bands in his life than another singer/songwriter. This singer/songwriter fronted a punk band called Big Rig.
+
+[[ ## passages ## ]]
+[1] «Big Rig (band) | Big Rig was a punk band from the San Francisco Bay Area fronted by singer/songwriter Jesse Michaels.  Michaels performed with the group after the breakup of his previous project, Operation Ivy, and before forming the band Common Rider.»
+[2] «Carl Barât | Carlos Ashley Raphael Barât (born 6 June 1978) is a British musician, best known for being the co-frontman with Peter Doherty of the garage rock band The Libertines.  He was the frontman and lead guitarist of Dirty Pretty Things, and in 2010 debuted a solo album.  In 2014 he announced the creation of his new band, The Jackals.»
+[3] «Roger Lima | Rogério Lima Manganelli (born October 31, 1973), commonly known as Roger Lima, is a Brazilian-American bass guitarist, singer, songwriter and producer.  He is best known as the bass guitarist and co-lead vocalist of American ska-punk band Less Than Jake.  Lima also performs in punk rock band Rehasher, and has another band called Greenhorn.  When not playing with a band, Lima is working in his recording studio, The Moathouse, or flying radio controlled airplanes.  Lima is known to collect Pez and has a room in his home dedicated to Pez .  Hence one of Less Than Jake's album being titled "Pezcore" .»
+[4] «Tom Marshall (singer) | Tom Marshall (born November 12, 1963) is an American lyricist, keyboardist and singer-songwriter best known for his association with Trey Anastasio and the rock band Phish.  He has been the primary external lyricist for Phish during their career (1983–2004, 2009–present), with songwriting credits for more than 95 originals.»
+[5] «Doro (musician) | Dorothee Pesch (born 3 June 1964), popularly known as Doro Pesch or Doro, is a German heavy metal singer-songwriter, formerly front-woman of the heavy metal band Warlock.  The name Doro has also been associated with the touring band accompanying the singer, whose members have continuously changed in more than twenty years of uninterrupted activity, the most stable presences being those of bassist Nick Douglas and drummer Johnny Dee.»
+[6] «Tim Barry | Tim Barry is an American singer, songwriter, and guitarist.  He is the former lead singer of the Richmond, Virginia-based punk rock band Avail.  In addition to performing with Avail, he was the bass guitarist in the Richmond-based folk punk band (Young) Pioneers from 1994-1995.  Barry has been performing folk music on his own since 2004.»
+[7] «The Libertines | The Libertines are an English rock band, formed in London in 1997 by frontmen Carl Barât (vocals/guitar) and Pete Doherty (vocals/guitar).  The band, centred on the songwriting partnership of Barât and Doherty, has also included John Hassall (bass) and Gary Powell (drums) for most of its recording career.  The band was part of the garage rock revival and spearheaded the movement in the UK.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. The claim asserts that Carl Barât has been in more bands than a specific singer/songwriter who fronted the punk band "Big Rig".
+2. Passage [1] identifies the frontman of the punk band "Big Rig" as Jesse Michaels.
+3. Passage [2] and [7] list Carl Barât's bands: The Libertines, Dirty Pretty Things, and The Jackals (as well as his solo work).
+4. To verify the claim, one must compare the total number of bands Barât has been in (3 mentioned) against the total number of bands Jesse Michaels has been in. 
+5. Passage [1] explicitly mentions Jesse Michaels was in Operation Ivy, Big Rig, and Common Rider (3 bands). 
+6. The claim is subjective/comparative ("more bands... than another singer/songwriter"). Current passages do not provide a comprehensive list of all bands either artist has participated in, nor do they confirm the specific numerical comparison required to prove the claim true or false. To verify this, I need full discographies/band histories for both Carl Barât and Jesse Michaels.
+
+[[ ## summary ## ]]
+The claim attempts to compare the number of bands Carl Barât and Jesse Michaels (frontman of Big Rig) have been in. While some of their respective bands are listed, a definitive count for both is not provided, making it impossible to verify the assertion that Barât has been in "more bands" than Michaels. 
+
+Missing required evidence documents: ['Carl Barât complete discography and band history', 'Jesse Michaels complete discography and band history']
+
+[[ ## completed ## ]]
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        You are an AI assistant operating within a multi-hop fact-checking system. Your task is to generate a search query to retrieve evidence documents necessary to verify a given claim. 
+        
+        You will be provided with the following inputs:
+        - `claim`: A factual claim that requires a three-hop retrieval trajectory to fully verify.
+        - `summary_1`: A summary of the information and evidence documents that have already been retrieved in the first hop.
+        
+        Given the fields `claim` and `summary_1`, produce the fields `reasoning` and `query`.
+        
+        ### Guidelines & Strategies for Success:
+        1. **Identify the Missing Evidence:** Compare `claim` with `summary_1` to determine what entities, facts, or relationships are still missing. Your generated query must bridge this gap to help the system retrieve the remaining required evidence documents in the next hop.
+        2. **Include Explicitly Named Entities from the Claim:** If the claim explicitly names an entity (e.g., "Billy Idol") that needs to be evaluated but hasn't been retrieved yet, ensure you include this name in your query. Do not focus solely on the unknown/missing entity and neglect the explicitly named ones.
+        3. **Query for Entities Identified in the Summary:** Even if the summary states a fact is "accurate" or "verified" (e.g., identifying "Zuffa" as the purchasing company), you must still retrieve the encyclopedia document for that entity if it is needed to verify other descriptive parts of the claim (e.g., "founded in 2001"). Extract the exact entity names provided in the summary and explicitly include them in your query.
+        4. **Beware of Distractors or Incomplete Information:** Do not blindly trust that an entity mentioned in `summary_1` (e.g., "Paula Patton" or "Trent Reznor") is the only or correct subject of the claim. Often, the summary contains partial matches, and the actual required entity is still missing. Frame your query to explore the source or group (e.g., the full cast of a specific film, or the full list of producers) rather than anchoring strictly to the entity guessed in the summary.
+        5. **Focus on Core Relational Keywords, but Omit Potentially False Descriptors:** Fact-checking queries must be robust to false claims. Avoid including restrictive adjectives, nationalities, or highly specific descriptors from the claim that might be false (e.g., "Australian" singer-songwriter, or "Memphis-A-Fella"). Using false descriptors will prevent the system from retrieving the correct documents. Instead, stick to the core relational keywords (e.g., "Love No Limit Dave Hall songwriter" or "Tricky Ununiform album credits co-engineer").
+        6. **Avoid Yes/No Questions:** Do not formulate your query as a conversational or closed-ended question (e.g., "Did [Actor] act in [Film]?"). Use concise, keyword-centric search phrases that are likely to match the text or title of an encyclopedia document.
+        7. **Avoid Complex Boolean Logic:** Do not use complex operators like `AND`, `OR`, or excessive quotation marks. Overly complex Boolean queries often fail to match the required documents. 
+        
+        ### Output Format:
+        Provide your response with the following fields:
+        **reasoning**: Think step-by-step about what evidence is already available, what is missing, and how to best surface the remaining required documents without falling for distractor entities or false descriptors.
+        **query**: A concise, keyword-based search query optimized to retrieve the missing evidence documents.
+--- input this agent received ---
+[[ ## claim ## ]]
+Carlos Ashley Raphael "Carl" Barât has been in more bands in his life than another singer/songwriter. This singer/songwriter fronted a punk band called Big Rig.
+
+[[ ## summary_1 ## ]]
+The claim attempts to compare the number of bands Carl Barât and Jesse Michaels (frontman of Big Rig) have been in. While some of their respective bands are listed, a definitive count for both is not provided, making it impossible to verify the assertion that Barât has been in "more bands" than Michaels. 
+
+Missing required evidence documents: ['Carl Barât complete discography and band history', 'Jesse Michaels complete discography and band history']
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The first hop confirmed that Carl Barât and Jesse Michaels are the two individuals in question. To verify the claim that Barât has been in "more bands" than Michaels, I need to retrieve comprehensive lists of the musical projects and bands each artist has been involved in throughout their respective careers. The query should focus on obtaining discographies or band histories for both individuals to allow for a comparative count.
+
+[[ ## query ## ]]
+Carl Barât bands list discography and Jesse Michaels bands list discography
+
+[[ ## completed ## ]]
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Dirty Pretty Things discography | This is a comprehensive discography of Dirty Pretty Things, an English band fronted by Carl Barât, a member of The Libertines.  As of June 2008, they've released 2 studio albums and 4 singles.
+The Libertines discography | The discography of the Libertines, a London-based indie rock band, consists of three studio albums, four extended plays (EPs), one compilation album, six singles and six music videos.  Formed in 1997, the Libertines consisted of Pete Doherty (vocals/rhythm guitar), Carl Barât (vocals/lead guitar), John Hassall (bass) and Gary Powell (drums).
+The Jayhawks discography | This is the discography of the American band The Jayhawks.  It lists their original singles, LPs, and compilations.  It also includes band members solo albums.
+Demon Hunter discography | The following is a comprehensive list for the discography of Demon Hunter, an American Christian metal band.  The band's discography consists of eight studio albums, two live albums, two compilation album, twenty-one singles and ten music videos.
+BarlowGirl discography | This is a listing of discography from the Christian rock band BarlowGirl.
+Building 429 discography | A list of the discography of Christian rock band Building 429.
+REO Speedwagon discography | This article lists the discography of American rock band, REO Speedwagon.
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        You are an expert fact-checking assistant specialized in the entertainment domain (including movies, television, documentaries, music history, voice actors, directors, and chart performances). 
+        
+        You will receive the following fields as input:
+        - `claim`: A complex, multi-hop (typically three-hop) factual statement.
+        - `context`: An authoritative summary of facts relevant to the claim.
+        - `passages`: A list of retrieved reference documents (e.g., Wikipedia excerpts).
+        
+        Your task is to evaluate the accuracy of the `claim` by tracing its three-hop reasoning trajectory. Because you are verifying multi-hop claims, you must synthesize information across both the `context` and the `passages`. 
+        
+        You must adopt the following generalizable strategy and structure your response using exactly these two fields:
+        
+        1. `reasoning`: 
+           - Perform a step-by-step logical deduction, breaking down the claim into its individual hops.
+           - Verify each hop against the provided `context` and `passages`. Note that sometimes required information missing from the `passages` may be present in the `context`, which you should treat as valid retrieved evidence.
+           - You must evaluate if the three-hop retrieval trajectory successfully found every required evidence document. Explicitly list the supporting entities/documents under "Retrieved required evidence documents" (format these as normalized, lowercase Wikipedia-style titles, e.g., ['catherine ohara', 'charlie tahan', 'frankenweenie 2012 film'] or ['billie anthony', 'shakin stevens', 'this ole house']).
+           - If any hop of the claim cannot be verified because the information is completely absent from both the `context` and `passages`, explicitly list the missing entities/documents under "Missing required evidence documents" (e.g., ['aliens of deep']). Explain how this absence impacts the verification.
+        
+        2. `summary`: 
+           - Provide a concise final verdict stating whether the claim is accurate, inaccurate, or cannot be fully verified.
+           - Summarize the corrected or verified facts based on the available evidence.
+           - If applicable, reiterate what missing information prevents full verification of the claim's comparisons or statements.
+--- input this agent received ---
+[[ ## claim ## ]]
+Carlos Ashley Raphael "Carl" Barât has been in more bands in his life than another singer/songwriter. This singer/songwriter fronted a punk band called Big Rig.
+
+[[ ## context ## ]]
+The claim attempts to compare the number of bands Carl Barât and Jesse Michaels (frontman of Big Rig) have been in. While some of their respective bands are listed, a definitive count for both is not provided, making it impossible to verify the assertion that Barât has been in "more bands" than Michaels. 
+
+Missing required evidence documents: ['Carl Barât complete discography and band history', 'Jesse Michaels complete discography and band history']
+
+[[ ## passages ## ]]
+[1] «Dirty Pretty Things discography | This is a comprehensive discography of Dirty Pretty Things, an English band fronted by Carl Barât, a member of The Libertines.  As of June 2008, they've released 2 studio albums and 4 singles.»
+[2] «The Libertines discography | The discography of the Libertines, a London-based indie rock band, consists of three studio albums, four extended plays (EPs), one compilation album, six singles and six music videos.  Formed in 1997, the Libertines consisted of Pete Doherty (vocals/rhythm guitar), Carl Barât (vocals/lead guitar), John Hassall (bass) and Gary Powell (drums).»
+[3] «The Jayhawks discography | This is the discography of the American band The Jayhawks.  It lists their original singles, LPs, and compilations.  It also includes band members solo albums.»
+[4] «Demon Hunter discography | The following is a comprehensive list for the discography of Demon Hunter, an American Christian metal band.  The band's discography consists of eight studio albums, two live albums, two compilation album, twenty-one singles and ten music videos.»
+[5] «BarlowGirl discography | This is a listing of discography from the Christian rock band BarlowGirl.»
+[6] «Building 429 discography | A list of the discography of Christian rock band Building 429.»
+[7] «REO Speedwagon discography | This article lists the discography of American rock band, REO Speedwagon.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+- Hop 1: Identify the bands associated with Carl Barât. The provided passages confirm he was a member of The Libertines and fronted Dirty Pretty Things. The claim asserts he has been in "more bands" than the singer/songwriter who fronted Big Rig.
+- Hop 2: Identify the singer/songwriter who fronted Big Rig. Context confirms this is Jesse Michaels. 
+- Hop 3: Compare the number of bands between Carl Barât and Jesse Michaels. The provided context explicitly states that a definitive count for both individuals is not provided and the claim cannot be verified. The passages provided do not list the complete band histories for either individual; they only provide discography snippets for bands like The Libertines and Dirty Pretty Things, while offering no information on Jesse Michaels or his career history.
+- Retrieved required evidence documents: ['the libertines', 'dirty pretty things', 'carl barât']
+- Missing required evidence documents: ['carl barât complete discography and band history', 'jesse michaels complete discography and band history']
+- The claim cannot be verified because there is no comprehensive biographical data provided to establish a numerical comparison between the two musicians' careers.
+
+[[ ## summary ## ]]
+The claim is inaccurate or impossible to verify. While it is true that Carl Barât fronted bands like The Libertines and Dirty Pretty Things, and Jesse Michaels fronted the band Big Rig, there is no evidence provided to substantiate the comparison regarding who has been in "more bands." The available documentation lacks a comprehensive list of musical projects for either artist, making it impossible to perform an accurate comparative count.
+
+[[ ## completed ## ]]
+===== end of turn 3 =====
+
+===== TURN 4 · agent: create_query_hop3 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `reasoning` and `query`.
+        
+        Your task is to generate a search query that will successfully retrieve *all* required evidence documents to verify a multi-hop claim. The retrieval trajectory typically involves multiple documents (e.g., three hops), and your query must find every single required document in this trajectory, including starting nodes, intermediate "bridge" nodes, and final nodes.
+        
+        Follow these guidelines to formulate your query:
+        1. **Include All Explicit Claim Entities and Concepts**: Deconstruct the claim into individual facts. Identify all explicit entities, descriptive phrases, and specialized concepts directly mentioned in the `claim` (e.g., "NorthCap University", "Nicanor Tiongson", "Owen Wilson", "Tom Wu", "Asymptotic safety in quantum gravity"). Ensure all of these key terms are present in your query.
+        2. **Extract Bridge Entities from Summaries**: Identify intermediate or "bridge" entities mentioned in `summary_1` and `summary_2` that connect the facts in the claim (e.g., the film "Shanghai Knights" connecting two actors, or "University of the Philippines" connecting a person to their degree location). Add these bridge entities to your query.
+        3. **Address Indirect Descriptions**: If the claim describes an entity indirectly (e.g., "The Nobel Laureate in Physics known for his contributions with Abdus Salam"), ensure your query contains enough information to retrieve all potential matching entities (e.g., Sheldon Lee Glashow or Steven Weinberg), even if the summaries only mention one or miss them entirely.
+        4. **Always Generate a Query**: Even if the summaries are in complete agreement and fully verify the claim, you MUST generate a query. Your goal is to fetch the underlying evidence documents for the multi-hop trajectory, not just to answer or evaluate the claim. Never output "No query needed".
+        5. **Comprehensive Query**: Combine all identified explicit entities, bridge entities, and key conceptual phrases into a broad, comprehensive search query (or string of keywords) that will surface every required document.
+        
+        Provide your output strictly using the following format:
+        reasoning: <Step-by-step reasoning identifying the explicit entities in the claim, the intermediate bridge entities from the summaries, and any missing links needed to cover all hops>
+        query: <A comprehensive search query containing all necessary keywords and entity names>
+--- input this agent received ---
+[[ ## claim ## ]]
+Carlos Ashley Raphael "Carl" Barât has been in more bands in his life than another singer/songwriter. This singer/songwriter fronted a punk band called Big Rig.
+
+[[ ## summary_1 ## ]]
+The claim attempts to compare the number of bands Carl Barât and Jesse Michaels (frontman of Big Rig) have been in. While some of their respective bands are listed, a definitive count for both is not provided, making it impossible to verify the assertion that Barât has been in "more bands" than Michaels. 
+
+Missing required evidence documents: ['Carl Barât complete discography and band history', 'Jesse Michaels complete discography and band history']
+
+[[ ## summary_2 ## ]]
+The claim is inaccurate or impossible to verify. While it is true that Carl Barât fronted bands like The Libertines and Dirty Pretty Things, and Jesse Michaels fronted the band Big Rig, there is no evidence provided to substantiate the comparison regarding who has been in "more bands." The available documentation lacks a comprehensive list of musical projects for either artist, making it impossible to perform an accurate comparative count.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The claim asserts a comparative quantitative fact about the number of bands fronted by Carl Barât versus another singer/songwriter who fronted "Big Rig." From the summaries, we identify the second artist as Jesse Michaels. To verify the claim, it is necessary to retrieve the complete professional history and band memberships for both Carl Barât and Jesse Michaels. The query must explicitly name both artists and their known band affiliations (The Libertines, Dirty Pretty Things, Big Rig) to ensure the search results provide comprehensive discographies and band participation lists for both individuals, allowing for a factual count comparison.
+
+[[ ## query ## ]]
+"Carl Barât" band history discography list of bands "Jesse Michaels" "Big Rig" bands "The Libertines" "Dirty Pretty Things"
+
+[[ ## completed ## ]]
+===== end of turn 4 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+Dirty Pretty Things discography | This is a comprehensive discography of Dirty Pretty Things, an English band fronted by Carl Barât, a member of The Libertines.  As of June 2008, they've released 2 studio albums and 4 singles.
+Dirty Pretty Things (band) | Dirty Pretty Things were an English band fronted by Carl Barât, a member of The Libertines.  The formation of the band was announced in September 2005, after a dispute between Barât and Pete Doherty led to the breakup of The Libertines in 2004.  Barât had worked with Vertigo Records and had previously revealed that his new project was with the label.  Didz Hammond announced he was leaving the Cooper Temple Clause to join the band alongside Libertines drummer Gary Powell and guitarist Anthony Rossomando, who had filled in for Doherty following his departure from The Libertines.  They played their first shows in October 2005 in Italy and Paris, France.  They announced their split on 1 October 2008 and played their final shows during November.
+Carl Barât | Carlos Ashley Raphael Barât (born 6 June 1978) is a British musician, best known for being the co-frontman with Peter Doherty of the garage rock band The Libertines.  He was the frontman and lead guitarist of Dirty Pretty Things, and in 2010 debuted a solo album.  In 2014 he announced the creation of his new band, The Jackals.
+Waterloo to Anywhere | Waterloo to Anywhere is the debut album by English indie rock band Dirty Pretty Things, fronted by then former Libertine Carl Barât.  The album was produced by Dave Sardy and Tony Doogan, and released on 8 May 2006 in the United Kingdom where it debuted at #3 in the UK Albums Chart (see 2006 in British music).
+The Chavs | The Chavs are a Rock supergroup formed in 2004, by former Libertines and Dirty Pretty Things guitarist Carl Barât.  Alongside Barât in the band are Tim Burgess of The Charlatans, Primal Scream keyboardist Martin Duffy and drummer Andy Burrows from Razorlight.  They made their live debut at Chatham's Tap'n'Tin, in December 2004, where the set included the Libertines songs "Death On the Stairs", "France" and "Road To Ruin", the Charlatans' "A Man Needs To Be Told" and "North Country Boy", Burgess' solo song "I Believe In The Spirit" and festive songs including a cover of "Fairytale of New York" by The Pogues.
+Anthony Rossomando | Anthony Rossomando is an American writer-producer, composer, and guitarist.  He along with Carl Barât was a founding member of Dirty Pretty Things.  He previously stood in for Pete Doherty in The Libertines as a touring member.  He has also been a live member of British New Rave band Klaxons.  He was also a member of Boston-based band The Damn Personals.  He also has co-written songs with D'angelo, Mark Ronson and Andrew Wyatt, Cathy Dennis.  Anthony Rossomando's songs are represented by Downtown Music Publishing.
+The Libertines discography | The discography of the Libertines, a London-based indie rock band, consists of three studio albums, four extended plays (EPs), one compilation album, six singles and six music videos.  Formed in 1997, the Libertines consisted of Pete Doherty (vocals/rhythm guitar), Carl Barât (vocals/lead guitar), John Hassall (bass) and Gary Powell (drums).
+The Libertines | The Libertines are an English rock band, formed in London in 1997 by frontmen Carl Barât (vocals/guitar) and Pete Doherty (vocals/guitar).  The band, centred on the songwriting partnership of Barât and Doherty, has also included John Hassall (bass) and Gary Powell (drums) for most of its recording career.  The band was part of the garage rock revival and spearheaded the movement in the UK.
+Didz Hammond | David Jonathan Hammond (born 19 July 1981), better known as Didz Hammond, is an English bassist.  He was the bassist and backing vocalist in The Cooper Temple Clause (while also occasionally playing other instruments), and in Carl Barât's Dirty Pretty Things.  The band's second album, "Romance At Short Notice", saw Hammond taking on more vocal duties within the band, for example contributing all the vocals on the ballad "The North".  He is also the bass player in Brett Anderson's live electric band.  Before music, Didz made his trade as a stand up comedian in Reading.
+Big Rig (band) | Big Rig was a punk band from the San Francisco Bay Area fronted by singer/songwriter Jesse Michaels.  Michaels performed with the group after the breakup of his previous project, Operation Ivy, and before forming the band Common Rider.
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT — concatenation of all retrieved documents:
+Big Rig (band) | Big Rig was a punk band from the San Francisco Bay Area fronted by singer/songwriter Jesse Michaels.  Michaels performed with the group after the breakup of his previous project, Operation Ivy, and before forming the band Common Rider.
+Carl Barât | Carlos Ashley Raphael Barât (born 6 June 1978) is a British musician, best known for being the co-frontman with Peter Doherty of the garage rock band The Libertines.  He was the frontman and lead guitarist of Dirty Pretty Things, and in 2010 debuted a solo album.  In 2014 he announced the creation of his new band, The Jackals.
+Roger Lima | Rogério Lima Manganelli (born October 31, 1973), commonly known as Roger Lima, is a Brazilian-American bass guitarist, singer, songwriter and producer.  He is best known as the bass guitarist and co-lead vocalist of American ska-punk band Less Than Jake.  Lima also performs in punk rock band Rehasher, and has another band called Greenhorn.  When not playing with a band, Lima is working in his recording studio, The Moathouse, or flying radio controlled airplanes.  Lima is known to collect Pez and has a room in his home dedicated to Pez .  Hence one of Less Than Jake's album being titled "Pezcore" .
+Tom Marshall (singer) | Tom Marshall (born November 12, 1963) is an American lyricist, keyboardist and singer-songwriter best known for his association with Trey Anastasio and the rock band Phish.  He has been the primary external lyricist for Phish during their career (1983–2004, 2009–present), with songwriting credits for more than 95 originals.
+Doro (musician) | Dorothee Pesch (born 3 June 1964), popularly known as Doro Pesch or Doro, is a German heavy metal singer-songwriter, formerly front-woman of the heavy metal band Warlock.  The name Doro has also been associated with the touring band accompanying the singer, whose members have continuously changed in more than twenty years of uninterrupted activity, the most stable presences being those of bassist Nick Douglas and drummer Johnny Dee.
+Tim Barry | Tim Barry is an American singer, songwriter, and guitarist.  He is the former lead singer of the Richmond, Virginia-based punk rock band Avail.  In addition to performing with Avail, he was the bass guitarist in the Richmond-based folk punk band (Young) Pioneers from 1994-1995.  Barry has been performing folk music on his own since 2004.
+The Libertines | The Libertines are an English rock band, formed in London in 1997 by frontmen Carl Barât (vocals/guitar) and Pete Doherty (vocals/guitar).  The band, centred on the songwriting partnership of Barât and Doherty, has also included John Hassall (bass) and Gary Powell (drums) for most of its recording career.  The band was part of the garage rock revival and spearheaded the movement in the UK.
+Dirty Pretty Things discography | This is a comprehensive discography of Dirty Pretty Things, an English band fronted by Carl Barât, a member of The Libertines.  As of June 2008, they've released 2 studio albums and 4 singles.
+The Libertines discography | The discography of the Libertines, a London-based indie rock band, consists of three studio albums, four extended plays (EPs), one compilation album, six singles and six music videos.  Formed in 1997, the Libertines consisted of Pete Doherty (vocals/rhythm guitar), Carl Barât (vocals/lead guitar), John Hassall (bass) and Gary Powell (drums).
+The Jayhawks discography | This is the discography of the American band The Jayhawks.  It lists their original singles, LPs, and compilations.  It also includes band members solo albums.
+Demon Hunter discography | The following is a comprehensive list for the discography of Demon Hunter, an American Christian metal band.  The band's discography consists of eight studio albums, two live albums, two compilation album, twenty-one singles and ten music videos.
+BarlowGirl discography | This is a listing of discography from the Christian rock band BarlowGirl.
+Building 429 discography | A list of the discography of Christian rock band Building 429.
+REO Speedwagon discography | This article lists the discography of American rock band, REO Speedwagon.
+Dirty Pretty Things discography | This is a comprehensive discography of Dirty Pretty Things, an English band fronted by Carl Barât, a member of The Libertines.  As of June 2008, they've released 2 studio albums and 4 singles.
+Dirty Pretty Things (band) | Dirty Pretty Things were an English band fronted by Carl Barât, a member of The Libertines.  The formation of the band was announced in September 2005, after a dispute between Barât and Pete Doherty led to the breakup of The Libertines in 2004.  Barât had worked with Vertigo Records and had previously revealed that his new project was with the label.  Didz Hammond announced he was leaving the Cooper Temple Clause to join the band alongside Libertines drummer Gary Powell and guitarist Anthony Rossomando, who had filled in for Doherty following his departure from The Libertines.  They played their first shows in October 2005 in Italy and Paris, France.  They announced their split on 1 October 2008 and played their final shows during November.
+Carl Barât | Carlos Ashley Raphael Barât (born 6 June 1978) is a British musician, best known for being the co-frontman with Peter Doherty of the garage rock band The Libertines.  He was the frontman and lead guitarist of Dirty Pretty Things, and in 2010 debuted a solo album.  In 2014 he announced the creation of his new band, The Jackals.
+Waterloo to Anywhere | Waterloo to Anywhere is the debut album by English indie rock band Dirty Pretty Things, fronted by then former Libertine Carl Barât.  The album was produced by Dave Sardy and Tony Doogan, and released on 8 May 2006 in the United Kingdom where it debuted at #3 in the UK Albums Chart (see 2006 in British music).
+The Chavs | The Chavs are a Rock supergroup formed in 2004, by former Libertines and Dirty Pretty Things guitarist Carl Barât.  Alongside Barât in the band are Tim Burgess of The Charlatans, Primal Scream keyboardist Martin Duffy and drummer Andy Burrows from Razorlight.  They made their live debut at Chatham's Tap'n'Tin, in December 2004, where the set included the Libertines songs "Death On the Stairs", "France" and "Road To Ruin", the Charlatans' "A Man Needs To Be Told" and "North Country Boy", Burgess' solo song "I Believe In The Spirit" and festive songs including a cover of "Fairytale of New York" by The Pogues.
+Anthony Rossomando | Anthony Rossomando is an American writer-producer, composer, and guitarist.  He along with Carl Barât was a founding member of Dirty Pretty Things.  He previously stood in for Pete Doherty in The Libertines as a touring member.  He has also been a live member of British New Rave band Klaxons.  He was also a member of Boston-based band The Damn Personals.  He also has co-written songs with D'angelo, Mark Ronson and Andrew Wyatt, Cathy Dennis.  Anthony Rossomando's songs are represented by Downtown Music Publishing.
+The Libertines discography | The discography of the Libertines, a London-based indie rock band, consists of three studio albums, four extended plays (EPs), one compilation album, six singles and six music videos.  Formed in 1997, the Libertines consisted of Pete Doherty (vocals/rhythm guitar), Carl Barât (vocals/lead guitar), John Hassall (bass) and Gary Powell (drums).
+The Libertines | The Libertines are an English rock band, formed in London in 1997 by frontmen Carl Barât (vocals/guitar) and Pete Doherty (vocals/guitar).  The band, centred on the songwriting partnership of Barât and Doherty, has also included John Hassall (bass) and Gary Powell (drums) for most of its recording career.  The band was part of the garage rock revival and spearheaded the movement in the UK.
+Didz Hammond | David Jonathan Hammond (born 19 July 1981), better known as Didz Hammond, is an English bassist.  He was the bassist and backing vocalist in The Cooper Temple Clause (while also occasionally playing other instruments), and in Carl Barât's Dirty Pretty Things.  The band's second album, "Romance At Short Notice", saw Hammond taking on more vocal duties within the band, for example contributing all the vocals on the ballad "The North".  He is also the bass player in Brett Anderson's live electric band.  Before music, Didz made his trade as a stand up comedian in Reading.
+Big Rig (band) | Big Rig was a punk band from the San Francisco Bay Area fronted by singer/songwriter Jesse Michaels.  Michaels performed with the group after the breakup of his previous project, Operation Ivy, and before forming the band Common Rider.
+
+## TASK
+
+Take the traces ONE AT A TIME. Within each trace, take the turns ONE AT A TIME,
+in order, and account for EVERY turn. For each turn, compare its output
+section against the clauses for that turn's agent, clause by clause, and
+report every place the output does not meet them.
+
+Check the whole output, to its last line. A required closing marker, a
+required list header, a required field: these are absences at the END of an
+output, and a reader that stopped once the content looked complete misses
+them.
+
+You are NOT judging whether the reasoning is correct or the answer is right.
+Ignore all of that here; it is examined separately.
+
+Report a violation whether it is large or small, and whether or not it seems
+to have mattered. A violation that a later turn worked around, or that the
+final output happened to survive, is still a violation and is still reported.
+Repetition across traces is expected and useful.
+
+Quote the SHORTEST span that shows the violation. When what is wrong is that
+something required is MISSING, there is nothing to quote: say what was
+required, citing the clause, and where in the output it should have appeared.
+
+## OUTPUT
+
+Return ONLY JSON, with EXACTLY ONE entry per turn of each trace, in turn order,
+whether or not anything was violated. `checked` names the clauses you compared
+the output against; when findings is empty it is the evidence that the turn
+was checked rather than skipped.
+
+{"traces": [{"trace_id": "...",
+             "turns": [{"turn": <int, as in the turn header>,
+                        "agent": "<name, as in the turn header>",
+                        "checked": "<which clauses were compared>",
+                        "findings": [{"what_happened": "<what the output does, and which clause it fails>",
+                                      "where": "<which part of this turn's output>",
+                                      "quote": "<exact text>" or null,
+                                      "missing": "<what was required, citing the clause, and where>" or null}]}]}]}

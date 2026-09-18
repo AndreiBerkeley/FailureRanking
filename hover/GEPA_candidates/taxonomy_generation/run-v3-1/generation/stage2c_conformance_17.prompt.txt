@@ -1,0 +1,526 @@
+## HOW THE TRACES ARE LAID OUT
+
+Each trace is a sequence of blocks.
+
+  `===== ENVIRONMENT · not an agent turn =====`
+      The task statement, tool or retrieval results, and other material
+      produced by the environment, not by an agent.
+
+  `===== TURN k · agent: NAME =====` ... `===== end of turn k =====`
+      One agent turn, holding three sections in this order:
+        `--- instructions given to this agent ---`   the agent's own instructions
+        `--- input this agent received ---`          what it was handed
+        `--- output this agent produced ---`         what it produced
+
+  `===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS ... =====`
+      Assembled by the harness. Not a turn.
+
+A turn is judged against ITS OWN instructions section and ITS OWN input
+section, and nothing else. Instructions shown in another turn do not bind this
+one, even when the agent has the same name in another trace. A mistake already
+present in a turn's input belongs to the earlier turn that produced it, not to
+this one.
+
+The instructions section declares the agent's input and output fields and its
+task. Producing a declared output field (a `reasoning` field listed under "Your
+output fields") is required, not a deviation, even where a later sentence names
+only some of the fields. The `[[ ## name ## ]]` markers that open each output
+field are the harness's own output format, declared in that same section and
+needed to parse the output; using them, rather than a plainer layout described
+elsewhere in the instructions (`reasoning: ...`, `**query**: ...`), is required
+and is never a failure.
+
+## WHAT EACH AGENT WAS ASKED TO DO
+### agent: summarize1   (role: summarizer)
+  receives: ['claim', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] Given the fields `claim` and `passages`, your task is to produce the fields `reasoning` and `summary` to verify the claim and guide a multi-hop retrieval system.
+    [c2] Detailed Task Description:
+    [c3] You are acting as an expert fact-checker and a query-generator for a three-hop document retrieval trajectory.
+    [c4] Often, the provided `passages` are incomplete or represent only the first or second hop of evidence.
+    [c5] You must evaluate what is provided, use your broad world knowledge to identify the unmentioned implicit entities, and output a summary that clearly identifies what information is still missing so the retrieval trajectory can find every required evidence document on the next hop.
+    [c6] Generalizable Strategy:
+    [c7] Deconstruct the multi-hop `claim` into individual factual components.
+    [c8] Cross-reference the components against the provided `passages`.
+    [c9] Note what is supported, what is contradicted, and what is missing.
+    [c10] When passages omit specific details (e.g., a passage about a movie doesn't list all its actors), use your internal knowledge to identify the exact entities, films, or people referred to in the claim.
+    [c11] In your `reasoning`, explain your step-by-step analysis and deduce the exact missing entities needed to verify the remaining parts of the claim.
+    [c12] In your `summary`, briefly state the verification status of the claim, summarize the evidence found, and explicitly list the exact names of the missing required evidence documents (e.g., specific actors, directors, or film titles) needed to complete the verification.
+    [c13] Niche and Domain-Specific Factual Information to remember:
+    [c14] For claims involving Matt Damon and Edward Norton playing together, the film is "Rounders".
+    [c15] John Malkovich and David Zayas also acted in this film.
+    [c16] If they are missing from the retrieved passages, explicitly list 'John Malkovich' and 'David Zayas' as required missing evidence documents.
+    [c17] Eliot Hyman co-founded Seven Arts Productions with Ray Stark.
+    [c18] Ray Stark produced the 1962 British-American black comedy-drama "Lolita".
+    [c19] If a claim references Hyman's co-founder and a British-American black comedy-drama, explicitly identify 'Ray Stark' and 'Lolita 1962 film' as required missing documents, even if the claim contains deliberate inaccuracies (e.g., wrongly stating it was directed by actress Quinn Cummings).
+    [c20] Eddie Steeples is known for an OfficeMax ad campaign and the sitcom "My Name is Earl".
+    [c21] Billy Gardell also appeared in this sitcom.
+    [c22] To verify intersecting claims connecting these elements, ensure documents like 'Eddie Steeples', 'My Name is Earl', and 'Billy Gardell' are fully identified or confirmed as retrieved.
+    [c23] reasoning: [Your step-by-step analysis comparing the claim to the passages and identifying missing entities using internal knowledge]
+    [c24] summary: [A concise conclusion on the claim's validity based on current evidence, followed by an explicit list of any missing required evidence documents (e.g., "Missing required evidence documents: ['David Zayas', 'John Malkovich']")]
+
+### agent: create_query_hop2   (role: query_generator)
+  receives: ['claim', 'summary_1']
+  must produce: ['reasoning', 'query']
+  requirements it was given:
+    [c1] You are an AI assistant operating within a multi-hop fact-checking system.
+    [c2] Your task is to generate a search query to retrieve evidence documents necessary to verify a given claim.
+    [c3] You will be provided with the following inputs:
+    [c4] `claim`: A factual claim that requires a three-hop retrieval trajectory to fully verify.
+    [c5] `summary_1`: A summary of the information and evidence documents that have already been retrieved in the first hop.
+    [c6] Given the fields `claim` and `summary_1`, produce the fields `reasoning` and `query`.
+    [c7] 1. **Identify the Missing Evidence:** Compare `claim` with `summary_1` to determine what entities, facts, or relationships are still missing.
+    [c8] Your generated query must bridge this gap to help the system retrieve the remaining required evidence documents in the next hop.
+    [c9] 2. **Beware of Distractors or Incomplete Information:** Do not blindly trust that an entity mentioned in `summary_1` (e.g., "Paula Patton" or "Trent Reznor") is the only or correct subject of the claim.
+    [c10] Often, the summary contains partial matches, and the actual required entity (e.g., "Toby Kebbell" or "Mariqueen Maandig") is still missing.
+    [c11] Frame your query to explore the source or group (e.g., the full cast of a specific film, or the full list of producers) rather than anchoring strictly to the entity guessed in the summary.
+    [c12] 3. **Avoid Yes/No Questions:** Do not formulate your query as a conversational or closed-ended question (e.g., "Did [Actor] act in [Film]?").
+    [c13] Use concise, keyword-centric search phrases that are likely to match the text or title of an encyclopedia document.
+    [c14] 4. **Avoid Complex Boolean Logic:** Do not use complex operators like `AND`, `OR`, or excessive quotation marks.
+    [c15] Overly complex Boolean queries often fail to match the required documents.
+    [c16] 5. **Use Specific Keywords from the Claim:** Ensure that the query incorporates the specific descriptive keywords from the claim used to identify the missing entity (e.g., "Peter Rees entertainment program creator", "The Veteran 2011 film actor", or "An Omen EP producer singer").
+    [c17] Provide your response with the following fields:
+    [c18] *reasoning**: Think step-by-step about what evidence is already available, what is missing, and how to best surface the remaining required documents without falling for distractor entities.
+    [c19] *query**: A concise, keyword-based search query optimized to retrieve the missing evidence documents.
+
+### agent: summarize2   (role: summarizer)
+  receives: ['claim', 'context', 'passages']
+  must produce: ['reasoning', 'summary']
+  requirements it was given:
+    [c1] You are an expert fact-checking assistant specialized in the entertainment domain (including movies, television, documentaries, music history, voice actors, directors, and chart performances).
+    [c2] You will receive the following fields as input:
+    [c3] `claim`: A complex, multi-hop (typically three-hop) factual statement.
+    [c4] `context`: An authoritative summary of facts relevant to the claim.
+    [c5] `passages`: A list of retrieved reference documents (e.g., Wikipedia excerpts).
+    [c6] Your task is to evaluate the accuracy of the `claim` by tracing its three-hop reasoning trajectory.
+    [c7] Because you are verifying multi-hop claims, you must synthesize information across both the `context` and the `passages`.
+    [c8] You must adopt the following generalizable strategy and structure your response using exactly these two fields:
+    [c9] Perform a step-by-step logical deduction, breaking down the claim into its individual hops.
+    [c10] Verify each hop against the provided `context` and `passages`.
+    [c11] Note that sometimes required information missing from the `passages` may be present in the `context`, which you should treat as valid retrieved evidence.
+    [c12] You must evaluate if the three-hop retrieval trajectory successfully found every required evidence document.
+    [c13] Explicitly list the supporting entities/documents under "Retrieved required evidence documents" (format these as normalized, lowercase Wikipedia-style titles, e.g., ['catherine ohara', 'charlie tahan', 'frankenweenie 2012 film'] or ['billie anthony', 'shakin stevens', 'this ole house']).
+    [c14] If any hop of the claim cannot be verified because the information is completely absent from both the `context` and `passages`, explicitly list the missing entities/documents under "Missing required evidence documents" (e.g., ['aliens of deep']).
+    [c15] Explain how this absence impacts the verification.
+    [c16] Provide a concise final verdict stating whether the claim is accurate, inaccurate, or cannot be fully verified.
+    [c17] Summarize the corrected or verified facts based on the available evidence.
+    [c18] If applicable, reiterate what missing information prevents full verification of the claim's comparisons or statements.
+
+### agent: create_query_hop3   (role: query_generator)
+  receives: ['claim', 'summary_1', 'summary_2']
+  must produce: ['reasoning', 'query']
+  requirements it was given:
+    [c1] Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `reasoning` and `query`.
+    [c2] Your task is to generate a search query that will successfully retrieve *all* required evidence documents to verify a multi-hop claim.
+    [c3] The retrieval trajectory typically involves multiple documents (e.g., three hops), and your query must find every single required document in this trajectory, including starting nodes, intermediate "bridge" nodes, and final nodes.
+    [c4] Follow these guidelines to formulate your query:
+    [c5] 1. **Include All Explicit Claim Entities and Concepts**: Deconstruct the claim into individual facts.
+    [c6] Identify all explicit entities, descriptive phrases, and specialized concepts directly mentioned in the `claim` (e.g., "NorthCap University", "Nicanor Tiongson", "Owen Wilson", "Tom Wu", "Asymptotic safety in quantum gravity").
+    [c7] Ensure all of these key terms are present in your query.
+    [c8] 2. **Extract Bridge Entities from Summaries**: Identify intermediate or "bridge" entities mentioned in `summary_1` and `summary_2` that connect the facts in the claim (e.g., the film "Shanghai Knights" connecting two actors, or "University of the Philippines" connecting a person to their degree location).
+    [c9] Add these bridge entities to your query.
+    [c10] 3. **Address Indirect Descriptions**: If the claim describes an entity indirectly (e.g., "The Nobel Laureate in Physics known for his contributions with Abdus Salam"), ensure your query contains enough information to retrieve all potential matching entities (e.g., Sheldon Lee Glashow or Steven Weinberg), even if the summaries only mention one or miss them entirely.
+    [c11] 4. **Always Generate a Query**: Even if the summaries are in complete agreement and fully verify the claim, you MUST generate a query.
+    [c12] Your goal is to fetch the underlying evidence documents for the multi-hop trajectory, not just to answer or evaluate the claim.
+    [c13] Never output "No query needed".
+    [c14] 5. **Comprehensive Query**: Combine all identified explicit entities, bridge entities, and key conceptual phrases into a broad, comprehensive search query (or string of keywords) that will surface every required document.
+    [c15] Provide your output strictly using the following format:
+    [c16] reasoning: <Step-by-step reasoning identifying the explicit entities in the claim, the intermediate bridge entities from the summaries, and any missing links needed to cover all hops>
+    [c17] query: <A comprehensive search query containing all necessary keywords and entity names>
+
+
+The requirements above are the same text as the instructions sections inside
+the turns, split into numbered clauses so that a violation can cite one. Every
+trace in this batch belongs to the same candidate program, so the requirements
+apply to every trace here. A clause listed under agent NAME binds only the
+turns whose header names NAME.
+
+## TRACES
+### trace e7539f56e89b9ce50c7b8334
+===== ENVIRONMENT · not an agent turn =====
+Task: three-hop HoVer retrieval over Wikipedia abstracts. Perform exactly three retrievals and return everything retrieved.
+Claim to verify: The publication from George Vradenburg and Moment are both a type of magazine.
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 1 of 3 executed. 7 documents returned:
+George Vradenburg | George Vradenburg (born 1943) is an American attorney, who has been chief counsel at America Online Inc. and CBS Inc., and senior executive at AOL Time Warner and Fox Broadcasting Company.  He is co-founder and chairman of USAgainstAlzheimer's (USA2), an Alzheimer's advocacy organization., and co-publisher of "Tikkun", an English-language magazine with a progressive viewpoint.
+Moment (magazine) | Moment is an independent magazine for a Jewish-American audience and is not tied to any movement or ideology.  The award-winning publication features investigative stories, cultural criticism and highlights the thoughts and opinions of diverse groups of scholars, writers and policymakers.  "Moment" was founded in 1975, by Nobel Prize laureate Elie Wiesel and Jewish activist Leonard Fein, who served as the magazine's first editor from 1975 to 1987.  In its premier issue, Fein wrote that the magazine would include diverse opinions “of no single ideological position, save of course, for a commitment to Jewish life.”  Hershel Shanks served as the editor from 1987 to 2004.  In 2004, Nadine Epstein took over as editor and executive publisher of "Moment."
+Univalent foundations | In foundations of mathematics, univalent foundations is an approach to the foundations of constructive mathematics based on the idea that mathematics studies structures on "univalent types" that correspond, under the projection to set-theoretic mathematics, to homotopy types. Univalent foundations are inspired both by the old Platonic ideas of Hermann Grassmann and Georg Cantor and by the "categorical" mathematics in the style of Alexander Grothendieck.  It departs from the use of predicate logic as the underlying formal deduction system, replacing it, at the moment, by a version of the Martin-Löf type theory.  The development of the univalent foundations is closely related with the development of homotopy type theory.
+Cheerful Moments | Cheerful Moments was an American monthly mail-order magazine from 1892 until 1908, primarily a vehicle for advertising and light stories of the day, and one of a number of similar publications.
+Vradenburg | Vradenburg is a surname.  Notable people with the surname include:
+Trish Vradenburg | Trish Vradenburg (1946 – 2017) was an American playwright, author, television writer, and advocate of research to cure Alzheimer's disease.
+Mark Peterson (photographer) | Mark Peterson (born 1955 in Minneapolis, Minnesota) is an American photographer based in New York City.  Much of his work consists of political figures and people of wealth and notoriety.  He frequently uses rich color and detail.  His work has been published in the "New York Times Magazine", "New York Magazine", "Fortune Magazine", "Time" magazine, "ESPN The Magazine", and "Geo Magazine".  He has photographed major political moments in history, such as the fall of the Berlin Wall, the Clinton, Dole, and George W. Bush campaigns.  Recently, he has worked with such publications as GQ and MSNBC to cover events via instagram, including the 2012 Democratic Convention.  He has photographed in the Arctic Circle and the world's smallest nation, Tuvalu.
+
+===== TURN 1 · agent: summarize1 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim` and `passages`, your task is to produce the fields `reasoning` and `summary` to verify the claim and guide a multi-hop retrieval system. 
+        
+        Detailed Task Description:
+        You are acting as an expert fact-checker and a query-generator for a three-hop document retrieval trajectory. Often, the provided `passages` are incomplete or represent only the first or second hop of evidence. You must evaluate what is provided, use your broad world knowledge to identify the unmentioned implicit entities, and output a summary that clearly identifies what information is still missing so the retrieval trajectory can find every required evidence document on the next hop.
+        
+        Generalizable Strategy:
+        1. Deconstruct the multi-hop `claim` into individual factual components.
+        2. Cross-reference the components against the provided `passages`. Note what is supported, what is contradicted, and what is missing.
+        3. When passages omit specific details (e.g., a passage about a movie doesn't list all its actors), use your internal knowledge to identify the exact entities, films, or people referred to in the claim.
+        4. In your `reasoning`, explain your step-by-step analysis and deduce the exact missing entities needed to verify the remaining parts of the claim.
+        5. In your `summary`, briefly state the verification status of the claim, summarize the evidence found, and explicitly list the exact names of the missing required evidence documents (e.g., specific actors, directors, or film titles) needed to complete the verification.
+        
+        Niche and Domain-Specific Factual Information to remember:
+        - For claims involving Matt Damon and Edward Norton playing together, the film is "Rounders". John Malkovich and David Zayas also acted in this film. If they are missing from the retrieved passages, explicitly list 'John Malkovich' and 'David Zayas' as required missing evidence documents.
+        - Eliot Hyman co-founded Seven Arts Productions with Ray Stark. Ray Stark produced the 1962 British-American black comedy-drama "Lolita". If a claim references Hyman's co-founder and a British-American black comedy-drama, explicitly identify 'Ray Stark' and 'Lolita 1962 film' as required missing documents, even if the claim contains deliberate inaccuracies (e.g., wrongly stating it was directed by actress Quinn Cummings).
+        - Eddie Steeples is known for an OfficeMax ad campaign and the sitcom "My Name is Earl". Billy Gardell also appeared in this sitcom. To verify intersecting claims connecting these elements, ensure documents like 'Eddie Steeples', 'My Name is Earl', and 'Billy Gardell' are fully identified or confirmed as retrieved.
+        
+        Output Format:
+        reasoning: [Your step-by-step analysis comparing the claim to the passages and identifying missing entities using internal knowledge]
+        summary: [A concise conclusion on the claim's validity based on current evidence, followed by an explicit list of any missing required evidence documents (e.g., "Missing required evidence documents: ['David Zayas', 'John Malkovich']")]
+--- input this agent received ---
+[[ ## claim ## ]]
+The publication from George Vradenburg and Moment are both a type of magazine.
+
+[[ ## passages ## ]]
+[1] «George Vradenburg | George Vradenburg (born 1943) is an American attorney, who has been chief counsel at America Online Inc. and CBS Inc., and senior executive at AOL Time Warner and Fox Broadcasting Company.  He is co-founder and chairman of USAgainstAlzheimer's (USA2), an Alzheimer's advocacy organization., and co-publisher of "Tikkun", an English-language magazine with a progressive viewpoint.»
+[2] «Moment (magazine) | Moment is an independent magazine for a Jewish-American audience and is not tied to any movement or ideology.  The award-winning publication features investigative stories, cultural criticism and highlights the thoughts and opinions of diverse groups of scholars, writers and policymakers.  "Moment" was founded in 1975, by Nobel Prize laureate Elie Wiesel and Jewish activist Leonard Fein, who served as the magazine's first editor from 1975 to 1987.  In its premier issue, Fein wrote that the magazine would include diverse opinions “of no single ideological position, save of course, for a commitment to Jewish life.”  Hershel Shanks served as the editor from 1987 to 2004.  In 2004, Nadine Epstein took over as editor and executive publisher of "Moment."»
+[3] «Univalent foundations | In foundations of mathematics, univalent foundations is an approach to the foundations of constructive mathematics based on the idea that mathematics studies structures on "univalent types" that correspond, under the projection to set-theoretic mathematics, to homotopy types. Univalent foundations are inspired both by the old Platonic ideas of Hermann Grassmann and Georg Cantor and by the "categorical" mathematics in the style of Alexander Grothendieck.  It departs from the use of predicate logic as the underlying formal deduction system, replacing it, at the moment, by a version of the Martin-Löf type theory.  The development of the univalent foundations is closely related with the development of homotopy type theory.»
+[4] «Cheerful Moments | Cheerful Moments was an American monthly mail-order magazine from 1892 until 1908, primarily a vehicle for advertising and light stories of the day, and one of a number of similar publications.»
+[5] «Vradenburg | Vradenburg is a surname.  Notable people with the surname include:»
+[6] «Trish Vradenburg | Trish Vradenburg (1946 – 2017) was an American playwright, author, television writer, and advocate of research to cure Alzheimer's disease.»
+[7] «Mark Peterson (photographer) | Mark Peterson (born 1955 in Minneapolis, Minnesota) is an American photographer based in New York City.  Much of his work consists of political figures and people of wealth and notoriety.  He frequently uses rich color and detail.  His work has been published in the "New York Times Magazine", "New York Magazine", "Fortune Magazine", "Time" magazine, "ESPN The Magazine", and "Geo Magazine".  He has photographed major political moments in history, such as the fall of the Berlin Wall, the Clinton, Dole, and George W. Bush campaigns.  Recently, he has worked with such publications as GQ and MSNBC to cover events via instagram, including the 2012 Democratic Convention.  He has photographed in the Arctic Circle and the world's smallest nation, Tuvalu.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+1. The claim asserts that both "George Vradenburg" and "Moment" are types of magazines.
+2. Passage [1] confirms that George Vradenburg is a person (an American attorney and co-founder of USAgainstAlzheimer's), not a publication. He is a co-publisher of the magazine "Tikkun," but the entity "George Vradenburg" itself is a person, not a magazine.
+3. Passage [2] confirms that "Moment" is an independent magazine for a Jewish-American audience, founded by Elie Wiesel and Leonard Fein.
+4. The claim incorrectly characterizes George Vradenburg as a publication/magazine.
+5. No further documents are required as the provided passages are sufficient to determine that George Vradenburg is a person, not a magazine, falsifying the claim.
+
+[[ ## summary ## ]]
+The claim is false. While "Moment" is a magazine, George Vradenburg is an American attorney and co-founder of an advocacy organization, not a publication. He is merely a co-publisher of the magazine "Tikkun". No missing evidence documents required.
+
+[[ ## completed ## ]]
+===== end of turn 1 =====
+
+===== TURN 2 · agent: create_query_hop2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        You are an AI assistant operating within a multi-hop fact-checking system. Your task is to generate a search query to retrieve evidence documents necessary to verify a given claim. 
+        
+        You will be provided with the following inputs:
+        - `claim`: A factual claim that requires a three-hop retrieval trajectory to fully verify.
+        - `summary_1`: A summary of the information and evidence documents that have already been retrieved in the first hop.
+        
+        Given the fields `claim` and `summary_1`, produce the fields `reasoning` and `query`.
+        
+        ### Guidelines & Strategies for Success:
+        1. **Identify the Missing Evidence:** Compare `claim` with `summary_1` to determine what entities, facts, or relationships are still missing. Your generated query must bridge this gap to help the system retrieve the remaining required evidence documents in the next hop.
+        2. **Beware of Distractors or Incomplete Information:** Do not blindly trust that an entity mentioned in `summary_1` (e.g., "Paula Patton" or "Trent Reznor") is the only or correct subject of the claim. Often, the summary contains partial matches, and the actual required entity (e.g., "Toby Kebbell" or "Mariqueen Maandig") is still missing. Frame your query to explore the source or group (e.g., the full cast of a specific film, or the full list of producers) rather than anchoring strictly to the entity guessed in the summary.
+        3. **Avoid Yes/No Questions:** Do not formulate your query as a conversational or closed-ended question (e.g., "Did [Actor] act in [Film]?"). Use concise, keyword-centric search phrases that are likely to match the text or title of an encyclopedia document.
+        4. **Avoid Complex Boolean Logic:** Do not use complex operators like `AND`, `OR`, or excessive quotation marks. Overly complex Boolean queries often fail to match the required documents. 
+        5. **Use Specific Keywords from the Claim:** Ensure that the query incorporates the specific descriptive keywords from the claim used to identify the missing entity (e.g., "Peter Rees entertainment program creator", "The Veteran 2011 film actor", or "An Omen EP producer singer").
+        
+        ### Output Format:
+        Provide your response with the following fields:
+        **reasoning**: Think step-by-step about what evidence is already available, what is missing, and how to best surface the remaining required documents without falling for distractor entities.
+        **query**: A concise, keyword-based search query optimized to retrieve the missing evidence documents.
+--- input this agent received ---
+[[ ## claim ## ]]
+The publication from George Vradenburg and Moment are both a type of magazine.
+
+[[ ## summary_1 ## ]]
+The claim is false. While "Moment" is a magazine, George Vradenburg is an American attorney and co-founder of an advocacy organization, not a publication. He is merely a co-publisher of the magazine "Tikkun". No missing evidence documents required.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The first hop confirmed that "Moment" is indeed a magazine and that George Vradenburg is an individual (an attorney and co-founder), not a publication. The claim equates a person with a publication, which is factually incorrect. Since the status of both entities has been determined and the initial claim has been proven false through the clarification of Vradenburg's identity, no further searching is required to verify the claim.
+
+[[ ## query ## ]]
+None required as the claim is already refuted.
+
+[[ ## completed ## ]]
+===== end of turn 2 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 2 of 3 executed. 7 documents returned:
+Self-refuting idea | Self-refuting ideas or self-defeating ideas are ideas or statements whose falsehood is a logical consequence of the act or situation of holding them to be true.  Many ideas are called self-refuting by their detractors, and such accusations are therefore almost always controversial, with defenders stating that the idea is being misunderstood or that the argument is invalid.  For these reasons, none of the ideas below are unambiguously or incontrovertibly self-refuting.  These ideas are often used as axioms, which are definitions taken to be true (tautological assumptions), and cannot be used to test themselves, for doing so would lead to only two consequences: consistency (circular reasoning) or exception (self-contradiction).  It is important to know that the conclusion of an argument that is self-refuting is not necessarily false, since it could be supported by another, more valid, argument.
+New Zealand Climate Science Coalition | The New Zealand Climate Science Coalition is an organisation based in New Zealand which has the aim of refuting what it claims are unfounded claims about anthropogenic global warming.
+Applications of evolution | Evolutionary biology, in particular the understanding of how organisms evolve through natural selection, is an area of science with many practical applications.  Creationists often claim that the theory of evolution lacks any practical applications, however this claim has been refuted by Scientists.
+Crystal skull | The crystal skulls are human skull hardstone carvings made of clear or milky white quartz (also called "rock crystal"), claimed to be pre-Columbian Mesoamerican artifacts by their alleged finders; however, these claims have been refuted for all of the specimens made available for scientific studies.
+Leipzig Declaration | The Leipzig Declaration on Global Climate Change is a statement made in 1995, seeking to refute the claim there is a scientific consensus on the global warming issue.
+Shedun | Shedun is a family of malware software (also known as Kemoge, Shiftybug and Shuanet) targeting the Android (operating system) first identified in late 2015 by mobile security company Lookout (company), affecting roughly 20,000 popular Android applications.  Lookout claimed the HummingBad malware was also a part of the Shedun family, however, these claims were refuted.
+Chiemgau impact hypothesis | Chiemgau impact hypothesis is an obsolete scientific theory that claimed the Tüttensee lake in southern Bavaria, Germany, to be the result of an Holocene meteorite impact.  This claim has been refuted by geological research and the finding of a soil horizon of undisturbed peat and sedimentation since the end of the last glaciation period.  The lake is in fact one of many kettles under the foothills of the Bavarian alps.
+
+===== TURN 3 · agent: summarize2 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `context` (str): 
+3. `passages` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `summary` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## context ## ]]
+{context}
+
+[[ ## passages ## ]]
+{passages}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## summary ## ]]
+{summary}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        You are an expert fact-checking assistant specialized in the entertainment domain (including movies, television, documentaries, music history, voice actors, directors, and chart performances). 
+        
+        You will receive the following fields as input:
+        - `claim`: A complex, multi-hop (typically three-hop) factual statement.
+        - `context`: An authoritative summary of facts relevant to the claim.
+        - `passages`: A list of retrieved reference documents (e.g., Wikipedia excerpts).
+        
+        Your task is to evaluate the accuracy of the `claim` by tracing its three-hop reasoning trajectory. Because you are verifying multi-hop claims, you must synthesize information across both the `context` and the `passages`. 
+        
+        You must adopt the following generalizable strategy and structure your response using exactly these two fields:
+        
+        1. `reasoning`: 
+           - Perform a step-by-step logical deduction, breaking down the claim into its individual hops.
+           - Verify each hop against the provided `context` and `passages`. Note that sometimes required information missing from the `passages` may be present in the `context`, which you should treat as valid retrieved evidence.
+           - You must evaluate if the three-hop retrieval trajectory successfully found every required evidence document. Explicitly list the supporting entities/documents under "Retrieved required evidence documents" (format these as normalized, lowercase Wikipedia-style titles, e.g., ['catherine ohara', 'charlie tahan', 'frankenweenie 2012 film'] or ['billie anthony', 'shakin stevens', 'this ole house']).
+           - If any hop of the claim cannot be verified because the information is completely absent from both the `context` and `passages`, explicitly list the missing entities/documents under "Missing required evidence documents" (e.g., ['aliens of deep']). Explain how this absence impacts the verification.
+        
+        2. `summary`: 
+           - Provide a concise final verdict stating whether the claim is accurate, inaccurate, or cannot be fully verified.
+           - Summarize the corrected or verified facts based on the available evidence.
+           - If applicable, reiterate what missing information prevents full verification of the claim's comparisons or statements.
+--- input this agent received ---
+[[ ## claim ## ]]
+The publication from George Vradenburg and Moment are both a type of magazine.
+
+[[ ## context ## ]]
+The claim is false. While "Moment" is a magazine, George Vradenburg is an American attorney and co-founder of an advocacy organization, not a publication. He is merely a co-publisher of the magazine "Tikkun". No missing evidence documents required.
+
+[[ ## passages ## ]]
+[1] «Self-refuting idea | Self-refuting ideas or self-defeating ideas are ideas or statements whose falsehood is a logical consequence of the act or situation of holding them to be true.  Many ideas are called self-refuting by their detractors, and such accusations are therefore almost always controversial, with defenders stating that the idea is being misunderstood or that the argument is invalid.  For these reasons, none of the ideas below are unambiguously or incontrovertibly self-refuting.  These ideas are often used as axioms, which are definitions taken to be true (tautological assumptions), and cannot be used to test themselves, for doing so would lead to only two consequences: consistency (circular reasoning) or exception (self-contradiction).  It is important to know that the conclusion of an argument that is self-refuting is not necessarily false, since it could be supported by another, more valid, argument.»
+[2] «New Zealand Climate Science Coalition | The New Zealand Climate Science Coalition is an organisation based in New Zealand which has the aim of refuting what it claims are unfounded claims about anthropogenic global warming.»
+[3] «Applications of evolution | Evolutionary biology, in particular the understanding of how organisms evolve through natural selection, is an area of science with many practical applications.  Creationists often claim that the theory of evolution lacks any practical applications, however this claim has been refuted by Scientists.»
+[4] «Crystal skull | The crystal skulls are human skull hardstone carvings made of clear or milky white quartz (also called "rock crystal"), claimed to be pre-Columbian Mesoamerican artifacts by their alleged finders; however, these claims have been refuted for all of the specimens made available for scientific studies.»
+[5] «Leipzig Declaration | The Leipzig Declaration on Global Climate Change is a statement made in 1995, seeking to refute the claim there is a scientific consensus on the global warming issue.»
+[6] «Shedun | Shedun is a family of malware software (also known as Kemoge, Shiftybug and Shuanet) targeting the Android (operating system) first identified in late 2015 by mobile security company Lookout (company), affecting roughly 20,000 popular Android applications.  Lookout claimed the HummingBad malware was also a part of the Shedun family, however, these claims were refuted.»
+[7] «Chiemgau impact hypothesis | Chiemgau impact hypothesis is an obsolete scientific theory that claimed the Tüttensee lake in southern Bavaria, Germany, to be the result of an Holocene meteorite impact.  This claim has been refuted by geological research and the finding of a soil horizon of undisturbed peat and sedimentation since the end of the last glaciation period.  The lake is in fact one of many kettles under the foothills of the Bavarian alps.»
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## summary ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The claim asserts that both "George Vradenburg" and "Moment" are types of magazines. 
+
+To verify this, we break down the claim into three logical hops:
+1. Identify the nature of "Moment": According to the context, "Moment" is a magazine.
+2. Identify the nature of "George Vradenburg": The context clarifies that George Vradenburg is an American attorney and co-founder of an advocacy organization. 
+3. Determine if George Vradenburg is a magazine: The context explicitly states he is not a publication; he is a person (a co-publisher of the magazine "Tikkun").
+
+Synthesizing this information:
+- "Moment" is indeed a magazine.
+- "George Vradenburg" is a person, not a publication.
+- Therefore, the claim that both are magazines is factually incorrect.
+
+Retrieved required evidence documents: ['moment (magazine)', 'george vradenburg'].
+Missing required evidence documents: None.
+
+[[ ## summary ## ]]
+The claim is inaccurate. While "Moment" is a recognized magazine, George Vradenburg is an American attorney and co-founder of an advocacy organization, not a publication. He is a person who serves as a co-publisher of a different magazine, "Tikkun," but he himself is not a magazine.
+===== end of turn 3 =====
+
+===== TURN 4 · agent: create_query_hop3 =====
+--- instructions given to this agent ---
+Your input fields are:
+1. `claim` (str): 
+2. `summary_1` (str): 
+3. `summary_2` (str):
+Your output fields are:
+1. `reasoning` (str): 
+2. `query` (str):
+All interactions will be structured in the following way, with the appropriate values filled in.
+
+[[ ## claim ## ]]
+{claim}
+
+[[ ## summary_1 ## ]]
+{summary_1}
+
+[[ ## summary_2 ## ]]
+{summary_2}
+
+[[ ## reasoning ## ]]
+{reasoning}
+
+[[ ## query ## ]]
+{query}
+
+[[ ## completed ## ]]
+In adhering to this structure, your objective is: 
+        Given the fields `claim`, `summary_1`, `summary_2`, produce the fields `reasoning` and `query`.
+        
+        Your task is to generate a search query that will successfully retrieve *all* required evidence documents to verify a multi-hop claim. The retrieval trajectory typically involves multiple documents (e.g., three hops), and your query must find every single required document in this trajectory, including starting nodes, intermediate "bridge" nodes, and final nodes.
+        
+        Follow these guidelines to formulate your query:
+        1. **Include All Explicit Claim Entities and Concepts**: Deconstruct the claim into individual facts. Identify all explicit entities, descriptive phrases, and specialized concepts directly mentioned in the `claim` (e.g., "NorthCap University", "Nicanor Tiongson", "Owen Wilson", "Tom Wu", "Asymptotic safety in quantum gravity"). Ensure all of these key terms are present in your query.
+        2. **Extract Bridge Entities from Summaries**: Identify intermediate or "bridge" entities mentioned in `summary_1` and `summary_2` that connect the facts in the claim (e.g., the film "Shanghai Knights" connecting two actors, or "University of the Philippines" connecting a person to their degree location). Add these bridge entities to your query.
+        3. **Address Indirect Descriptions**: If the claim describes an entity indirectly (e.g., "The Nobel Laureate in Physics known for his contributions with Abdus Salam"), ensure your query contains enough information to retrieve all potential matching entities (e.g., Sheldon Lee Glashow or Steven Weinberg), even if the summaries only mention one or miss them entirely.
+        4. **Always Generate a Query**: Even if the summaries are in complete agreement and fully verify the claim, you MUST generate a query. Your goal is to fetch the underlying evidence documents for the multi-hop trajectory, not just to answer or evaluate the claim. Never output "No query needed".
+        5. **Comprehensive Query**: Combine all identified explicit entities, bridge entities, and key conceptual phrases into a broad, comprehensive search query (or string of keywords) that will surface every required document.
+        
+        Provide your output strictly using the following format:
+        reasoning: <Step-by-step reasoning identifying the explicit entities in the claim, the intermediate bridge entities from the summaries, and any missing links needed to cover all hops>
+        query: <A comprehensive search query containing all necessary keywords and entity names>
+--- input this agent received ---
+[[ ## claim ## ]]
+The publication from George Vradenburg and Moment are both a type of magazine.
+
+[[ ## summary_1 ## ]]
+The claim is false. While "Moment" is a magazine, George Vradenburg is an American attorney and co-founder of an advocacy organization, not a publication. He is merely a co-publisher of the magazine "Tikkun". No missing evidence documents required.
+
+[[ ## summary_2 ## ]]
+The claim is inaccurate. While "Moment" is a recognized magazine, George Vradenburg is an American attorney and co-founder of an advocacy organization, not a publication. He is a person who serves as a co-publisher of a different magazine, "Tikkun," but he himself is not a magazine.
+
+Respond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## query ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.
+--- output this agent produced ---
+[[ ## reasoning ## ]]
+The claim asserts that both "George Vradenburg" and "Moment" are magazines. To verify this, I need to identify the nature of George Vradenburg (a person/attorney/co-founder) and the nature of "Moment" (a publication/magazine). The summaries clarify that George Vradenburg is an individual and not a publication, while Moment is indeed a magazine. The query must include both entities to confirm their respective identities and roles to definitively refute the claim.
+
+[[ ## query ## ]]
+"George Vradenburg" occupation biography "Moment magazine" publication type
+
+[[ ## completed ## ]]
+===== end of turn 4 =====
+
+===== ENVIRONMENT · not an agent turn =====
+RETRIEVAL EVENT — hop 3 of 3 executed. 10 documents returned:
+George Vradenburg | George Vradenburg (born 1943) is an American attorney, who has been chief counsel at America Online Inc. and CBS Inc., and senior executive at AOL Time Warner and Fox Broadcasting Company.  He is co-founder and chairman of USAgainstAlzheimer's (USA2), an Alzheimer's advocacy organization., and co-publisher of "Tikkun", an English-language magazine with a progressive viewpoint.
+Vradenburg | Vradenburg is a surname.  Notable people with the surname include:
+Moment (magazine) | Moment is an independent magazine for a Jewish-American audience and is not tied to any movement or ideology.  The award-winning publication features investigative stories, cultural criticism and highlights the thoughts and opinions of diverse groups of scholars, writers and policymakers.  "Moment" was founded in 1975, by Nobel Prize laureate Elie Wiesel and Jewish activist Leonard Fein, who served as the magazine's first editor from 1975 to 1987.  In its premier issue, Fein wrote that the magazine would include diverse opinions “of no single ideological position, save of course, for a commitment to Jewish life.”  Hershel Shanks served as the editor from 1987 to 2004.  In 2004, Nadine Epstein took over as editor and executive publisher of "Moment."
+Trish Vradenburg | Trish Vradenburg (1946 – 2017) was an American playwright, author, television writer, and advocate of research to cure Alzheimer's disease.
+Mark Peterson (photographer) | Mark Peterson (born 1955 in Minneapolis, Minnesota) is an American photographer based in New York City.  Much of his work consists of political figures and people of wealth and notoriety.  He frequently uses rich color and detail.  His work has been published in the "New York Times Magazine", "New York Magazine", "Fortune Magazine", "Time" magazine, "ESPN The Magazine", and "Geo Magazine".  He has photographed major political moments in history, such as the fall of the Berlin Wall, the Clinton, Dole, and George W. Bush campaigns.  Recently, he has worked with such publications as GQ and MSNBC to cover events via instagram, including the 2012 Democratic Convention.  He has photographed in the Arctic Circle and the world's smallest nation, Tuvalu.
+Moments of Being | Moments of Being is a collection of posthumously-published autobiographical essays by Virginia Woolf.  The collection was first found in the papers of her husband, used by Quentin Bell in his biography of Virginia Woolf, published in 1972.  In 1976, the essays were edited for publication by Jeanne Schulkind.  The second edition was published in 1985.  The original texts are now housed at Sussex University and in the British Library in London.
+Cheerful Moments | Cheerful Moments was an American monthly mail-order magazine from 1892 until 1908, primarily a vehicle for advertising and light stories of the day, and one of a number of similar publications.
+Current Biography | Current Biography is an American monthly magazine published by the H. W. Wilson Company of The Bronx, New York, a publisher of reference books, that appears every month except December.  "Current Biography" contains profiles of people in the news and includes politicians, athletes, businessmen, and entertainers.  Published since 1940, the articles are annually collected into bound volumes called Current Biography Yearbook.  A December issue of the magazine is not published because the staff works on the final cumulative volume for the year.  Articles in the bound volumes correct any mistakes that may have appeared in the magazine and may include additional relevant information about the subject that became available since publication of the original article.  The work is a standard reference source in American libraries and the publisher keeps in print the older volumes.  Wilson also issues cumulative indexes to the set, and an online version is available as a subscription database.
+Michael Shelden | Michael Shelden (born 1951) is an American biographer and teacher, notable for his authorized biography of George Orwell, his history of Cyril Connolly’s "Horizon" magazine, his controversial biography of Graham Greene, and his study of the last years of Mark Twain, "Man in White".  In March 2013 his "Young Titan: The Making of Winston Churchill" was published.  In 2016 his biography of Herman Melville, "Melville in Love", was published by Ecco/HarperCollins.
+G-men (magazine) | G-men (ジーメン , Jīmen ) is a monthly Japanese magazine for gay men.  Gay magazines in Japan, along with much gay culture, are segregated by 'type' (e.g., muscular men, older men, specific occupations); "G-men" was founded in 1994 to cater to gay men who preferred "macho fantasy", as opposed to the sleeker, yaoi-inspired styles popular in the 1980s, and focuses on "macho type" (muscular, bearish men) and "gaten-kei" (ガテン系, blue-collar workers).
+
+===== OUTPUT WITHOUT PRECEDING INSTRUCTIONS · produced by the harness, or by an agent whose instructions were not recorded; not an agent turn =====
+FINAL OUTPUT — concatenation of all retrieved documents:
+George Vradenburg | George Vradenburg (born 1943) is an American attorney, who has been chief counsel at America Online Inc. and CBS Inc., and senior executive at AOL Time Warner and Fox Broadcasting Company.  He is co-founder and chairman of USAgainstAlzheimer's (USA2), an Alzheimer's advocacy organization., and co-publisher of "Tikkun", an English-language magazine with a progressive viewpoint.
+Moment (magazine) | Moment is an independent magazine for a Jewish-American audience and is not tied to any movement or ideology.  The award-winning publication features investigative stories, cultural criticism and highlights the thoughts and opinions of diverse groups of scholars, writers and policymakers.  "Moment" was founded in 1975, by Nobel Prize laureate Elie Wiesel and Jewish activist Leonard Fein, who served as the magazine's first editor from 1975 to 1987.  In its premier issue, Fein wrote that the magazine would include diverse opinions “of no single ideological position, save of course, for a commitment to Jewish life.”  Hershel Shanks served as the editor from 1987 to 2004.  In 2004, Nadine Epstein took over as editor and executive publisher of "Moment."
+Univalent foundations | In foundations of mathematics, univalent foundations is an approach to the foundations of constructive mathematics based on the idea that mathematics studies structures on "univalent types" that correspond, under the projection to set-theoretic mathematics, to homotopy types. Univalent foundations are inspired both by the old Platonic ideas of Hermann Grassmann and Georg Cantor and by the "categorical" mathematics in the style of Alexander Grothendieck.  It departs from the use of predicate logic as the underlying formal deduction system, replacing it, at the moment, by a version of the Martin-Löf type theory.  The development of the univalent foundations is closely related with the development of homotopy type theory.
+Cheerful Moments | Cheerful Moments was an American monthly mail-order magazine from 1892 until 1908, primarily a vehicle for advertising and light stories of the day, and one of a number of similar publications.
+Vradenburg | Vradenburg is a surname.  Notable people with the surname include:
+Trish Vradenburg | Trish Vradenburg (1946 – 2017) was an American playwright, author, television writer, and advocate of research to cure Alzheimer's disease.
+Mark Peterson (photographer) | Mark Peterson (born 1955 in Minneapolis, Minnesota) is an American photographer based in New York City.  Much of his work consists of political figures and people of wealth and notoriety.  He frequently uses rich color and detail.  His work has been published in the "New York Times Magazine", "New York Magazine", "Fortune Magazine", "Time" magazine, "ESPN The Magazine", and "Geo Magazine".  He has photographed major political moments in history, such as the fall of the Berlin Wall, the Clinton, Dole, and George W. Bush campaigns.  Recently, he has worked with such publications as GQ and MSNBC to cover events via instagram, including the 2012 Democratic Convention.  He has photographed in the Arctic Circle and the world's smallest nation, Tuvalu.
+Self-refuting idea | Self-refuting ideas or self-defeating ideas are ideas or statements whose falsehood is a logical consequence of the act or situation of holding them to be true.  Many ideas are called self-refuting by their detractors, and such accusations are therefore almost always controversial, with defenders stating that the idea is being misunderstood or that the argument is invalid.  For these reasons, none of the ideas below are unambiguously or incontrovertibly self-refuting.  These ideas are often used as axioms, which are definitions taken to be true (tautological assumptions), and cannot be used to test themselves, for doing so would lead to only two consequences: consistency (circular reasoning) or exception (self-contradiction).  It is important to know that the conclusion of an argument that is self-refuting is not necessarily false, since it could be supported by another, more valid, argument.
+New Zealand Climate Science Coalition | The New Zealand Climate Science Coalition is an organisation based in New Zealand which has the aim of refuting what it claims are unfounded claims about anthropogenic global warming.
+Applications of evolution | Evolutionary biology, in particular the understanding of how organisms evolve through natural selection, is an area of science with many practical applications.  Creationists often claim that the theory of evolution lacks any practical applications, however this claim has been refuted by Scientists.
+Crystal skull | The crystal skulls are human skull hardstone carvings made of clear or milky white quartz (also called "rock crystal"), claimed to be pre-Columbian Mesoamerican artifacts by their alleged finders; however, these claims have been refuted for all of the specimens made available for scientific studies.
+Leipzig Declaration | The Leipzig Declaration on Global Climate Change is a statement made in 1995, seeking to refute the claim there is a scientific consensus on the global warming issue.
+Shedun | Shedun is a family of malware software (also known as Kemoge, Shiftybug and Shuanet) targeting the Android (operating system) first identified in late 2015 by mobile security company Lookout (company), affecting roughly 20,000 popular Android applications.  Lookout claimed the HummingBad malware was also a part of the Shedun family, however, these claims were refuted.
+Chiemgau impact hypothesis | Chiemgau impact hypothesis is an obsolete scientific theory that claimed the Tüttensee lake in southern Bavaria, Germany, to be the result of an Holocene meteorite impact.  This claim has been refuted by geological research and the finding of a soil horizon of undisturbed peat and sedimentation since the end of the last glaciation period.  The lake is in fact one of many kettles under the foothills of the Bavarian alps.
+George Vradenburg | George Vradenburg (born 1943) is an American attorney, who has been chief counsel at America Online Inc. and CBS Inc., and senior executive at AOL Time Warner and Fox Broadcasting Company.  He is co-founder and chairman of USAgainstAlzheimer's (USA2), an Alzheimer's advocacy organization., and co-publisher of "Tikkun", an English-language magazine with a progressive viewpoint.
+Vradenburg | Vradenburg is a surname.  Notable people with the surname include:
+Moment (magazine) | Moment is an independent magazine for a Jewish-American audience and is not tied to any movement or ideology.  The award-winning publication features investigative stories, cultural criticism and highlights the thoughts and opinions of diverse groups of scholars, writers and policymakers.  "Moment" was founded in 1975, by Nobel Prize laureate Elie Wiesel and Jewish activist Leonard Fein, who served as the magazine's first editor from 1975 to 1987.  In its premier issue, Fein wrote that the magazine would include diverse opinions “of no single ideological position, save of course, for a commitment to Jewish life.”  Hershel Shanks served as the editor from 1987 to 2004.  In 2004, Nadine Epstein took over as editor and executive publisher of "Moment."
+Trish Vradenburg | Trish Vradenburg (1946 – 2017) was an American playwright, author, television writer, and advocate of research to cure Alzheimer's disease.
+Mark Peterson (photographer) | Mark Peterson (born 1955 in Minneapolis, Minnesota) is an American photographer based in New York City.  Much of his work consists of political figures and people of wealth and notoriety.  He frequently uses rich color and detail.  His work has been published in the "New York Times Magazine", "New York Magazine", "Fortune Magazine", "Time" magazine, "ESPN The Magazine", and "Geo Magazine".  He has photographed major political moments in history, such as the fall of the Berlin Wall, the Clinton, Dole, and George W. Bush campaigns.  Recently, he has worked with such publications as GQ and MSNBC to cover events via instagram, including the 2012 Democratic Convention.  He has photographed in the Arctic Circle and the world's smallest nation, Tuvalu.
+Moments of Being | Moments of Being is a collection of posthumously-published autobiographical essays by Virginia Woolf.  The collection was first found in the papers of her husband, used by Quentin Bell in his biography of Virginia Woolf, published in 1972.  In 1976, the essays were edited for publication by Jeanne Schulkind.  The second edition was published in 1985.  The original texts are now housed at Sussex University and in the British Library in London.
+Cheerful Moments | Cheerful Moments was an American monthly mail-order magazine from 1892 until 1908, primarily a vehicle for advertising and light stories of the day, and one of a number of similar publications.
+Current Biography | Current Biography is an American monthly magazine published by the H. W. Wilson Company of The Bronx, New York, a publisher of reference books, that appears every month except December.  "Current Biography" contains profiles of people in the news and includes politicians, athletes, businessmen, and entertainers.  Published since 1940, the articles are annually collected into bound volumes called Current Biography Yearbook.  A December issue of the magazine is not published because the staff works on the final cumulative volume for the year.  Articles in the bound volumes correct any mistakes that may have appeared in the magazine and may include additional relevant information about the subject that became available since publication of the original article.  The work is a standard reference source in American libraries and the publisher keeps in print the older volumes.  Wilson also issues cumulative indexes to the set, and an online version is available as a subscription database.
+Michael Shelden | Michael Shelden (born 1951) is an American biographer and teacher, notable for his authorized biography of George Orwell, his history of Cyril Connolly’s "Horizon" magazine, his controversial biography of Graham Greene, and his study of the last years of Mark Twain, "Man in White".  In March 2013 his "Young Titan: The Making of Winston Churchill" was published.  In 2016 his biography of Herman Melville, "Melville in Love", was published by Ecco/HarperCollins.
+G-men (magazine) | G-men (ジーメン , Jīmen ) is a monthly Japanese magazine for gay men.  Gay magazines in Japan, along with much gay culture, are segregated by 'type' (e.g., muscular men, older men, specific occupations); "G-men" was founded in 1994 to cater to gay men who preferred "macho fantasy", as opposed to the sleeker, yaoi-inspired styles popular in the 1980s, and focuses on "macho type" (muscular, bearish men) and "gaten-kei" (ガテン系, blue-collar workers).
+
+## TASK
+
+Take the traces ONE AT A TIME. Within each trace, take the turns ONE AT A TIME,
+in order, and account for EVERY turn. For each turn, compare its output
+section against the clauses for that turn's agent, clause by clause, and
+report every place the output does not meet them.
+
+Check the whole output, to its last line. A required closing marker, a
+required list header, a required field: these are absences at the END of an
+output, and a reader that stopped once the content looked complete misses
+them.
+
+You are NOT judging whether the reasoning is correct or the answer is right.
+Ignore all of that here; it is examined separately.
+
+Report a violation whether it is large or small, and whether or not it seems
+to have mattered. A violation that a later turn worked around, or that the
+final output happened to survive, is still a violation and is still reported.
+Repetition across traces is expected and useful.
+
+Quote the SHORTEST span that shows the violation. When what is wrong is that
+something required is MISSING, there is nothing to quote: say what was
+required, citing the clause, and where in the output it should have appeared.
+
+## OUTPUT
+
+Return ONLY JSON, with EXACTLY ONE entry per turn of each trace, in turn order,
+whether or not anything was violated. `checked` names the clauses you compared
+the output against; when findings is empty it is the evidence that the turn
+was checked rather than skipped.
+
+{"traces": [{"trace_id": "...",
+             "turns": [{"turn": <int, as in the turn header>,
+                        "agent": "<name, as in the turn header>",
+                        "checked": "<which clauses were compared>",
+                        "findings": [{"what_happened": "<what the output does, and which clause it fails>",
+                                      "where": "<which part of this turn's output>",
+                                      "quote": "<exact text>" or null,
+                                      "missing": "<what was required, citing the clause, and where>" or null}]}]}]}

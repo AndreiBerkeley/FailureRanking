@@ -168,17 +168,18 @@ def _flatten(d, expected) -> tuple[list, list]:
     return points, checked
 
 
-def read_points(call, model, trace_text, expected, taxonomy_text=None):
+def read_points(call, model, trace_text, expected, taxonomy_text=None, program_text=""):
     """One reader's first pass. taxonomy_text=None is reader B, which reads with
-    no vocabulary in view. Returns (points, checked) or None."""
+    no vocabulary in view. program_text is the program's success rule (see
+    prompts.program_block), the same for every pass. Returns (points, checked) or None."""
     if taxonomy_text is None:
         prompt = prompts.READER_B_POINTS.format(
             layout=prompts.TURN_LAYOUT, point_rule=prompts.POINT_RULE,
-            every_turn=prompts.EVERY_TURN, trace=trace_text)
+            every_turn=prompts.EVERY_TURN, program=program_text, trace=trace_text)
     else:
         prompt = prompts.READER_A_POINTS.format(
             layout=prompts.TURN_LAYOUT, point_rule=prompts.POINT_RULE,
-            every_turn=prompts.EVERY_TURN, taxonomy=taxonomy_text, trace=trace_text)
+            every_turn=prompts.EVERY_TURN, program=program_text, taxonomy=taxonomy_text, trace=trace_text)
     d = _ask(call, model, prompt, lambda x: _points_ok(x, expected))
     if d is None:
         return None
@@ -204,13 +205,13 @@ def _modes_ok(d, n):
     return None
 
 
-def assign_modes(call, model, points, taxonomy_text, valid_ids):
+def assign_modes(call, model, points, taxonomy_text, valid_ids, program_text=""):
     """A reader's second pass over its own frozen point list. Returns a list
     aligned to `points`, or None. "Nothing fits" is a legal answer and is what
     the coverage measurement is made of."""
     if not points:
         return []
-    prompt = prompts.ASSIGN_MODES.format(taxonomy=taxonomy_text,
+    prompt = prompts.ASSIGN_MODES.format(taxonomy=taxonomy_text, program=program_text,
                                          points=render_points(points))
     d = _ask(call, model, prompt, lambda x: _modes_ok(x, len(points)))
     if d is None:
@@ -273,12 +274,12 @@ def _decision_ok(d):
 
 
 def decide(call, model, trace_text, a_points, b_points, taxonomy_text, valid_ids,
-           turn_agents=None):
+           turn_agents=None, program_text=""):
     """The decider. Validates each reported point against the full trace, merges
     on the evidence, settles the span, and assigns the modes. Returns
     {"points": [...], "rejected": [...]} or None."""
     prompt = prompts.DECIDE.format(
-        layout=prompts.TURN_LAYOUT, point_rule=prompts.POINT_RULE,
+        layout=prompts.TURN_LAYOUT, point_rule=prompts.POINT_RULE, program=program_text,
         taxonomy=taxonomy_text, trace=trace_text,
         a_points=render_points(a_points), b_points=render_points(b_points))
     d = _ask(call, model, prompt, _decision_ok)

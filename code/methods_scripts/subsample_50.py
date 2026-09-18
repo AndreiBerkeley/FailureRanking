@@ -16,13 +16,13 @@ def opt(name, default=None):
     return default
 BENCH = opt("--bench", "livecodebench"); POOL = opt("--pool"); DRAWS = int(opt("--draws", "10")); K = int(opt("--k", "50"))
 RUNS = args                                  # one or more judge run dirs, pooled
-if BENCH == "hover-pool3":
+if BENCH == "hover-pool3" and all(Path(r, "mapping.jsonl").exists() for r in RUNS):
     tasks = sorted({json.loads(l)["task_id"] for r in RUNS for l in open(f"{r}/mapping.jsonl")})
-else:
+else:                                        # pointjudge runs and their derivations: traces/*.json
     tasks = sorted({json.load(open(f))["task_id"] for r in RUNS for f in glob.glob(f"{r}/traces/*.json")})
 print(f"{' + '.join(RUNS)}: {len(tasks)} judged tasks; {DRAWS} uniform draws of {K}\n")
 STEPS = True                                  # hover-pool3 steps come from the panel judge_records
-METHODS = ["1 gold", "2 amplitude", "3 incidence", "6 combinations"] + (["8 step-amp", "10 containment"] if STEPS else [])
+METHODS = ["1 gold", "2 amplitude", "3 incidence", "6 combinations"] + (["8 step-amp", "10 containment", "13 last-turn incidence"] if STEPS else [])
 rows = []
 with tempfile.TemporaryDirectory() as td:
     for seed in range(1, DRAWS + 1):
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory() as td:
             if mm is None: sys.exit(f"draw {seed}: no row for {m}\n" + out[-600:])
             b, top = mm.groups(); got[m] = (b, b, b, top)   # the gold row's value is gold-50 vs gold-gen; nan = every pair tied
         rows.append((seed, got))
-short = {"2 amplitude": "amplitude", "3 incidence": "incidence", "6 combinations": "combinations", "8 step-amp": "step-amp", "10 containment": "containment"}
+short = {"2 amplitude": "amplitude", "3 incidence": "incidence", "6 combinations": "combinations", "8 step-amp": "step-amp", "10 containment": "containment", "13 last-turn incidence": "last-turn"}
 cols = METHODS[1:]
 print("| draw | gold-50 | " + " | ".join(short[m] for m in cols) + " | top-1 " + " / ".join(short[m][:4] for m in cols) + " |")
 print("|---|---:|" + "---:|" * len(cols) + "---|")
@@ -51,4 +51,4 @@ def mean(xs):
     return sum(xs) / len(xs) if xs else float("nan")
 print(f"| **mean** | {mean([b for a,b in acc['1 gold']]):+.3f} | " + " | ".join(f"{mean([b for a,b in acc[m]]):+.3f}" for m in cols) + " | |")
 beats = {m: sum(1 for (a, b), (_, c3) in zip(acc[m], acc["1 gold"]) if b == b and c3 == c3 and b > c3) for m in cols}
-print(f"\ndraws where the method beats gold-50 against gold-gen: " + ", ".join(f"{m[2:]} {v}/{DRAWS}" for m, v in beats.items()))
+print(f"\ndraws where the method beats gold-50 against gold-gen: " + ", ".join(f"{short[m]} {v}/{DRAWS}" for m, v in beats.items()))

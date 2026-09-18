@@ -149,6 +149,47 @@ The tension to note: dropping contained firings discards evidence, against the r
 formula should weigh everything. It is a conditional drop decided by the trace, not a
 selection of steps decided in advance, but it is the only entry here that has it.
 
+## 7b. The recovery pass — which points still stand in the output
+
+A second reader (`code/new_pipeline/recovery`), separate from the judge and gold-free, takes
+each trace with the judge's points (codes hidden) and answers four anchored questions per
+point with verbatim quotes: the artifact the point produced; which later turns consumed it;
+what later turns did about it (a *correction* replaced it, a *containment* received it and
+demonstrably did not use it); and whether the final output carries its effect or lacks what
+the failed step was supposed to obtain. Every quote is checked against the trace; missing
+evidence never becomes recovery. The verdict is computed by a fixed rule:
+
+| verdict | meaning |
+|---|---|
+| unrecovered | the effect is in the output, or what the point cost is absent from it, or the reader could not show otherwise |
+| corrected | a later turn replaced the artifact and the output does not carry it |
+| contained | no later turn consumed it and the output does not carry it |
+| made_irrelevant | consumed, not corrected, yet the output does not carry it — or what it cost was supplied by another path |
+
+Both the judge's passes and this reader also see the program's **success rule** from
+`hover/program/structure.json` — how the output is scored (for hover: retrieved document
+titles, three per task; a mention inside another document does not count). It is the task's
+scoring definition, never a task's gold. Before it was in view, a hand audit found 10 of 100
+recovered verdicts wrong, all of one kind ("the information is in a passage" while the page
+was missing); after, 2 of 60 (`hover/GEPA_candidates/results/explored-formulas.md` §8).
+
+An **unrecovered-only mapping** is the judge's mapping with every recovered point removed
+(`recovery.filter`). Every formula above can be evaluated on it unchanged; "incidence on
+unrecovered points" means formula 4 on that mapping. Recovered points are dropped entirely
+there, which is the strongest form of the rule; graded alternatives are §10.
+
+## 7c. Last-turn incidence — was a failure still open when the program stopped
+
+I_last(c) = (1/T) · Σ_{t∈𝒯} 1[ codes(c,t,s_last(t)) ≠ ∅ ]     lower is better
+
+where s_last(t) is the terminal step of the trace on *t* — on hover, the third query turn —
+and codes(c,t,s_last(t)) the codes that fired there. It is containment (§7) as a per-task
+flag: a firing at the terminal step is never contained because nothing ran after it, and on
+a fixed-budget program the question "was anything still wrong when the budget ran out" is
+one bit per task. On an unrecovered-only mapping it reads "did the last hop leave an
+unrecovered point". Added 2026-09-18; on the GEPA set it is the only formula at or above
+gold-50 against every resampled generalization set (RESULTS.md).
+
 ## 8. From scores to rankings, and the measure
 
 **Ranking.** Candidates are sorted by the score: descending for gold, ascending for the
@@ -203,9 +244,19 @@ concordant / discordant pairs over the 36 candidate pairs, dropping any pair tie
 ranking. If amplitude orders 34 of 35 untied pairs the way gold-gen does,
 τ = (34 − 1)/35 = +0.943.
 
-## 10. What was run but is not reported here
+## 10. What was run but is not reported in the headline tables
 
-`code/BASELINES.md` lists eleven parameter-free entries; `code/methods_scripts/run_baselines.py`
-computes all of them. Breadth, worst-mode and distinct-patterns are dominated by or redundant
-with the ones above; recovery reads gold and is therefore not a trace-only method. Their rows
-remain in the raw tables in each `results/` directory.
+`code/BASELINES.md` lists the parameter-free entries; `code/methods_scripts/run_baselines.py`
+computes all of them, including breadth, worst-mode and distinct-patterns (dominated by or
+redundant with the ones above) and "recovery" (method 9, which reads gold and is therefore
+not a trace-only method). Their rows remain in the raw tables in each `results/` directory.
+
+Explored on the GEPA set with the recovery pass and written up with every number in
+`hover/GEPA_candidates/results/explored-formulas.md`: recovery-weighted (code, step) units
+w = 1 − r^γ (`code/methods_scripts/recovery_weighted.py`; best +0.18 there, +0.89 on the
+models set b); per-task units other than the plain flag; failure-mode-centric aggregations
+(equal weight, Copeland, Borda, non-recovery weights); a Shapley blame decomposition of
+incidence over modes; profile-risk models (a candidate's mode frequencies × a mode's
+consequence, pooled or candidate-specific, in seven context bases); and a split-half
+transfer test of the profile. None was adopted as a formula: per-task flags +0.83, the
+best of the rest +0.61, and the write-up gives the mechanism behind each shortfall.

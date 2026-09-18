@@ -27,6 +27,33 @@ found the missing mechanism but stopped there. Four changes, one per defect:
 
 Everything else is v2, byte for byte.
 
+**Four rules added on 2026-09-16 (v3.1), in the code rather than the prompts, after
+the first three taxonomies each needed hand-written codes for what their own gap test
+had seen:**
+
+5. **Proposals consume every finding no code fits well** — uncovered, stretched, and
+   *loose* (fitness under 80), not only the first two. On livecodebench the gap test's
+   seven loose findings were the unsound-strategy and implementation-defect families
+   that were later written by hand; treating a loose fit as covered is how they were
+   missed. Minimum group size 3.
+6. **Surviving proposals are admitted.** A proposal that passes stage 6 becomes a code
+   with the next stable id, its gap-test findings as grounding, and provenance
+   `operation: propose`. The taxonomy that ships covers what its own gap test found.
+   `taxonomy_before_proposals.json` is kept beside it.
+7. **Blind-reader corroboration is a retire rule, not a flag.** A code the open
+   reader independently finds on fewer than 30% of the traces the panel assigned it
+   to (once it has fired 3 times) is retired — in the refinement round on that round's
+   judge reading, and again at the final gate on the gate's. On hover the two codes
+   under 20% carried 48% of all points and predicted nothing; the rule removes them
+   without reading outcomes.
+8. **Every candidate's failures reach the generation corpus.** Failing traces are
+   drawn candidate-balanced within a task, and each candidate contributes at least 3
+   failing traces, topped up from the generation tasks (the corpus may grow by the
+   top-up). A candidate whose failures the corpus never shows cannot get a code for
+   them; the terse hover candidate's failures went unmarked for this reason.
+
+   Granularity examines every code with at least 4 gap-test findings (was 6).
+
 **This document is the prompt source.** `generation/prompts.py` reads each
 stage's fenced block from this file at import, so a prompt edited here is the
 prompt sent, and a heading or placeholder that goes missing stops the run at
@@ -106,7 +133,7 @@ instructions.
 | 6 | rule validation | LLM | every code against the rules, derived verdicts |
 | 7 | refinement round | judge + LLM | the draft rewritten against a second corpus |
 | 8 | interannotation gate | judge | kappa, coverage, and per-code open-reader corroboration on a third corpus |
-| 9 | proposal | LLM | after the gap test: codes proposed for what nothing fits, validated by stage 6 |
+| 9 | proposal | LLM | after the gap test: codes proposed for every finding no code fits well, validated by stage 6, admitted |
 
 Stages 1–6 produce the draft. Stage 7 runs once by default and can repeat.
 Stage 8 measures the draft once (the baseline) and the result of every round.
@@ -1462,9 +1489,10 @@ built from. Their prompts live in the code, not here.
 
 ## After the gap test — proposing codes for what nothing fits
 
-The prompt receives the uncovered and stretched findings from the gap test, the
-taxonomy they did not fit, and the contracts. It groups, proposes, and stops; the
-code sends the proposals through stage 6.
+The prompt receives every gap-test finding no code fits well — uncovered, stretched,
+and loose (fitness under 80) — the taxonomy they did not fit, and the contracts. It
+groups, proposes, and stops; the code sends the proposals through stage 6 and admits
+the survivors into the taxonomy with the next stable ids (`apply_proposals`).
 
 ```
 ## THE FINDINGS NO CODE FITTED

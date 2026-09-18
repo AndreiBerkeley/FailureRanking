@@ -61,6 +61,23 @@ gets an empty `points` list and a one-line `checked` saying what you looked at
 and against what. A turn that appears with neither points nor a `checked` line
 has not been read, and the whole answer is rejected."""
 
+# --------------------------------------------------------------- program rule
+PROGRAM_RULE = """## HOW THIS PROGRAM'S OUTPUT IS SCORED
+
+{rule}
+
+Judge each step's work against this. A step has obtained something only when what
+the output is scored on came back; material that is merely about it does not count."""
+
+
+def program_block(structure) -> str:
+    """The program's success rule as one prompt section, from `success_rule` in the
+    benchmark's structure.json; empty when the structure declares none. It is a fact
+    about how the program is scored, not an outcome, so every pass may see it: without
+    it a reader judges 'what was needed' by its own reading of the task."""
+    rule = ((structure or {}).get("success_rule") or "").strip()
+    return PROGRAM_RULE.format(rule=rule) if rule else ""
+
 # ------------------------------------------------------------- reader A, pass 1
 READER_A_POINTS = """You are reading one execution trace of a candidate program, step by step, to
 find where it went wrong.
@@ -70,6 +87,8 @@ find where it went wrong.
 {point_rule}
 
 {every_turn}
+
+{program}
 
 ## A VOCABULARY OF KNOWN FAILURES
 
@@ -105,6 +124,8 @@ find where it went wrong.
 
 {every_turn}
 
+{program}
+
 You are given no vocabulary of failures on purpose. Describe what is wrong in
 your own words, from the trace in front of you. Do not try to sort findings into
 categories, and do not generalise: name this failure, at this step, with this
@@ -127,6 +148,8 @@ ASSIGN_MODES = """Below are failure points you identified in one execution trace
 of failure modes.
 
 For each point, name the mode or modes that describe it.
+
+{program}
 
 ## HOW TO DECIDE
 
@@ -180,6 +203,8 @@ Your job is to settle what the trace actually shows.
 {layout}
 
 {point_rule}
+
+{program}
 
 ## WHAT YOU DO, IN ORDER
 

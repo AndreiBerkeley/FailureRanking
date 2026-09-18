@@ -30,7 +30,7 @@ def main():
     ap.add_argument("--structure", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--model", default="gemini-3.6-flash")
-    ap.add_argument("--min-size", type=int, default=4)
+    ap.add_argument("--min-size", type=int, default=3)
     ap.add_argument("--thinking", choices=["MINIMAL", "LOW", "MEDIUM", "HIGH"], default="HIGH")
     ap.add_argument("--max-output", type=int, default=32768)
     ap.add_argument("--dry-run", action="store_true")
@@ -41,8 +41,14 @@ def main():
     t0 = time.time(); a.out.mkdir(parents=True, exist_ok=True)
     tax = json.load(open(a.taxonomy)); codes = tax["codes"] if isinstance(tax, dict) else tax
     gaps = json.load(open(a.gaps))
-    recs = [r for r in gaps.get("records") or [] if r.get("verdict") in ("uncovered", "stretch")]
-    log(f"propose: {len(recs)} uncovered/stretched findings from {a.gaps}; {len(codes)} codes")
+    # every finding no code fits WELL: uncovered, stretched, and loose (fitness under
+    # FIT_GOOD). On livecodebench the seven 'loose' findings of the gap test were the
+    # unsound-strategy and implementation-defect families that had to be written by hand
+    # afterwards; treating a loose fit as covered is how they were missed.
+    from new_pipeline.judge.judge import FIT_GOOD
+    recs = [r for r in gaps.get("records") or [] if r.get("verdict") in ("uncovered", "stretch", "loose")
+            or (r.get("best_fitness") is not None and r["best_fitness"] < FIT_GOOD)]
+    log(f"propose: {len(recs)} findings under FIT_GOOD={FIT_GOOD} (uncovered / stretched / loose) from {a.gaps}; {len(codes)} codes")
 
     lines = []
     for i, r in enumerate(recs):

@@ -36,6 +36,7 @@ GATE_MIN_TASKS = 15      # x4 candidates = 60 traces. Measured on hover's map-5 
 REFINE_TASK_MULTIPLE = 1
 REFINE_PER_TASK = 4      # every stage draws 4 candidate solutions per task
 GEN_PER_TASK = 4      # candidates sampled per generation task
+MIN_FAIL_PER_CANDIDATE = 3   # every candidate contributes at least this many failing traces to generation
 
 
 @dataclass
@@ -152,13 +153,36 @@ def plan(pool: Path, n_generation: int, seed: int = 0,
 
     s = Split()
     # generation: GEN_PER_TASK per task, failures first so the corpus carries
-    # the failure density the vocabulary is induced from
+    # the failure density the vocabulary is induced from. Within a task the
+    # failing traces are taken candidate-balanced -- the candidate with the fewest
+    # failing traces so far first -- so a candidate that fails everywhere cannot
+    # crowd out one that fails rarely, and vice versa (list order used to decide).
+    cand_of = {}
+    def cand(pth):
+        if pth not in cand_of:
+            md = json.loads(pth.read_text()).get("metadata") or {}
+            cand_of[pth] = md.get("candidate_id") or md.get("candidate_index")
+        return cand_of[pth]
+    fail_count = defaultdict(int)
     for t in gen_t:
         b = by_task[t]
-        picks = list(b["fail"])[:GEN_PER_TASK]
+        fails = sorted(b["fail"], key=lambda pth: (fail_count[cand(pth)], str(pth)))
+        picks = fails[:GEN_PER_TASK]
+        for pth in picks: fail_count[cand(pth)] += 1
         picks += list(b["pass"])[:max(0, GEN_PER_TASK - len(picks))]
         s.generation.extend(picks)
     s.generation = s.generation[:n_generation]
+    # per-candidate floor: a candidate whose failures the corpus never shows cannot get a
+    # code for them (seen on hover pool-3: the bare-docstring candidate breaks little form,
+    # its failures went unmarked). Top up from failing traces on the generation tasks, then
+    # from spare tasks; the corpus may grow past n_generation by the top-up.
+    topped = {}
+    for c in sorted(set(cand(pth) for t in gen_t for pth in by_task[t]["fail"]), key=str):
+        need_c = MIN_FAIL_PER_CANDIDATE - fail_count[c]
+        if need_c <= 0: continue
+        have = set(s.generation)
+        extra = [pth for t in gen_t + spare for pth in by_task[t]["fail"] if pth not in have and cand(pth) == c][:need_c]
+        s.generation.extend(extra); fail_count[c] += len(extra); topped[str(c)] = len(extra)
 
     # refinement, one slice per round: failures first, then passes, REFINE_PER_TASK per task
     for r, tasks_r in ref_by_round.items():
@@ -198,7 +222,9 @@ def plan(pool: Path, n_generation: int, seed: int = 0,
         "pool_tasks": len(tasks), "pool_traces": sum(
             len(v["pass"]) + len(v["fail"]) for v in by_task.values()),
         "generation": {"tasks": len(gen_t), "traces": len(s.generation),
-                       "failing": failing(s.generation)},
+                       "failing": failing(s.generation),
+                       "failing_per_candidate": {str(k): v for k, v in sorted(fail_count.items(), key=lambda x: str(x[0]))},
+                       "topped_up_to_min_fail_per_candidate": topped, "min_fail_per_candidate": MIN_FAIL_PER_CANDIDATE},
         "refinement": {"tasks": len(ref_t), "traces": len(s.refinement),
                        "failing": failing(s.refinement)},
         "refinement_by_round": {str(r): {"tasks": len(ref_by_round[r]), "traces": len(v),

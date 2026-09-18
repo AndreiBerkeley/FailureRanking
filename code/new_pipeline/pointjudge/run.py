@@ -75,11 +75,13 @@ def judge_one(path: Path, tax_text, valid_ids, calls, cfg) -> dict:
     # three call-latencies (read, assign, decide) rather than five. The readers stay independent
     # -- they never see each other's work -- so this changes when calls are issued, nothing else.
     def chain(with_tax):
-        got = judge.read_points(rcall, rmodel, trace_text, expected, tax_text if with_tax else None)
+        got = judge.read_points(rcall, rmodel, trace_text, expected, tax_text if with_tax else None,
+                                program_text=cfg.get("program", ""))
         if got is None:
             return None, None, "failed to report points"
         points, checked = got
-        modes = judge.assign_modes(rcall, rmodel, points, tax_text, valid_ids)
+        modes = judge.assign_modes(rcall, rmodel, points, tax_text, valid_ids,
+                                   program_text=cfg.get("program", ""))
         if modes is None:
             return None, None, "failed to assign modes"
         return (points, checked), modes, None
@@ -144,7 +146,8 @@ def judge_one(path: Path, tax_text, valid_ids, calls, cfg) -> dict:
     decision = judge.decide(dcall, dmodel, trace_text,
                             judge.with_modes(a_points, a_modes),
                             judge.with_modes(b_points, b_modes),
-                            tax_text, valid_ids, turn_agents)
+                            tax_text, valid_ids, turn_agents,
+                            program_text=cfg.get("program", ""))
     if decision is None:
         res["error"] = "decider failed"
         return res
@@ -241,10 +244,14 @@ def main():
     if not files:
         raise SystemExit(f"no traces in {a.traces}")
 
-    agents = None
+    agents = None; program = ""
     if a.structure:
-        agents = list(json.loads(a.structure.read_text())["discovered_agents"]["agents"])
-    cfg = {"agents": agents, "readers": a.readers}
+        structure = json.loads(a.structure.read_text())
+        agents = list(structure["discovered_agents"]["agents"])
+        # the program's success rule, in view for every pass (empty when the structure has none)
+        program = prompts.program_block(structure)
+    cfg = {"agents": agents, "readers": a.readers, "program": program}
+    log(f"  program success rule in view: {'yes' if program else 'no (structure declares none)'}")
 
     if a.dry_run:
         clean, removed = goldfree.strip(json.loads(files[0].read_text()))
@@ -259,16 +266,16 @@ def main():
         shown = [
             ("READER A, PASS 1 (with the taxonomy)", prompts.READER_A_POINTS.format(
                 layout=prompts.TURN_LAYOUT, point_rule=prompts.POINT_RULE,
-                every_turn=prompts.EVERY_TURN, taxonomy=tax_text, trace=tt)),
+                every_turn=prompts.EVERY_TURN, program=program, taxonomy=tax_text, trace=tt)),
             ("READER B, PASS 1 (no taxonomy)", prompts.READER_B_POINTS.format(
                 layout=prompts.TURN_LAYOUT, point_rule=prompts.POINT_RULE,
-                every_turn=prompts.EVERY_TURN, trace=tt)),
+                every_turn=prompts.EVERY_TURN, program=program, trace=tt)),
             ("PASS 2, EITHER READER", prompts.ASSIGN_MODES.format(
-                taxonomy=tax_text,
+                taxonomy=tax_text, program=program,
                 points="0. turn 2 · agent create_query_hop2\n"
                        "   problem : <one sentence>\n   evidence: <the span>")),
             ("THE DECIDER", prompts.DECIDE.format(
-                layout=prompts.TURN_LAYOUT, point_rule=prompts.POINT_RULE,
+                layout=prompts.TURN_LAYOUT, point_rule=prompts.POINT_RULE, program=program,
                 taxonomy=tax_text, trace=tt,
                 a_points="<reader A's numbered points, with its modes>",
                 b_points="<reader B's numbered points, with its modes>")),
@@ -387,6 +394,7 @@ def main():
                   if a.readers == "a" else
                   "pointjudge: two readers, two passes each, one decider"),
         "settings": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(a).items()},
+        "success_rule_in_view": bool(cfg.get("program")),
         "counts": {"total": len(results), "judged": len(judged), "failed": len(failed)},
         "failed_by_candidate": {str(k): v for k, v in
                                 Counter(r.get("candidate_index") for r in failed).items()},

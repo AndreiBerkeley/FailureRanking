@@ -13,7 +13,7 @@ Layout produced (see the branch README for the reader's view):
     livecodebench/program, livecodebench/tasks
     livecodebench/models/{candidates,splits,taxonomies,traces,taxonomy_generation,judge_traces/{judging-50-1,judging-150}}
     hover/program, hover/tasks
-    hover/GEPA_candidates/{candidates,taxonomy,splits,outcomes,judge_traces/{sample-50,judging-50}}
+    hover/GEPA_candidates/{candidates,taxonomy,taxonomy_generation,splits,outcomes,judge_traces/{sample-50,judging-50}}
     hover/models/{candidates,taxonomies,splits,outcomes,taxonomy_generation,judge_traces/{judged-50-a,judged-50-b}}
     code/
 
@@ -150,7 +150,10 @@ ids = set(json.loads((REPO / "data/hover/candidates/sets/pool-3.json").read_text
 rows = [l for l in open(REPO / "data/hover/candidates/registry.jsonl") if json.loads(l)["candidate_id"] in ids]
 (OUT / G / "candidates").mkdir(parents=True, exist_ok=True)
 (OUT / G / "candidates/registry.jsonl").write_text("".join(rows))
-copy_tree("data/hover/taxonomies/tax-10", f"{G}/taxonomy/tax-10")
+for t in ("tax-10", "tax-13", "tax-15-pool3"):
+    copy_tree(f"data/hover/taxonomies/{t}", f"{G}/taxonomy/{t}")
+copy_tree("data/hover/taxonomies/runs/new_pipeline-pool3-v3-1", f"{G}/taxonomy_generation/run-v3-1",
+          exclude=("corpus_*", "fresh_corpus"))
 for s in ("eval-1", "judging-sample-2"):
     copy_tree(f"data/hover/splits/{s}", f"{G}/splits/{s}")
 for c in ("cap-2", "cap-3", "cap-5"):
@@ -158,6 +161,12 @@ for c in ("cap-2", "cap-3", "cap-5"):
     copy_file(f"data/hover/outcomes/{c}.provenance.json", f"{G}/outcomes/{c}.provenance.json")
 export_hover_capture("cap-2", f"{G}/judge_traces/sample-50/traces")
 copy_tree("data/hover/mappings/map-5", f"{G}/judge_traces/sample-50/judge")
+# the 2026-09-18 pointjudge (tax-13, Luna readers / Sol decider, success rule in view) with the
+# tax-15-pool3 assignments applied, its recovery pass, and the unrecovered-only derivation
+for j in ("pointjudge-1-tax15", "recovery-2-tax15", "pointjudge-1-tax15-unrecovered"):
+    copy_tree(f"runs/new_pipeline/hover/{j}", f"{G}/judge_traces/sample-50/{j}")
+copy_file("runs/new_pipeline/hover/pointjudge-1.log", f"{G}/judge_traces/sample-50/pointjudge-1-tax15/pointjudge-1.log")
+copy_file("runs/new_pipeline/hover/recovery-2.log", f"{G}/judge_traces/sample-50/recovery-2-tax15/recovery-2.log")
 map6_ids = {json.loads(l)["trace_id"] for l in open(REPO / "data/hover/mappings/map-6/mapping.jsonl")}
 export_hover_capture("cap-5", f"{G}/judge_traces/judging-50/traces", trace_ids=map6_ids)
 copy_tree("data/hover/mappings/map-6", f"{G}/judge_traces/judging-50/judge")
@@ -182,6 +191,9 @@ for j in ("pointjudge-1", "pointjudge-1-sp15"):
 copy_file("runs/new_pipeline/hover-models/pointjudge-1.log", f"{M}/judge_traces/judged-50-a/judge/pointjudge-1.log")
 copy_tree("runs/new_pipeline/hover-models/pointjudge-3", f"{M}/judge_traces/judged-50-b/judge/pointjudge-3")
 copy_file("runs/new_pipeline/hover-models/pointjudge-3.log", f"{M}/judge_traces/judged-50-b/judge/pointjudge-3.log")
+for j in ("recovery-1", "pointjudge-3-unrecovered"):        # the recovery pass on set b (2026-09-16) and its unrecovered-only mapping
+    copy_tree(f"runs/new_pipeline/hover-models/{j}", f"{M}/judge_traces/judged-50-b/judge/{j}")
+copy_file("runs/new_pipeline/hover-models/recovery-1.log", f"{M}/judge_traces/judged-50-b/judge/recovery-1.log")
 
 print("code")
 copy_tree("new_pipeline", "code/new_pipeline")
@@ -190,10 +202,11 @@ copy_file("GENERATION_v3.md", "code/GENERATION_v3.md")
 copy_file("methods/BASELINES.md", "code/BASELINES.md")
 copy_tree("methods/scripts", "code/methods_scripts")
 copy_tree("data/livecodebench/scripts", "code/livecodebench_scripts")
-for f in ("capture_models.py", "hoverlib.py", "append_sp15.py", "draw_judged_50_b.py"):
+for f in ("capture_models.py", "hoverlib.py", "append_sp15.py", "draw_judged_50_b.py", "build_tax15_pool3.py", "assign_uncoded_pool3.py"):
     copy_file(f"data/hover/scripts/{f}", f"code/hover_scripts/{f}")
 copy_file("judges/proposed/two-reader-decider.md", "code/pointjudge_design.md")
 copy_file("data/scripts/build_model_ranking_branch.py", "code/build_model_ranking_branch.py")
+copy_file("data/scripts/archive_new_pipeline_run.py", "code/archive_new_pipeline_run.py")
 
 if skipped:
     print("\nskipped (source not present yet):")

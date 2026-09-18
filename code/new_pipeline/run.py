@@ -70,6 +70,9 @@ def main():
     ap.add_argument("--work-ledger", action="store_true",
                     help="stage 2's work pass returns the per-step ledger rather than a count and a one-line account; "
                          "the schema is part of the cache key, so switching it does not reuse batches read the other way")
+    ap.add_argument("--max-output", type=int, default=65536,
+                    help="output-token cap for the generation stages; on OpenRouter the cap covers reasoning tokens too, and stage 3's "
+                         "answer (every observation placed under a mode, quote included) was cut at 32768 on a 160-trace corpus")
     ap.add_argument("--gap-tasks", type=int, default=40); ap.add_argument("--gap-per-task", type=int, default=1, help="traces per gap task, failing first"); ap.add_argument("--dry-run", action="store_true", help="split the corpora and dry-run generation; print every later command")
     a = ap.parse_args(); out = a.out; out.mkdir(parents=True, exist_ok=True); t0 = time.time()
     state_f = out / "state.json"; state = json.loads(state_f.read_text()) if state_f.exists() else {}
@@ -104,7 +107,7 @@ def main():
     gen = out / "generation"; gen.mkdir(exist_ok=True)
     ids_f = gen / "corpus_trace_ids.txt"; ids_f.write_text("\n".join(sorted(p.stem for p in dirs["generation"].glob("*.json"))) + "\n")
     draft = gen / "taxonomy_v2.json"
-    cmd = ([PY_, "-m", "new_pipeline.generation.run", "--benchmark", a.benchmark, "--corpus", dirs["generation"], "--structure", a.structure, "--out", gen, "--model", a.model, "--trace-ids", ids_f]
+    cmd = ([PY_, "-m", "new_pipeline.generation.run", "--benchmark", a.benchmark, "--corpus", dirs["generation"], "--structure", a.structure, "--out", gen, "--model", a.model, "--trace-ids", ids_f, "--max-output", str(a.max_output)]
            + (["--work-ledger"] if a.work_ledger else []))
     if not draft.exists():
         log("step 1: generation"); sh(cmd + (["--dry-run"] if a.dry_run else []), False)
@@ -146,6 +149,22 @@ def main():
         log(f"  round {r}: gate not passed" + ("; next round" if r < a.rounds else "; no rounds left, shipping with the gate numbers"))
     state["refined"] = str(current); save()
 
+    # v3 rule, applied a second time on the gate's own reading: a code the open reader
+    # corroborates under the threshold at the last gate is retired before the follow-ups.
+    v3 = os.environ.get("FR_GENERATION_DOC", "GENERATION_v2.md") != "GENERATION_v2.md"
+    last_gate = out / f"round_{a.rounds}" / "gate" / "gate.json"
+    if v3 and last_gate.exists():
+        gj0 = json.loads(last_gate.read_text()); weak = gj0.get("weakly_corroborated") or []
+        if weak:
+            tx = json.loads(Path(current).read_text())
+            corr = gj0.get("corroboration_per_code") or {}
+            tx["codes"] = [c for c in tx["codes"] if c["id"] not in weak]
+            tx.setdefault("provenance", []).extend({"from": w, "to": None, "operation": "retire",
+                "why": f"weakly corroborated at the final gate: open reader {corr.get(w, {}).get('corroborated')}/{corr.get(w, {}).get('fired')} (rule: share < 0.30)"} for w in weak)
+            pruned = out / "taxonomy_pruned.json"; pruned.write_text(json.dumps(tx, indent=2))
+            log(f"  corroboration rule at the final gate: retired {weak} -> {pruned}")
+            current = pruned; state["pruned"] = {"retired": weak, "taxonomy": str(pruned)}; save()
+
     # 4. follow-ups
     final = out / "taxonomy_final.json"
     if a.skip_followups:
@@ -156,20 +175,24 @@ def main():
         sh([PY_, "-m", "new_pipeline.generation.gaps", "--benchmark", a.benchmark, "--taxonomy", current, "--corpus", fresh, "--structure", a.structure, "--exclude", gen, "--out", gaps, "--model", fm, "--tasks", str(a.gap_tasks), "--per-task", str(a.gap_per_task)], False)
     gran = out / "granularity"
     if not (gran / "granularity.json").exists():
-        sh([PY_, "-m", "new_pipeline.generation.granularity", "--taxonomy", current, "--records", gaps / "gaps.json", "--out", gran, "--model", fm], False)
-    if not final.exists():
-        sh([PY_, "-m", "new_pipeline.generation.apply_splits", "--taxonomy", current, "--granularity", gran / "granularity.json", "--out", final], False)
-    # v3: propose codes for what the gap test could not place. Candidates only; the
-    # final taxonomy is not amended here -- admitting one is a decision.
+        sh([PY_, "-m", "new_pipeline.generation.granularity", "--taxonomy", current, "--records", gaps / "gaps.json", "--out", gran, "--model", fm, "--min-findings", "4"], False)
+    split_out = out / "taxonomy_before_proposals.json" if v3 else final
+    if not split_out.exists():
+        sh([PY_, "-m", "new_pipeline.generation.apply_splits", "--taxonomy", current, "--granularity", gran / "granularity.json", "--out", split_out], False)
+    # v3: propose codes for every gap-test finding no code fits well (uncovered, stretched,
+    # loose), validate them with stage 6, and ADMIT the survivors: the taxonomy that ships
+    # covers what its own gap test found, with provenance saying so. No hand codes.
     prop = out / "proposals"
-    if os.environ.get("FR_GENERATION_DOC", "GENERATION_v2.md") != "GENERATION_v2.md" and not (prop / "proposals.json").exists():
-        sh([PY_, "-m", "new_pipeline.generation.propose", "--taxonomy", final, "--gaps", gaps / "gaps.json", "--corpus", fresh, "--structure", a.structure, "--out", prop, "--model", fm], False)
+    if v3 and not (prop / "proposals.json").exists():
+        sh([PY_, "-m", "new_pipeline.generation.propose", "--taxonomy", split_out, "--gaps", gaps / "gaps.json", "--corpus", fresh, "--structure", a.structure, "--out", prop, "--model", fm], False)
+    if v3 and not final.exists():
+        sh([PY_, "-m", "new_pipeline.generation.apply_proposals", "--taxonomy", split_out, "--proposals", prop / "proposals.json", "--out", final], False)
     gj = json.loads((gaps / "gaps.json").read_text()); grj = json.loads((gran / "granularity.json").read_text())
     state["followups"] = {"gaps": {k: gj.get(k) for k in ("fresh_traces", "findings", "verdicts", "fitness", "codes_never_matched_well")}, "granularity": {k: grj.get(k) for k in ("examined", "left_alone", "mode")}}
     if (prop / "proposals.json").exists():
         pj = json.loads((prop / "proposals.json").read_text())
         state["followups"]["proposals"] = {"proposed": len(pj.get("proposals") or []), "surviving_stage6": len(pj.get("surviving") or []), "too_few": len(pj.get("too_few") or [])}
-        log(f"  proposals: {state['followups']['proposals']} -> {prop}/proposals.json (candidates; not applied)")
+        log(f"  proposals: {state['followups']['proposals']} -> {prop}/proposals.json (survivors admitted into {final.name})")
     state["prompt_document"] = os.environ.get("FR_GENERATION_DOC", "GENERATION_v2.md")
     state["final"] = str(final); state["status"] = "done"; state["minutes"] = round((time.time() - t0) / 60, 1); save()
     log(f"done -> {final}  ({state['minutes']} min)")
