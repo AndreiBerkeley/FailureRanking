@@ -30,8 +30,9 @@ runs per task (repeat 0), never read by any model.
 | `*_recovery.md` | what the recovery reader did with the judge's points: verdict counts, per candidate, per failure mode, points per trace before and after |
 | `formulas.md` | the formulas (gold, the nine baselines, the three recovery-dependent ones), the two inputs (all points / unrecovered only), and the measure (tau-b with ties dropped, resolved pairs, top-1, top-3) |
 | `results.md` | per experiment with recovery: Table 1 on every point, Table 2 on unrecovered points plus the recovery-dependent formulas; each formula in both conventions for points no code fit |
+| `compared_scoring.md` | does the score read as a solve rate: 1 − unrecovered incidence and 1 − profile risk per candidate beside the tasks actually solved (judged and generalization), and the average absolute distance, with gold-judged vs gold-gen as the reference |
 | `results_ablation.md` | how the numbers move with the tasks: judged-side sweep (k = 10…150, 10 draws), generalization-side resampling (m = 100, 300, full), disjoint judged sets — GEPA·HoVer, Models·HoVer, LiveCodeBench |
-| `scripts/` | the generators: `trim_taxonomy.py`, `recovery_report.py`, `results_tables.py`, `sampling_tables.py`; every table above is their output over the recorded runs, no model call |
+| `scripts/` | the generators: `trim_taxonomy.py`, `recovery_report.py`, `results_tables.py`, `compared_scoring.py`, `sampling_tables.py`; every table above is their output over the recorded runs, no model call |
 
 Read `formulas.md` first, then `results.md`; `results_ablation.md` says how much to trust a
 given number; the recovery reports say what the unrecovered input actually contains.

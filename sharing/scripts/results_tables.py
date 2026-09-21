@@ -215,10 +215,7 @@ def render(exp):
     L += rows_both(ORDER, M, formulas(active, tasks, pts_coded, last, True), gj, gg, active)
     R, Rc = recovery_formulas(active, tasks, pts, GJ), recovery_formulas(active, tasks, pts_coded, GJ)
     L += rows_both(list(R), R, Rc, gj, gg, active)
-    L += ["", "Scores behind the tables (judged pass rate · gen pass rate · Table 2 incidence · last-turn incidence):", ""]
-    inc = M["incidence"]; lt = M["last-turn incidence"]
-    for c in sorted(active, key=lambda c: -gg[c]):
-        L.append(f"- {label.get(c, c)}: {gj[c]:.2f} · {gg[c]:.3f} · {inc[c]:.2f} · {lt[c]:.2f}")
+    L += ["", "Whether these two scores also read as solve rates (not only as an order) is in `compared_scoring.md`."]
     return "\n".join(L)
 
 
