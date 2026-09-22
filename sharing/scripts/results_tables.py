@@ -3,13 +3,13 @@
 
     python3 sharing/scripts/results_tables.py --out sharing/results.md
 
-Table 1: every point the judge kept (no recovery anywhere).  Table 2: the same formulas on the
-unrecovered points only, plus the three recovery-dependent formulas.  Columns: tau-b vs the
+Table 1: every instance the judge kept (no recovery anywhere).  Table 2: the same formulas on the
+unrecovered instances only, plus the three recovery-dependent formulas.  Columns: tau-b vs the
 judged tasks' own gold, top-1 vs it; tau-b vs the generalization set's gold, top-1 and top-3
 overlap vs it; resolved pairs (ties dropped on either side).  All offline; no model call.
 
-Points are read from the recovery run's records (the judge's points with a verdict each).
-A point the judge kept but no code fit is reported both ways: "every kept point" gives it its
+Failure instances are read from the recovery run's records (the judge's instances with a verdict each).
+An instance the judge kept but no code fit is reported both ways: "every kept point" gives it its
 own pseudo-code `(uncoded)`; "coded points only" drops it. The profile formulas (breadth, worst
 mode, patterns) read codes and so have one row.
 """
@@ -18,7 +18,9 @@ import argparse, glob, itertools, json, math
 from collections import defaultdict
 from pathlib import Path
 
-RECOVERED = ("corrected", "contained", "made_irrelevant")
+RECOVERED = ("corrected", "contained")
+COARSE = {"unrecovered": "unrecovered", "unassessable": "unrecovered", "corrected": "corrected", "contained": "contained", "made_irrelevant": "contained"}
+def coarse(v): return COARSE.get(v, "unrecovered")   # runs before 2026-09-22 recorded five verdicts; three since
 UNC = "(uncoded)"
 SUPPORT_MIN = 3   # a unit seen on fewer tasks than this takes the candidate's overall recovery share (as in methods/scripts/recovery_weighted.py)
 
@@ -75,7 +77,7 @@ def load(exp):
     pts = defaultdict(dict); last = defaultdict(dict)
     for r in recs:
         c = inv[r["candidate_index"]]; t = r["task_id"]
-        pts[c][t] = [(q["turn"], list(q.get("codes") or [UNC]), (q.get("recovery") in RECOVERED)) for q in r["points"]]
+        pts[c][t] = [(q["turn"], list(q.get("codes") or [UNC]), (coarse(q.get("recovery")) in RECOVERED)) for q in r["points"]]
         last[c][t] = max(x["turn"] for x in r["turns"])
     tasks = sorted(pts[active[0]])
     assert all(sorted(pts[c]) == tasks for c in active), "candidates judged on different tasks"
@@ -118,7 +120,7 @@ def formulas(active, tasks, pts, last, unrec_only):
 
 def recovery_formulas(active, tasks, pts, GJ):
     T = len(tasks); M = {}
-    # recovery-weighted amplitude: unit (turn, code); a unit on a task is recovered only if every firing of it was
+    # recovery-weighted amplitude: unit (turn, code); a unit on a task is recovered only if every instance carrying it was
     app_all, rec_all = {}, {}
     for c in active:
         app, rec = defaultdict(int), defaultdict(int)
@@ -187,8 +189,8 @@ def rows_both(names, M_all, M_coded, gj, gg, active):
     out = []
     for k in names:
         if k in PROFILE: out.append(row(k, M_all[k], gj, gg, active)); continue
-        out.append(row(f"{k} · every kept point", M_all[k], gj, gg, active))
-        out.append(row(f"{k} · coded points only", M_coded[k], gj, gg, active))
+        out.append(row(f"{k} · every kept instance", M_all[k], gj, gg, active))
+        out.append(row(f"{k} · coded instances only", M_coded[k], gj, gg, active))
     return out
 
 
@@ -203,13 +205,13 @@ def render(exp):
     L = [f"## {exp['title']}", "",
          f"- candidates: {exp['candidates']} ({len(active)}); judged tasks: **{len(tasks)}**" + (f" (dropped: {', '.join(exp['drop'])})" if exp["drop"] else "") + f"; traces: {len(active) * len(tasks)}",
          f"- taxonomy: `{exp['taxonomy']}`; judge: {exp['judge']}; recovery: {exp['rec']}",
-         f"- points: {npts} kept by the judge ({n_unc} of them fit no code), {nunrec} left unrecovered",
+         f"- failure instances: {npts} kept by the judge ({n_unc} of them fit no code), {nunrec} left unrecovered",
          f"- generalization set: {exp['gen_name']}, disjoint from the judged tasks; {pairs} candidate pairs in all",
-         "", f"### Table 1 — every point the judge kept", "", *HEAD]
+         "", f"### Table 1 — every failure instance the judge kept", "", *HEAD]
     gold_neg = {c: -gj[c] for c in active}
     L.append(row("gold on the judged tasks (reference)", gold_neg, gj, gg, active, bold=True))
     L += rows_both(ORDER, formulas(active, tasks, pts, last, False), formulas(active, tasks, pts_coded, last, False), gj, gg, active)
-    L += ["", f"### Table 2 — unrecovered points only, and the recovery-dependent formulas", "", *HEAD]
+    L += ["", f"### Table 2 — unrecovered instances only, and the recovery-dependent formulas", "", *HEAD]
     L.append(row("gold on the judged tasks (reference)", gold_neg, gj, gg, active, bold=True))
     M = formulas(active, tasks, pts, last, True)
     L += rows_both(ORDER, M, formulas(active, tasks, pts_coded, last, True), gj, gg, active)
@@ -223,12 +225,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, default=Path("sharing/results.md")); a = ap.parse_args()
     parts = ["# Results", "",
-             "One section per experiment, on the judged tasks that have recovery results. Table 1 reads every point the judge kept;",
-             "Table 2 reads only the points the recovery reader left standing, then adds the three recovery-dependent formulas.",
+             "One section per experiment, on the judged tasks that have recovery results. Table 1 reads every failure instance the judge kept;",
+             "Table 2 reads only the instances the recovery reader left standing, then adds the three recovery-dependent formulas.",
              "Formulas and the measure are defined in `formulas.md`. tau-b drops tied pairs; *resolved pairs* says how many of the",
              "candidate pairs the tau rests on. top-3 = how many of the formula's best three are among the generalization set's best three.",
-             "Lower is better for every formula except gold. A point the judge kept but no code fit is reported both ways: *every kept point*",
-             "counts it as a failure of its own; *coded points only* drops it. Generated by `scripts/results_tables.py` from the recorded judge and recovery runs.", ""]
+             "Lower is better for every formula except gold. An instance the judge kept but no code fit is reported both ways: *every kept instance*",
+             "counts it as a failure of its own; *coded instances only* drops it. Generated by `scripts/results_tables.py` from the recorded judge and recovery runs.", ""]
     for exp in EXPERIMENTS: parts += [render(exp), ""]
     a.out.write_text("\n".join(parts)); print(f"-> {a.out}")
 

@@ -2,45 +2,44 @@
 
 Recovery reader: `anthropic/claude-sonnet-5` (thinking HIGH), success rule in view: **no**.
 Judge mapping read: `runs/new_pipeline/hover-models/pointjudge-3`; taxonomy `sharing/Models_HoVer_taxonomy.json` (15 codes).
-Traces with a recovery verdict: **450** (9 candidates × 50 tasks). One call per trace: the reader sees the whole trace and the judge's points, and gives each point one verdict.
+Traces with a recovery verdict: **450** (9 candidates × 50 tasks). One call per trace: the reader sees the whole trace and the judge's failure instances, and gives each instance one verdict.
 - This recovery pass ran before the success rule was added to the reader's prompt; a hand audit of 100 of its recovered verdicts found ~15% wrong, all of one kind (a passage that mentions the required document was taken as the document).
 
-## Verdicts over every point
+## Verdicts over every failure instance
 
-| verdict | points | share | meaning |
+| verdict | instances | share | meaning |
 |---|---:|---:|---|
-| corrected | 126 | 8.1% | a later step fixed the wrong thing itself (the missing item was obtained, the wrong value replaced) |
-| contained | 899 | 57.6% | the wrong thing stayed wrong but never reached what the output is scored on |
-| made_irrelevant | 275 | 17.6% | a later step made the point moot (a different route obtained what was needed) |
-| unrecovered | 260 | 16.7% | the point's effect is still in the final output |
-| **recovered (corrected + contained + made_irrelevant)** | **1300** | **83.3%** | removed for the unrecovered-only scores |
-| **left standing (unrecovered + unassessable)** | **260** | **16.7%** | what the unrecovered-only scores read |
+| corrected | 126 | 8.1% | a later step replaced the wrong thing and the output does not carry it |
+| contained | 1174 | 75.3% | the output does not carry it and nothing corrected it: nothing downstream used it, or it was used and the output was fine regardless, or another path supplied what was needed |
+| unrecovered | 260 | 16.7% | the effect is in the final output, or what the instance cost is missing from it, or the trace cannot show otherwise |
+| **recovered (corrected + contained)** | **1300** | **83.3%** | removed for the unrecovered-only scores |
+| **left standing (unrecovered)** | **260** | **16.7%** | what the unrecovered-only scores read |
 
 ## Per trace (one candidate on one task), before and after
 
 | | before recovery | after (unrecovered only) |
 |---|---:|---:|
-| points per trace, mean | 3.47 | 0.58 |
+| failure instances per trace, mean | 3.47 | 0.58 |
 | distinct failure modes per trace, mean | 2.70 | 0.50 |
-| traces with at least one point | 441 of 450 (98%) | 133 of 450 (30%) |
+| traces with at least one instance | 441 of 450 (98%) | 133 of 450 (30%) |
 
 ## Per candidate
 
-| candidate | traces | points before | per trace | corrected | contained | made irrelevant | unrecovered | unrec. per trace | traces flagged before → after |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| anthropic/claude-haiku-4.5 (`cnd-b2ed881967c8`) | 50 | 115 | 2.3 | 10 | 76 | 14 | 15 | 0.30 | 45 → 7 |
-| z-ai/glm-5.3-flash (`cnd-338900243876`) | 50 | 199 | 4.0 | 19 | 105 | 58 | 17 | 0.34 | 50 → 10 |
-| xiaomi/mimo-v2.5 (`cnd-480646b48017`) | 50 | 190 | 3.8 | 16 | 111 | 45 | 18 | 0.36 | 49 → 10 |
-| minimax/minimax-m3 (`cnd-04e667721381`) | 50 | 177 | 3.5 | 9 | 117 | 32 | 19 | 0.38 | 50 → 15 |
-| openai/gpt-5.4-nano (`cnd-d26267ab539c`) | 50 | 148 | 3.0 | 6 | 97 | 16 | 29 | 0.58 | 50 → 15 |
-| google/gemini-3.1-flash-lite (`cnd-7a11b9e6099c`) | 50 | 155 | 3.1 | 15 | 87 | 21 | 32 | 0.64 | 47 → 16 |
-| bytedance-seed/seed-2.0-mini (`cnd-9ba9da54347f`) | 50 | 143 | 2.9 | 16 | 72 | 17 | 38 | 0.76 | 50 → 16 |
-| mistralai/mistral-small-2603 (`cnd-e237f31850ed`) | 50 | 174 | 3.5 | 10 | 91 | 31 | 42 | 0.84 | 50 → 19 |
-| deepseek/deepseek-v4-flash-0731 (`cnd-18c951be4aa6`) | 50 | 259 | 5.2 | 25 | 143 | 41 | 50 | 1.00 | 50 → 25 |
+| candidate | traces | instances before | per trace | corrected | contained | unrecovered | unrec. per trace | traces flagged before → after |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| anthropic/claude-haiku-4.5 (`cnd-b2ed881967c8`) | 50 | 115 | 2.3 | 10 | 90 | 15 | 0.30 | 45 → 7 |
+| z-ai/glm-5.3-flash (`cnd-338900243876`) | 50 | 199 | 4.0 | 19 | 163 | 17 | 0.34 | 50 → 10 |
+| xiaomi/mimo-v2.5 (`cnd-480646b48017`) | 50 | 190 | 3.8 | 16 | 156 | 18 | 0.36 | 49 → 10 |
+| minimax/minimax-m3 (`cnd-04e667721381`) | 50 | 177 | 3.5 | 9 | 149 | 19 | 0.38 | 50 → 15 |
+| openai/gpt-5.4-nano (`cnd-d26267ab539c`) | 50 | 148 | 3.0 | 6 | 113 | 29 | 0.58 | 50 → 15 |
+| google/gemini-3.1-flash-lite (`cnd-7a11b9e6099c`) | 50 | 155 | 3.1 | 15 | 108 | 32 | 0.64 | 47 → 16 |
+| bytedance-seed/seed-2.0-mini (`cnd-9ba9da54347f`) | 50 | 143 | 2.9 | 16 | 89 | 38 | 0.76 | 50 → 16 |
+| mistralai/mistral-small-2603 (`cnd-e237f31850ed`) | 50 | 174 | 3.5 | 10 | 122 | 42 | 0.84 | 50 → 19 |
+| deepseek/deepseek-v4-flash-0731 (`cnd-18c951be4aa6`) | 50 | 259 | 5.2 | 25 | 184 | 50 | 1.00 | 50 → 25 |
 
 ## Per failure mode
 
-| mode | points before | recovered | unrecovered | share recovered |
+| mode | instances before | recovered | unrecovered | share recovered |
 |---|---:|---:|---:|---:|
 | `SP_05` REDUNDANT_NEXT_HOP_QUERY_GENERATION | 395 | 293 | 102 | 74% |
 | `SP_06` META_OR_EVALUATIVE_QUERY_GENERATION | 308 | 224 | 84 | 73% |
@@ -59,4 +58,4 @@ Traces with a recovery verdict: **450** (9 candidates × 50 tasks). One call per
 | `SP_10` MALFORMED_SECTION_OR_FIELD_DELIMITER | 4 | 4 | 0 | 100% |
 | `SP_11` OMISSION_OF_REQUIRED_OUTPUT_FIELD | 3 | 3 | 0 | 100% |
 
-A point with several modes is counted once under each; `(uncoded)` = the judge kept the point but no code fit it.
+An instance with several modes is counted once under each; `(uncoded)` = the judge kept the instance but no code fit it.

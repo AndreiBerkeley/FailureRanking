@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""One Markdown report per experiment on what the recovery reader did with the judge's points.
+"""One Markdown report per experiment on what the recovery reader did with the judge's failure instances.
 
     python3 sharing/scripts/recovery_report.py --recovery <recovery run> --taxonomy <taxonomy.json>
         --pool <judged pool dir> --title "..." --out sharing/<name>_recovery.md [--names <candidate set json>] [--note "..."]
 
-Reads the recovery run's traces/*.json (each judged point carries its verdict), counts verdicts
-in total, per candidate and per failure mode, and reports points and modes per trace before and
-after the recovered points are removed. No model call; no gold.
+Reads the recovery run's traces/*.json (each judged instance carries its verdict), counts verdicts
+in total, per candidate and per failure mode, and reports instances and modes per trace before and
+after the recovered instances are removed. No model call; no gold.
 """
 from __future__ import annotations
 import argparse, json, glob, collections
 from pathlib import Path
 
-RECOVERED = ("corrected", "contained", "made_irrelevant")
-ORDER = ["corrected", "contained", "made_irrelevant", "unrecovered", "unassessable"]
+RECOVERED = ("corrected", "contained")
+ORDER = ["corrected", "contained", "unrecovered"]
+COARSE = {"unrecovered": "unrecovered", "unassessable": "unrecovered", "corrected": "corrected", "contained": "contained", "made_irrelevant": "contained"}
+def coarse(v): return COARSE.get(v, "unrecovered")   # runs before 2026-09-22 recorded five verdicts; three since
 MEANING = {
-    "corrected": "a later step fixed the wrong thing itself (the missing item was obtained, the wrong value replaced)",
-    "contained": "the wrong thing stayed wrong but never reached what the output is scored on",
-    "made_irrelevant": "a later step made the point moot (a different route obtained what was needed)",
-    "unrecovered": "the point's effect is still in the final output",
-    "unassessable": "the trace does not show enough to decide",
+    "corrected": "a later step replaced the wrong thing and the output does not carry it",
+    "contained": "the output does not carry it and nothing corrected it: nothing downstream used it, or it was used and the output was fine regardless, or another path supplied what was needed",
+    "unrecovered": "the effect is in the final output, or what the instance cost is missing from it, or the trace cannot show otherwise",
 }
 
 
@@ -48,7 +48,7 @@ def main():
         modes = {m for p in pts for m in (p.get("codes") or ["(uncoded)"])}
         umodes = set(); u = 0
         for p in pts:
-            v = p.get("recovery") or "unassessable"; V[v] += 1; per_c[c][v] += 1
+            v = coarse(p.get("recovery")); V[v] += 1; per_c[c][v] += 1
             for m in (p.get("codes") or ["(uncoded)"]): per_m[m][v] += 1
             if v not in RECOVERED:
                 u += 1; umodes |= set(p.get("codes") or ["(uncoded)"])
@@ -62,28 +62,28 @@ def main():
     L = [f"# {a.title} — recovery pass", ""]
     L += [f"Recovery reader: `{rs.get('model')}` (thinking {rs.get('thinking')}), success rule in view: **{'yes' if rs.get('success_rule_in_view') else 'no'}**.",
           f"Judge mapping read: `{rs.get('mapping')}`; taxonomy `{a.taxonomy}` ({len(tax)} codes).",
-          f"Traces with a recovery verdict: **{n}** ({len(cands)} candidates × {len(tasks)} tasks{'' if n == len(cands)*len(tasks) else f'; {len(cands)*len(tasks)-n} traces could not be judged'}). One call per trace: the reader sees the whole trace and the judge's points, and gives each point one verdict."]
+          f"Traces with a recovery verdict: **{n}** ({len(cands)} candidates × {len(tasks)} tasks{'' if n == len(cands)*len(tasks) else f'; {len(cands)*len(tasks)-n} traces could not be judged'}). One call per trace: the reader sees the whole trace and the judge's failure instances, and gives each instance one verdict."]
     L += [f"- {x}" for x in a.note]
-    L += ["", "## Verdicts over every point", "", "| verdict | points | share | meaning |", "|---|---:|---:|---|"]
+    L += ["", "## Verdicts over every failure instance", "", "| verdict | instances | share | meaning |", "|---|---:|---:|---|"]
     for k in ORDER:
         if V[k]: L.append(f"| {k} | {V[k]} | {V[k]/total:.1%} | {MEANING[k]} |")
-    L += [f"| **recovered (corrected + contained + made_irrelevant)** | **{rec}** | **{rec/total:.1%}** | removed for the unrecovered-only scores |",
-          f"| **left standing (unrecovered + unassessable)** | **{unrec}** | **{unrec/total:.1%}** | what the unrecovered-only scores read |", ""]
+    L += [f"| **recovered (corrected + contained)** | **{rec}** | **{rec/total:.1%}** | removed for the unrecovered-only scores |",
+          f"| **left standing (unrecovered)** | **{unrec}** | **{unrec/total:.1%}** | what the unrecovered-only scores read |", ""]
     fb = sum(per_c[c]["flag_before"] for c in cands); fa = sum(per_c[c]["flag_after"] for c in cands)
     L += ["## Per trace (one candidate on one task), before and after", "", "| | before recovery | after (unrecovered only) |", "|---|---:|---:|",
-          f"| points per trace, mean | {total/n:.2f} | {unrec/n:.2f} |",
+          f"| failure instances per trace, mean | {total/n:.2f} | {unrec/n:.2f} |",
           f"| distinct failure modes per trace, mean | {sum(per_c[c]['modes'] for c in cands)/n:.2f} | {sum(per_c[c]['umodes'] for c in cands)/n:.2f} |",
-          f"| traces with at least one point | {fb} of {n} ({fb/n:.0%}) | {fa} of {n} ({fa/n:.0%}) |", ""]
-    L += ["## Per candidate", "", "| candidate | traces | points before | per trace | corrected | contained | made irrelevant | unrecovered | unrec. per trace | traces flagged before → after |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"]
+          f"| traces with at least one instance | {fb} of {n} ({fb/n:.0%}) | {fa} of {n} ({fa/n:.0%}) |", ""]
+    L += ["## Per candidate", "", "| candidate | traces | instances before | per trace | corrected | contained | unrecovered | unrec. per trace | traces flagged before → after |", "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
     for c in sorted(cands, key=lambda c: per_c[c]["unrec"] / per_c[c]["traces"]):
         p = per_c[c]; t = p["traces"]
-        L.append(f"| {name(c)} | {t} | {p['points']} | {p['points']/t:.1f} | {p['corrected']} | {p['contained']} | {p['made_irrelevant']} | {p['unrec']} | {p['unrec']/t:.2f} | {p['flag_before']} → {p['flag_after']} |")
-    L += ["", "## Per failure mode", "", "| mode | points before | recovered | unrecovered | share recovered |", "|---|---:|---:|---:|---:|"]
+        L.append(f"| {name(c)} | {t} | {p['points']} | {p['points']/t:.1f} | {p['corrected']} | {p['contained']} | {p['unrec']} | {p['unrec']/t:.2f} | {p['flag_before']} → {p['flag_after']} |")
+    L += ["", "## Per failure mode", "", "| mode | instances before | recovered | unrecovered | share recovered |", "|---|---:|---:|---:|---:|"]
     for m in sorted(per_m, key=lambda m: -sum(per_m[m].values())):
         pm = per_m[m]; tot = sum(pm.values()); r_ = sum(pm[k] for k in RECOVERED)
         L.append(f"| `{m}` {tax.get(m, '')} | {tot} | {r_} | {tot-r_} | {r_/tot:.0%} |")
-    L += ["", "A point with several modes is counted once under each; `(uncoded)` = the judge kept the point but no code fit it.", ""]
-    a.out.write_text("\n".join(L)); print(f"{a.out}: {n} traces, {total} points, {rec} recovered, {unrec} standing")
+    L += ["", "An instance with several modes is counted once under each; `(uncoded)` = the judge kept the instance but no code fit it.", ""]
+    a.out.write_text("\n".join(L)); print(f"{a.out}: {n} traces, {total} instances, {rec} recovered, {unrec} standing")
 
 
 if __name__ == "__main__":

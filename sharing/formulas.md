@@ -7,9 +7,10 @@ evaluated per candidate, independently; ranking happens only after every candida
 
 The judge reads every trace of candidate *c* on the judged task set 𝒯 (|𝒯| = T, the same tasks
 for every candidate) holding a taxonomy with code set M. For each trace it records a set of
-**failure points**; each point carries the step (turn) it sits on and one or more codes. The
-recovery reader then gives every point one verdict: *unrecovered*, or recovered (*corrected*,
-*contained*, *made irrelevant*), or *unassessable*.
+**failure instances**; each instance carries the step (turn) it sits on and one or more codes.
+The recovery reader then gives every instance one verdict: *unrecovered*, or recovered
+(*corrected* — a later step replaced it; *contained* — the output does not carry it and
+nothing corrected it).
 
 | symbol | meaning |
 |---|---|
@@ -19,14 +20,14 @@ recovery reader then gives every point one verdict: *unrecovered*, or recovered 
 | rate(c,m) | share of judged tasks on which code *m* fired for *c* |
 | g(c,t) ∈ {0,1} | the gold outcome (pass = 1); never read by a trace formula, only by the reference and the measure |
 
-A judged trace with no point contributes an empty set. A trace that could not be judged is
+A judged trace with no instance contributes an empty set. A trace that could not be judged is
 left out of the sum and of T — "not judged" is not "no failure found".
 
 **Two inputs, same formulas.** Every formula below is run twice:
 
-- **all points** — the judge's mapping as recorded;
-- **unrecovered only** — the same mapping with every point the recovery reader marked
-  corrected, contained or made irrelevant deleted (unassessable points stay, since missing
+- **all instances** — the judge's mapping as recorded;
+- **unrecovered only** — the same mapping with every instance the recovery reader marked
+  corrected or contained deleted (an instance the reader could not settle stays: missing
   evidence is not recovery).
 
 Nothing else changes between the two settings.
@@ -64,9 +65,9 @@ and a trace formula has to match or beat them to be worth anything.
 | **worst mode** | `W(c) = max_m rate(c,m)` | the rate of its single most frequent code |
 | **patterns** | `P(c) = \|{codes(c,t) : t ∈ 𝒯, codes(c,t) ≠ ∅}\|` | number of distinct code-sets it produced across tasks |
 
-A point the judge kept but no code fit (`uncoded`) is handled two ways, and `results.md` reports
-both: *every kept point* treats it as one more failure with its own pseudo-code; *coded points
-only* drops it. The profile formulas read codes, so they have the coded-only form only.
+An instance the judge kept but no code fit (`uncoded`) is handled two ways, and `results.md` reports
+both: *every kept instance* treats it as one more failure with its own pseudo-code; *coded
+instances only* drops it. The profile formulas read codes, so they have the coded-only form only.
 
 ## Recovery-dependent formulas
 
@@ -76,13 +77,13 @@ These use the recovery verdicts as a quantity rather than as a filter. Their num
 **Recovery-weighted amplitude.** Each unit u = (code, step) is weighted by how rarely the
 candidate recovers from it: `w_u(c) = 1 − (recovered_u(c) / appeared_u(c))^γ`, and
 `A_rw(c) = (1/T) Σ_u w_u(c) · appeared_u(c)`, γ ∈ {1, 2, 3}. A unit fired on a task counts as
-recovered on that task only if every point carrying it was; a unit seen on fewer than 3 tasks
+recovered on that task only if every instance carrying it was; a unit seen on fewer than 3 tasks
 takes the candidate's overall recovery share. A mode the candidate usually recovers from counts
 less instead of not at all. (A *pooled* variant, one weight per unit for every candidate, was
 ≤ −0.5 on GEPA·HoVer and is not reported: a mode's fatality is not shared across candidates.)
 
 **Profile risk.** Unrecovered incidence *predicted* from the profile instead of read per task:
-each mode gets a consequence `q_c(m)` = the share of the candidate's points carrying *m* that
+each mode gets a consequence `q_c(m)` = the share of the candidate's instances carrying *m* that
 were left unrecovered; a task's risk is `max_m q_c(m)` over the modes that fired on it (a
 noisy-OR combination, `1 − Π_m (1 − q_c(m))`, did worse); the score is the mean task risk.
 It loses to the plain flag because modes on the same task recover jointly — on GEPA·HoVer
@@ -90,7 +91,7 @@ SP_06 recovers 69% alone and 36% next to SP_14 — so treating them as separate 
 over-counts verbose candidates.
 
 **Gold-discounted incidence ("literal").** Not outcome-free: it reads the judged tasks' gold.
-A task flagged with an unrecovered point counts 1 if the candidate failed it and *w* = 0.5 if
+A task flagged with an unrecovered instance counts 1 if the candidate failed it and *w* = 0.5 if
 it passed it; an unflagged task counts 0 either way:
 `I_g(c) = (1/T) Σ_{t flagged} [ 1 if g(c,t) = 0 else w ]`. It sits within noise of the plain
 flag on every set tried, and spends gold to get there.
@@ -112,7 +113,7 @@ order it the same way, *discordant* otherwise.
 
 +1: the formula orders every resolved pair like the target; −1: every one reversed; 0: no
 relation. Dropping ties is why a formula that scores many candidates identically (incidence
-on all points, where almost every trace has a point) can show a tau built on few pairs.
+on all instances, where almost every trace has one) can show a tau built on few pairs.
 
 **Resolved pairs.** concordant + discordant — how many of the n(n−1)/2 candidate pairs the tau
 actually rests on (66 for 12 candidates, 36 for 9, 21 for 7). Read the tau against it: +0.6
