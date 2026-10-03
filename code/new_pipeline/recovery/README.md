@@ -57,16 +57,18 @@ fails and records why, and then applies the rule:
 
 | answer | verdict |
 |---|---|
-| what the point cost is absent from the output | `unrecovered` |
-| effect visible in the output | `unrecovered` |
-| output cannot settle it, nothing else | `unassessable` |
+| what the instance cost is absent from the output, or its effect is visible there, or the output cannot settle it | `unrecovered` |
 | output does not carry it, a correction event stands | `corrected` |
-| output does not carry it, no later turn consumed it | `contained` |
-| output does not carry it, consumed, not corrected — or the cost was supplied by another path | `made_irrelevant` |
+| output does not carry it and nothing corrected it: no later turn consumed it, or one did and the output was fine regardless, or the cost was supplied by another path | `contained` |
 
-Recovered = `corrected` ∪ `contained` ∪ `made_irrelevant`. Missing evidence never becomes
-recovery: a recovery claim whose quote is not in the trace is dropped; a point with no
-usable output answer is unrecovered.
+Recovered = `corrected` ∪ `contained`. Missing evidence never becomes recovery: a recovery
+claim whose quote is not in the trace is dropped; an instance with no usable output answer
+is unrecovered.
+
+Three verdicts since 2026-09-22. Runs before that date recorded five (`unassessable`, and
+`made_irrelevant` for the consumed-but-harmless case); `recovery.coarse()` maps them onto
+the three and every reader uses it, so old and new runs partition instances identically.
+New records keep the finer answer in `recovery_detail`.
 
 ## Output
 
@@ -79,7 +81,7 @@ are copied through without a call.
 
 `methods/scripts/run_baselines.py --recovery <out>` adds two rows: **unrecovered amplitude**
 and **unrecovered incidence** — the existing formulas over the points not found recovered
-(`unassessable` and unrecorded points count as unrecovered). On a one-step program every
+(unrecorded instances count as unrecovered). On a one-step program every
 point is unrecovered and the rows equal amplitude and incidence.
 
 ## Tests

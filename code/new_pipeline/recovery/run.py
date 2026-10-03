@@ -77,7 +77,7 @@ def recover_one(rec: dict, trace_path: Path, call, model, agents, attempts_befor
     for i, p in enumerate(points):
         kept = recovery.check_point(by_index[i], p, turn_blocks, out_text)
         q = dict(p)
-        q["recovery"] = recovery.verdict(kept)
+        q["recovery_detail"] = recovery.verdict_detail(kept); q["recovery"] = recovery.coarse(q["recovery_detail"])
         q["recovery_evidence"] = kept
         q["recovery_raw"] = by_index[i]          # the reader's answer as given, for re-derivation and audit
         new_points.append(q)

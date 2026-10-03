@@ -34,10 +34,16 @@ python3 -m new_pipeline.run --benchmark hover --pool runs/new_pipeline/hover/poo
 ```
 
 `--model` names the model for the generator, the refiner and the judge's panel;
-an `openrouter/<vendor>/<model>` id routes through OpenRouter. `--open-model`
+an `openrouter/<vendor>/<model>` id routes through OpenRouter, an `arena/<model>`
+id through Arena (`ARENA_API_KEY`; ids as `GET /v1/models` lists them). `--open-model`
 sets the judge's open reader. `--rounds`, `--refine-panel`, `--gate-readers`,
 `--kappa-target`, `--coverage-floor`, `--no-baseline-gate`, `--skip-followups`
-do what they say. `--dry-run` splits the corpora, dry-runs generation, and
+do what they say. `--refine-tasks` and `--refine-per-task` set the refinement slice (tasks per round,
+traces per task; by default derived from `--n-generation`, as before). `--no-gate` plans no gate corpus and runs no
+gate, before or after refinement, so no final-gate pruning either; refinement's own corroboration retirement still
+applies, and agreement and coverage are then read from the judge run on the judged set. The swebench, tau2bench and
+bfcl taxonomies use `--rounds 1 --refine-tasks 9 --refine-per-task 3 --no-gate` (Andrei, 2026-09-24): on
+Terminal-Bench the two gates were 53% of generation cost and changed the taxonomy by one retired code. `--dry-run` splits the corpora, dry-runs generation, and
 prints every later command without a model call. Every step is resumable: a
 finished artifact is not redone, so an interrupted run continues from the same
 command.

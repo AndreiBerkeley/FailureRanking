@@ -5,19 +5,23 @@ module renders the points for it, parses its answer, checks every quote against 
 of the trace it claims to come from, checks chronology, and computes the verdict by a
 fixed rule. The reader never states a verdict.
 
-VERDICTS
-    unrecovered      the effect is in the final output, or what the point cost is absent
-                     from it, or the reader could not show otherwise
+VERDICTS (three, since 2026-09-22)
+    unrecovered      the effect is in the final output, or what the instance cost is absent
+                     from it, or the reader could not show otherwise (the trace cannot settle it)
     corrected        a later turn replaced the artifact and the output does not carry it
-    contained        no later turn consumed the artifact and the output does not carry it
-    made_irrelevant  consumed, not corrected, yet the output does not carry it -- or what
-                     the point cost was supplied by another path (redundancy)
-    unassessable     the reader declared the final output cannot settle it, with nothing
-                     else to go on
+    contained        the output does not carry it and nothing corrected it: no later turn
+                     consumed the artifact, or one did and the output was fine regardless, or
+                     what the instance cost was supplied by another path (redundancy)
 
-Recovered = corrected | contained | made_irrelevant. Missing evidence never becomes
-recovery: an unverifiable quote is dropped, and a point whose output answer is missing or
-whose quotes were all dropped is unrecovered.
+Recovered = corrected | contained. Missing evidence never becomes recovery: an unverifiable
+quote is dropped, and an instance whose output answer is missing or whose quotes were all
+dropped is unrecovered.
+
+Every record also carries `recovery_detail`, the finer answer the rule computed
+(unrecovered / unassessable / corrected / contained / made_irrelevant); runs made before
+2026-09-22 carry that finer answer in `recovery` itself, and every reader maps it with
+`coarse()`. The two vocabularies partition the instances identically into recovered and
+not, so no score changes between them.
 """
 from __future__ import annotations
 
@@ -27,7 +31,14 @@ import re
 
 from new_pipeline.generation.render import INSTR, INPUT, OUTPUT, HARNESS, ENV
 
-RECOVERED = ("corrected", "contained", "made_irrelevant")
+RECOVERED = ("corrected", "contained")
+COARSE = {"unrecovered": "unrecovered", "unassessable": "unrecovered", "corrected": "corrected",
+          "contained": "contained", "made_irrelevant": "contained"}
+
+
+def coarse(v) -> str:
+    """A verdict from any run, old or new, as one of the three. Unknown/missing -> unrecovered."""
+    return COARSE.get(v, "unrecovered")
 FUZZY_MIN = 0.85          # share of a quote that must match contiguously to count as found
 MIN_QUOTE = 12            # shorter quotes are too easy to find by accident
 
@@ -197,7 +208,12 @@ def check_point(entry: dict, point: dict, turn_blocks: dict, out_text: str) -> d
 
 
 def verdict(kept: dict) -> str:
-    """The rule. For a point whose harm is something missing, `cost_supplied` decides:
+    """The three-way rule: coarse(verdict_detail(kept))."""
+    return coarse(verdict_detail(kept))
+
+
+def verdict_detail(kept: dict) -> str:
+    """The finer rule, kept for provenance. For an instance whose harm is something missing, `cost_supplied` decides:
     absent -> unrecovered, supplied by another path -> recovered whatever else is true.
     Otherwise `effect_in_output` decides, and the events only name the kind of recovery."""
     o = kept["output"]
@@ -227,7 +243,7 @@ def summarise(results: list) -> dict:
         if r.get("status") != "judged":
             continue
         for p in r["points"]:
-            pts += 1; v[p["recovery"]] += 1; dropped += len(p["recovery_evidence"].get("dropped", []))
+            pts += 1; v[coarse(p["recovery"])] += 1; dropped += len(p["recovery_evidence"].get("dropped", []))
             e = p["recovery_evidence"].get("effect")
             located[e["located"] if e else "no effect quote"] += 1
     return {"points": pts, "verdicts": dict(v), "recovered": sum(v[k] for k in RECOVERED),

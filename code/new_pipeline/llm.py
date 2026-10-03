@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Model-call transports shared by every stage: Gemini direct and OpenRouter,
-with retries, backoff and a plain log(). Lifted from pipeline/taxonomy/stages.py
+"""Model-call transports shared by every stage: Gemini direct, OpenRouter and
+Arena, with retries, backoff and a plain log(). Lifted from pipeline/taxonomy/stages.py
 (2026-09-06); nothing here depends on the earlier pipeline.
 
     call, model = llm_call("openrouter/google/gemini-3.6-flash", temperature=0.0)
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import subprocess
 import sys
 import time
@@ -176,11 +177,156 @@ def openrouter_call(temperature=0.0, retries=5, max_output=16384, timeout=300,
     return _call
 
 
+# Arena (api.preview.arena.ai), probed 2026-09-23. Its chat-completions endpoint is
+# OpenAI-compatible with three differences that matter here: the gpt-5.x models reject
+# `temperature`; Claude models reject `response_format: json_object` (Arena turns it into
+# an Anthropic structured-output schema, which then needs a schema), so they are sent the
+# prompt's own JSON instruction only -- every parser in this package already finds fenced
+# or prefixed JSON; and the Cloudflare front refuses Python-urllib's default User-Agent
+# (error 1010), so the OpenAI SDK's own header is sent. Usage carries tokens, reasoning
+# tokens and the upstream cost, like OpenRouter's.
+ARENA_URL = "https://api.preview.arena.ai/v1/chat/completions"
+RATE_LIMIT_WAIT_FOR = 1200.0     # seconds a call waits out HTTP 429 in total before counting it as a failure
+RATE_LIMIT_MAX_DELAY = 120.0     # longest single wait: 10, 20, 40, 80, 120, 120, ... s, plus up to 5 s jitter
+ARENA_NO_TEMPERATURE = ("gpt-5", "o1", "o3", "o4")
+ARENA_NO_JSON_MODE = ("claude",)
+
+
+def arena_call(temperature=0.0, retries=5, max_output=16384, timeout=300,
+               thinking=None):
+    """Same contract as openrouter_call, over Arena's chat completions.
+
+    Model ids are Arena's own ("claude-sonnet-5", "gpt-5.6-sol", "gemini-3.8-flash";
+    GET /v1/models lists what the key may use). The key is ARENA_API_KEY in the
+    environment; nothing here ever logs it. thinking maps to `reasoning_effort`
+    (low / medium / high; MINIMAL is sent as low, which is the lowest Arena accepts).
+    """
+    import urllib.request
+    import urllib.error
+
+    def _call(prompt, model):
+        key = os.environ.get("ARENA_API_KEY")
+        if not key:
+            log("  [!] ARENA_API_KEY not set")
+            return None
+        body = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_output,
+        }
+        if not model.startswith(ARENA_NO_TEMPERATURE):
+            body["temperature"] = temperature
+        if not model.startswith(ARENA_NO_JSON_MODE):
+            body["response_format"] = {"type": "json_object"}
+        if thinking:
+            # low / medium / high everywhere; "minimal" is refused even by the gpt models
+            effort = str(thinking).lower()
+            body["reasoning_effort"] = "low" if effort == "minimal" else effort
+        data = json.dumps(body).encode()
+        delay = 5.0
+        net_wait = {"t": 0.0}
+        rate_wait = {"t": 0.0, "n": 0}
+        attempt = 0
+        while attempt < retries:
+            attempt += 1
+            try:
+                req = urllib.request.Request(
+                    ARENA_URL, data=data,
+                    headers={"Content-Type": "application/json",
+                             "Accept": "application/json",
+                             "Authorization": f"Bearer {key}",
+                             "User-Agent": "OpenAI/Python 1.109.1"})
+                with urllib.request.urlopen(req, timeout=timeout) as r:
+                    resp = json.loads(r.read().decode())
+                if resp.get("error"):
+                    e = resp["error"]
+                    code = e.get("code")
+                    msg = f"arena error {code}: {e.get('message')}"
+                    if code in (429, 502, 503, 504, 408):
+                        raise Transient(msg)
+                    log(f"  [!] non-transient LLM error: {msg[:160]}")
+                    return None
+                ch = (resp.get("choices") or [{}])[0]
+                text = ((ch.get("message") or {}).get("content")) or ""
+                fr = ch.get("finish_reason")
+                u = resp.get("usage") or {}
+                det = u.get("completion_tokens_details") or {}
+                cd = u.get("cost_details") or {}
+                usage = (f"prompt={u.get('prompt_tokens')} "
+                         f"thoughts={det.get('reasoning_tokens')} "
+                         f"answer={u.get('completion_tokens')} "
+                         f"cost={u.get('cost')} upstream={cd.get('upstream_inference_cost')} "
+                         f"model={resp.get('model')}")
+                if not text:
+                    raise Transient(f"empty content; finish_reason={fr}")
+                if fr and fr != "stop":
+                    log(f"  [!] finish_reason={fr} with {len(text):,} chars of "
+                        f"text ({usage}); answer is probably cut")
+                else:
+                    log(f"    usage: {usage}")
+                return text
+            except urllib.error.HTTPError as exc:
+                msg = f"HTTP {exc.code}"
+                try:
+                    msg += " " + exc.read().decode()[:200]
+                except Exception:      # noqa: BLE001
+                    pass
+                if exc.code == 429 and rate_wait["t"] < RATE_LIMIT_WAIT_FOR:
+                    # A rate limit is the key's quota refilling, not a failed call: wait it out
+                    # on its own budget instead of spending the call's retries (seen 2026-09-24:
+                    # three concurrent runs exhausted 5 attempts / 75 s and stopped a stage).
+                    w = min(RATE_LIMIT_MAX_DELAY, 10.0 * 2 ** rate_wait["n"]) + random.uniform(0, 5)
+                    rate_wait["n"] += 1; rate_wait["t"] += w
+                    log(f"  [!] rate limited (wait {rate_wait['n']}, {rate_wait['t']/60:.1f} of "
+                        f"{RATE_LIMIT_WAIT_FOR/60:.0f} min), retry in {w:.0f}s: {msg[:90]}")
+                    time.sleep(w)
+                    attempt -= 1
+                    continue
+                if exc.code in (429, 500, 502, 503, 504, 408) and attempt < retries:
+                    log(f"  [!] transient error (attempt {attempt}/{retries}), "
+                        f"retry in {delay:.0f}s: {msg[:110]}")
+                    time.sleep(delay); delay *= 2
+                    continue
+                log(f"  [!] non-transient LLM error: {msg[:160]}")
+                return None
+            except Exception as exc:                       # noqa: BLE001
+                import socket
+                if is_network_error(exc):
+                    waited = net_wait.get("t", 0.0)
+                    if waited >= NETWORK_RETRY_FOR:
+                        log(f"  [!] network still down after {waited/60:.0f} min; giving up")
+                        return None
+                    if waited == 0.0:
+                        log(f"  [!] network error, will keep retrying for up to "
+                            f"{NETWORK_RETRY_FOR/60:.0f} min: {str(exc)[:100]}")
+                    time.sleep(NETWORK_RETRY_EVERY)
+                    net_wait["t"] = waited + NETWORK_RETRY_EVERY
+                    attempt -= 1
+                    continue
+                transient = isinstance(exc, (Transient, socket.timeout, TimeoutError)) \
+                    or any(t.lower() in str(exc).lower() for t in TRANSIENT)
+                if not transient:
+                    log(f"  [!] non-transient LLM error: {str(exc)[:160]}")
+                    return None
+                if attempt == retries:
+                    log(f"  [!] gave up after {retries} transient failures")
+                    return None
+                log(f"  [!] transient error (attempt {attempt}/{retries}), "
+                    f"retry in {delay:.0f}s: {str(exc)[:110]}")
+                time.sleep(delay); delay *= 2
+        return None
+
+    return _call
+
+
 def llm_call(model: str, **kw):
     """Pick the transport from the model id: "openrouter/<vendor>/<model>"
-    goes to OpenRouter (prefix stripped), anything else to Gemini."""
+    goes to OpenRouter, "arena/<model>" to Arena (prefix stripped either way),
+    anything else to Gemini."""
     if model.startswith("openrouter/"):
         return openrouter_call(**kw), model[len("openrouter/"):]
+    if model.startswith("arena/"):
+        return arena_call(**kw), model[len("arena/"):]
     return gemini_call(**kw), model
 
 

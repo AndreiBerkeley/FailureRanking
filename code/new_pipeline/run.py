@@ -63,6 +63,16 @@ def main():
     ap.add_argument("--followup-model", default=None, help="gap test, mapping and splitter (default: --model)")
     ap.add_argument("--open-model", default=None, help="the judge's open reader (default: the judge's own default)")
     ap.add_argument("--rounds", type=int, default=1)
+    ap.add_argument("--judge-traces-per-call", type=int, default=5,
+                    help="traces per call for the refinement judge (default 5, as every earlier run); long traces fail less at 1")
+    ap.add_argument("--abstraction-chunk", type=int, default=0,
+                    help="generation stage 3 over chunks of at most N observations (0: one call, as every earlier run)")
+    ap.add_argument("--refine-tasks", type=int, default=None, help="refinement tasks per round (default: derived from --n-generation, as before)")
+    ap.add_argument("--refine-per-task", type=int, default=corpora.REFINE_PER_TASK, help="traces per refinement task")
+    ap.add_argument("--no-gate", action="store_true",
+                    help="run no gate at all: no gate corpus is planned, no baseline gate, no gate after a round, and so no "
+                         "final-gate corroboration pruning (refinement's own corroboration retirement still applies). Agreement "
+                         "and coverage are then read from the judge run on the judged set"),
     ap.add_argument("--stop-on-pass", action="store_true", help="stop as soon as a gate passes; off by default, because stopping on the gate selects the round that best suits that corpus")
     ap.add_argument("--refine-panel-unused", type=int, default=0, help=argparse.SUPPRESS); ap.add_argument("--refine-panel", type=int, default=4); ap.add_argument("--panel-temperature", type=float, default=0.0)
     ap.add_argument("--gate-readers", type=int, default=4); ap.add_argument("--kappa-target", type=float, default=0.75); ap.add_argument("--coverage-floor", type=float, default=0.70)
@@ -83,7 +93,8 @@ def main():
     log(f"new_pipeline: {a.benchmark}, N={a.n_generation}, rounds={a.rounds}, model={a.model}")
     outcomes = a.outcomes or ((a.pool / "outcomes.json") if (a.pool / "outcomes.json").exists() else None)
     jm = a.judge_model or a.model; fm = a.followup_model or a.model
-    split = corpora.plan(a.pool, a.n_generation, seed=a.seed, outcomes=outcomes, n_gap_tasks=a.gap_tasks, rounds=a.rounds)
+    split = corpora.plan(a.pool, a.n_generation, seed=a.seed, outcomes=outcomes, n_gap_tasks=a.gap_tasks, rounds=a.rounds,
+                         ref_tasks=a.refine_tasks, ref_per_task=a.refine_per_task, gate_tasks=0 if a.no_gate else corpora.GATE_MIN_TASKS)
     dirs = corpora.materialise(split, out)
     # The gap corpus: the dealt gap tasks, --gap-per-task traces each, failing
     # traces first (outcomes for stratification only, never shown). The gap test
@@ -101,29 +112,30 @@ def main():
         if not dst.exists(): goldfree.strip_file(p, dst)
         nf += 1
     state["corpora"] = {k: len(v) for k, v in split.manifest["task_ids"].items()} | {"fresh_traces": nf, "fresh_failing": nff, "spare_tasks": split.manifest["spare_tasks"]}
-    log(f"  corpora: " + ", ".join(f"{k} {len(getattr(split, k))} traces / {len(split.manifest['task_ids'][k])} tasks ({split.manifest[k]['failing']} failing)" for k in ("generation", "refinement", "gate")) + f"; gap {nf} traces / {len(split.manifest['task_ids']['gap'])} tasks ({nff} failing); {split.manifest['spare_tasks']} tasks unused"); save()
+    log(f"  corpora: " + ", ".join(f"{k} {len(getattr(split, k))} traces / {len(split.manifest['task_ids'][k])} tasks ({split.manifest[k]['failing']} failing)" for k in ("generation", "refinement", "gate")) + f"; gap {nf} traces / {len(split.manifest['task_ids']['gap'])} tasks ({nff} failing); {split.manifest['spare_tasks']} tasks unused"
+        + ("; no gate (--no-gate)" if a.no_gate else "")); save()
 
     # 1. generation
     gen = out / "generation"; gen.mkdir(exist_ok=True)
     ids_f = gen / "corpus_trace_ids.txt"; ids_f.write_text("\n".join(sorted(p.stem for p in dirs["generation"].glob("*.json"))) + "\n")
     draft = gen / "taxonomy_v2.json"
     cmd = ([PY_, "-m", "new_pipeline.generation.run", "--benchmark", a.benchmark, "--corpus", dirs["generation"], "--structure", a.structure, "--out", gen, "--model", a.model, "--trace-ids", ids_f, "--max-output", str(a.max_output)]
-           + (["--work-ledger"] if a.work_ledger else []))
+           + (["--work-ledger"] if a.work_ledger else []) + (["--abstraction-chunk", str(a.abstraction_chunk)] if a.abstraction_chunk else []))
     if not draft.exists():
         log("step 1: generation"); sh(cmd + (["--dry-run"] if a.dry_run else []), False)
     else: log("step 1: generation already done")
     if a.dry_run:
         log("dry run: generation planned above; the remaining steps would run these commands:")
-        log(f"  baseline gate:  new_pipeline.gate --taxonomy {draft} --corpus {dirs['gate']} --readers {a.gate_readers}")
+        if not a.no_gate: log(f"  baseline gate:  new_pipeline.gate --taxonomy {draft} --corpus {dirs['gate']} --readers {a.gate_readers}")
         log(f"  round 1 judge:  new_pipeline.judge.run --taxonomy {draft} --traces {dirs['refinement']} --annotators 2 --threshold 2")
         log(f"  round 1 refine: new_pipeline.refine --taxonomy {draft} --judge-out {out}/round_1/judge --corpus {dirs['refinement']} --panel {a.refine_panel}")
-        log(f"  round 1 gate:   new_pipeline.gate --taxonomy {out}/round_1/refine/taxonomy_refined.json --corpus {dirs['gate']} --readers {a.gate_readers}")
+        if not a.no_gate: log(f"  round 1 gate:   new_pipeline.gate --taxonomy {out}/round_1/refine/taxonomy_refined.json --corpus {dirs['gate']} --readers {a.gate_readers}")
         log(f"  follow-ups:     new_pipeline.generation.gaps --corpus {fresh} ; granularity ; apply_splits -> {out}/taxonomy_final.json")
         state["status"] = "dry-run"; save(); return
     current = draft; state["draft"] = str(draft); save()
 
     # 2. baseline gate
-    if not a.no_baseline_gate:
+    if not a.no_baseline_gate and not a.no_gate:
         log("step 2: baseline gate on the draft")
         g0 = G.run(draft, dirs["gate"], a.structure, out / "baseline_gate", jm, a.gate_readers, a.kappa_target, a.coverage_floor, a.open_model)
         judged_or_die(out / "baseline_gate" / "judge", "baseline gate")
@@ -134,16 +146,25 @@ def main():
     for r in range(1, a.rounds + 1):
         rd = out / f"round_{r}"; rd.mkdir(exist_ok=True); log(f"step 3: round {r}")
         jd = rd / "judge"
-        if not (jd / "summary.json").exists():
+        # (re)invoke the judge when it has not run or when it left traces failed: judge.run skips
+        # judged traces and retries failed ones up to its --max-attempts, so a batch that failed once
+        # does not silently shrink the refinement evidence (seen: tau2bench 17 of 27 at 5 per call)
+        prev = json.loads((jd / "summary.json").read_text()) if (jd / "summary.json").exists() else None
+        if prev is None or ((prev.get("counts") or {}).get("failed") or 0) > 0:
+            if prev is not None: log(f"  round {r} judge: {prev['counts']['failed']} traces failed last time; re-invoking (judged ones are kept)")
             sh([PY_, "-m", "new_pipeline.judge.run", "--taxonomy", current, "--traces", dirs[f"refinement_{r}"], "--out", jd, "--structure", a.structure, "--model", jm,
-                "--annotators", "2", "--threshold", "2", "--traces-per-call", "5", "--thinking", "HIGH"] + (["--open-model", a.open_model] if a.open_model else []), False)
+                "--annotators", "2", "--threshold", "2", "--traces-per-call", str(a.judge_traces_per_call), "--thinking", "HIGH"] + (["--open-model", a.open_model] if a.open_model else []), False)
         judged_or_die(jd, f"round {r} judge")
         refined = R.run(current, jd, dirs[f"refinement_{r}"], a.structure, rd / "refine", a.model, a.refine_panel, a.panel_temperature, r)
-        g = G.run(refined, dirs["gate"], a.structure, rd / "gate", jm, a.gate_readers, a.kappa_target, a.coverage_floor, a.open_model)
-        judged_or_die(rd / "gate" / "judge", f"round {r} gate")
+        if a.no_gate:
+            g = {"skipped": "--no-gate"}
+        else:
+            g = G.run(refined, dirs["gate"], a.structure, rd / "gate", jm, a.gate_readers, a.kappa_target, a.coverage_floor, a.open_model)
+            judged_or_die(rd / "gate" / "judge", f"round {r} gate")
         rr = json.loads((rd / "refine" / "refine_report.json").read_text())
         state["rounds"] = [x for x in state["rounds"] if x.get("round") != r] + [{"round": r, "refine": rr, "gate": {k: v for k, v in g.items() if k != "kappa_per_code"}}]
         current = refined; save()
+        if a.no_gate: log(f"  round {r}: refined, no gate (--no-gate)"); continue
         if g.get("passed") and a.stop_on_pass: log(f"  round {r}: gate passed; stopping (--stop-on-pass)"); break
         if g.get("passed"): log(f"  round {r}: gate passed; continuing, the round count is fixed in advance so the gate is not selected on")
         log(f"  round {r}: gate not passed" + ("; next round" if r < a.rounds else "; no rounds left, shipping with the gate numbers"))

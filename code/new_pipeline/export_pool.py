@@ -23,14 +23,16 @@ def main():
     ap.add_argument("--split", default="pools-1"); ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--captures", default=None, help="comma-separated capture ids; default all")
     ap.add_argument("--repeats", default=None, help="comma-separated repeat numbers to keep (default all); e.g. 0 for one run per candidate and task")
-    a = ap.parse_args(); keep_reps = {int(x) for x in a.repeats.split(",")} if a.repeats else None
+    ap.add_argument("--candidates", default=None, help="comma-separated candidate ids to keep (default all in the captures)")
+    ap.add_argument("--task-repeat-ids", action="store_true", help="task ids become <task>#r<repeat>, so the corpus planner treats each rerun of a task as its own task (a generator pool built from reruns)")
+    a = ap.parse_args(); keep_reps = {int(x) for x in a.repeats.split(",")} if a.repeats else None; keep_cands = set(a.candidates.split(",")) if a.candidates else None
     D = REPO / "data" / a.benchmark; tasks = set(json.loads((D / "splits" / a.split / "split.json").read_text())["portions"][a.portion])
     caps = a.captures.split(",") if a.captures else sorted(p.name for p in (D / "traces").glob("cap-*"))
     a.out.mkdir(parents=True, exist_ok=True); scores, cands, written, skipped, offending, failed, dup, seen, synth = {}, {}, 0, 0, 0, 0, 0, {}, 0
     # Some captures hold stage records but no judge view (ifbench cap-1). The view is a
     # deterministic rendering of the stages, so it is built here with the same converter
     # the runner used for the later captures, from the candidate's own instructions.
-    components = {json.loads(l)["candidate_id"]: json.loads(l)["components"] for l in open(D / "candidates" / "registry.jsonl")} if (D / "candidates" / "registry.jsonl").exists() else {}
+    components = {json.loads(l)["candidate_id"]: json.loads(l).get("components", {}) for l in open(D / "candidates" / "registry.jsonl")} if (D / "candidates" / "registry.jsonl").exists() else {}   # model-only candidates (terminalbench) have no components
     build_messages = None
     def synth_view(b):
         nonlocal build_messages
@@ -40,10 +42,12 @@ def main():
         return {"messages": build_messages(a.benchmark, {"trace": b["stages"], "prediction": b.get("prediction") or {}}, components.get(b["candidate_id"], {}))}
     for cap in caps:
         man = json.loads((D / "traces" / cap / "manifest.json").read_text())
-        for cid in man["candidate_ids"]: cands.setdefault(cid, len(cands))
+        for cid in man["candidate_ids"]:
+            if keep_cands is None or cid in keep_cands: cands.setdefault(cid, len(cands))
         for l in open(D / "outcomes" / f"{cap}.jsonl"):
             r = json.loads(l); scores[r["trace_id"]] = r["score"]
         for cid, meta in man["bodies"].items():
+            if keep_cands is not None and cid not in keep_cands: continue
             with gzip.open(D / "traces" / cap / meta["file"], "rt", encoding="utf-8") as fh:
                 for line in fh:
                     b = json.loads(line)
@@ -57,15 +61,16 @@ def main():
                     if (not jv or not jv.get("messages")) and b.get("stages") and a.benchmark in ("ifbench", "hotpotqa"):
                         jv = synth_view(b); synth += 1
                     if not jv or not jv.get("messages"): skipped += 1; continue
+                    tid = f"{b['task_id']}#r{b['repeat']}" if a.task_repeat_ids else b["task_id"]
                     rec = {"trace_id": b["trace_id"], "messages": jv["messages"],
-                           "metadata": {"task_source_id": b["task_id"], "task_id": b["task_id"], "candidate_index": cands[cid], "candidate_id": cid,
+                           "metadata": {"task_source_id": tid, "task_id": tid, "task_name": b["task_id"], "candidate_index": cands[cid], "candidate_id": cid,
                                         "benchmark": a.benchmark, "capture": cap, "repeat": b["repeat"], "split": f"{a.split}/{a.portion}"}}
                     if goldfree.offending_keys(rec): offending += 1; continue
                     (a.out / f"{b['trace_id']}.json").write_text(json.dumps(rec, ensure_ascii=False)); written += 1
     if offending: raise SystemExit(f"{offending} traces carried an outcome-bearing key and were not written")
     (a.out / "outcomes.json").write_text(json.dumps({"scores": {t: s for t, s in scores.items() if (a.out / f"{t}.json").exists()}, "note": "stratification only; never rendered into a prompt"}))
     (a.out / "pool_manifest.json").write_text(json.dumps({"benchmark": a.benchmark, "split": a.split, "portion": a.portion, "captures": caps, "tasks_in_portion": len(tasks),
-                                                          "traces_written": written, "traces_without_judge_view": skipped, "traces_capture_failed": failed, "traces_duplicate_id_skipped": dup, "repeats_kept": sorted(keep_reps) if keep_reps else "all", "judge_views_synthesised_from_stages": synth, "candidate_index": cands}, indent=1))
+                                                          "traces_written": written, "traces_without_judge_view": skipped, "traces_capture_failed": failed, "traces_duplicate_id_skipped": dup, "repeats_kept": sorted(keep_reps) if keep_reps else "all", "task_repeat_ids": a.task_repeat_ids, "candidates_kept": sorted(keep_cands) if keep_cands else "all", "judge_views_synthesised_from_stages": synth, "candidate_index": cands}, indent=1))
     print(f"{a.benchmark} {a.split}/{a.portion}: {written} traces written to {a.out} from {caps}; {skipped} skipped (no judge view); {failed} capture failures left out; {dup} duplicate trace ids skipped; {synth} judge views built from stage records")
 
 

@@ -6,24 +6,25 @@ task set? This branch holds everything behind that question: the tasks, the cand
 trace, the taxonomies, the judge's mappings, the formulas, and the results. Nothing here is
 summarised from elsewhere; every number in `results/` recomputes from the files beside it.
 
-| | livecodebench | hover / models | hover / GEPA_candidates |
-|---|---|---|---|
-| program | one model call writes a Python program | 4-module multi-hop retrieval (DSPy) | same |
-| candidates | 9 models, one fixed prompt | 9 models, one fixed instruction set | 12 instruction sets, one model |
-| judged tasks | 150 | 50 + 50 | 50 (current instrument) · 50 + 50 (superseded panel judge) |
-| generalization tasks | 755 | 500 | 500 |
-| taxonomy | tax-1 → tax-2 (7 + 3 codes) | tax-15 (15 codes) | tax-13 generated → tax-15-pool3 (13 + 2 hand codes) |
-| judge | two readers + decider, failure points | same | same, with the program's success rule in view |
-| recovery pass | — | set b | yes |
-| headline (incidence on unrecovered points vs gold-gen; gold-50 bar) | +0.89 (+0.94) | +0.75 (+0.44) | +0.83 (+0.785) |
+| | livecodebench | hover / models | hover / GEPA_candidates | terminalbench |
+|---|---|---|---|---|
+| program | one model call writes a Python program | 4-module multi-hop retrieval (DSPy) | same | Terminus 2 agent in a terminal (Terminal-Bench 2.0 leaderboard) |
+| candidates | 9 models, one fixed prompt | 9 models, one fixed instruction set | 12 instruction sets, one model | 7 models |
+| judged tasks | 150; the main results read the 50-task split | 50 + 50 | 50 (current instrument) · 50 + 50 (superseded panel judge) | 20, 19 usable |
+| generalization tasks | 755 | 500 | 500 | 69 |
+| taxonomy | tax-1 → tax-2 (7 + 3 codes) | tax-15 (15 codes) | tax-13 generated → tax-15-pool3 (13 + 2 hand codes) | tax-1 (10 codes) |
+| judge | two readers + decider, failure points | same | same, with the program's success rule in view | same, with the success rule in view |
+| recovery pass | all 150 (`recovery-1`) | set b (`recovery-2`) | yes | yes |
+| unrecovered incidence vs gold-gen (bar: gold on the judged tasks) | +0.771 (+0.765) | +0.543 (+0.444) | +0.828 (+0.785) | +1.000 (+0.579) |
 
-**Status 2026-09-18.** What made hover measurable was a separate recovery pass over the
-judge's points plus the program's success rule in front of both readers; with those, the
-share of judged tasks with an unrecovered failure ranks the candidates as well as the tasks'
-own outcomes do on every benchmark (`RESULTS.md`). Every richer formula — counts, steps,
-code weights, recovery-discounted units, mode-centric aggregations, blame, profile models —
-falls below it on the GEPA set, and `hover/GEPA_candidates/results/explored-formulas.md`
-gives the numbers and the mechanism.
+**Status 2026-10-03.** Four experiments, each with a recovery pass. The share of judged tasks whose trace
+has a failure the program never recovered from (unrecovered incidence) ranks the candidates at least as well
+as the judged tasks' own outcomes on all four: mean tau +0.785 against the bar's +0.643. Without the recovery
+pass the best formula, last-turn incidence, averages +0.445. Read as a solve rate, 1 − unrecovered incidence is
+on average 8.5 points from each candidate's generalization solve rate; the judged tasks' own solve rate is 6.8
+points away. `sharing/best_methods.md` has every formula on all four, `sharing/formulas.md` defines each one
+step by step, and `sharing/first_last_study.md` covers the scores built from each trace's first and last
+failure instance.
 
 ## Layout
 
@@ -35,6 +36,9 @@ livecodebench/models/          the 9 models on livecodebench: taxonomies, traces
 hover/                         program, task registry
 hover/GEPA_candidates/         the 12 optimizer candidates: taxonomy, traces, judge mappings, outcomes, results
 hover/models/                  the 9 models on hover: taxonomies, traces, judge runs, outcomes, results
+terminalbench/                 program, task registry
+terminalbench/models/          the 7 models on terminal-bench: taxonomy, its generation run, judged traces, judge and recovery runs, outcomes
+sharing/                       the four experiments side by side: taxonomies, recovery reports, formulas, results, studies
 analysis/                      traces worth reading closely, with their judge records, per benchmark and candidate set
 code/                          the pipeline, judge, capture and scoring code, as run
 ```
@@ -55,7 +59,7 @@ never judged. The *gold* row is the same comparison for the judged tasks' own pa
 bar a trace method has to clear. *Top-1* asks whether the method's best candidate is
 gold-gen's best. `RESULTS.md` has every table; `methods/README.md` every formula.
 
-## Headline
+## Headline as of 2026-09-16, before the recovery pass
 
 On livecodebench, reading 50 traces per candidate predicts the 755-task ranking about as
 well as scoring those 50 tasks does — over ten random draws of 50, amplitude averages +0.80

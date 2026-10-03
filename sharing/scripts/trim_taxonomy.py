@@ -11,13 +11,16 @@ Dropped: the generation run's operation log (provenance, amendments, split/findi
 import argparse, json
 from pathlib import Path
 
-KEEP = ["id", "column", "name", "definition", "when_to_use", "when_not_to_use", "consequence"]
+KEEP = ["id", "column", "name", "definition", "when_to_use", "when_not_to_use", "consequence", "origin"]
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("src"); ap.add_argument("--out", type=Path, required=True); ap.add_argument("--evidence", type=int, default=3)
+    ap.add_argument("--benchmark", default=None, help="for a taxonomy file that does not name its benchmark")
     a = ap.parse_args(); t = json.load(open(a.src)); codes = []
+    if isinstance(t, list):          # RedoAdamast: a list of modes, evidence under `instances`
+        t = {"benchmark": a.benchmark, "codes": [dict(m, evidence=m.get("instances")) for m in t]}
     for c in t["codes"]:
         d = {k: c[k] for k in KEEP if k in c and c[k] not in (None, "")}
         if c.get("hand_authored") or c.get("authored") == "hand": d["hand_authored"] = True

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """compared_scoring.md: does the score read as a solve rate? Per candidate, 1 − unrecovered incidence and
-1 − profile risk beside the tasks actually solved on the judged set and on the generalization set; then
+1 − profile risk (and, without recovery, 1 − incidence) beside the tasks actually solved on the judged set and on the generalization set; then
 the average absolute distance over candidates, with gold-judged vs gold-gen as the reference.
 
     python3 sharing/scripts/compared_scoring.py --out sharing/compared_scoring.md
@@ -12,23 +12,27 @@ import argparse, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from results_tables import EXPERIMENTS, load, formulas, recovery_formulas  # noqa: E402
+from results_tables import MAIN, SUPPLEMENTARY, load, formulas, recovery_formulas  # noqa: E402
 
 
 def render(exp):
-    active, tasks, pts, last, GJ, GG, label = load(exp); T = len(tasks); G = len(GG[active[0]]); n = len(active)
+    active, tasks, pts, last, GJ, GG, label = load(exp); T = len(tasks); n = len(active)
+    Gs = sorted({len(GG[c]) for c in active}); G = Gs[0] if len(Gs) == 1 else f"{Gs[0]}–{Gs[-1]}"
     inc = formulas(active, tasks, pts, last, True)["incidence"]; pr = recovery_formulas(active, tasks, pts, GJ)["profile risk (own consequence, max)"]
-    L = [f"## {exp['title']}", "", f"- {len(active)} candidates; judged tasks {T}" + (f" (dropped: {', '.join(exp['drop'])})" if exp["drop"] else "") + f"; generalization tasks {G}",
+    inc0 = formulas(active, tasks, pts, last, False)["incidence"]
+    L = [f"## {exp['title']}", "", f"- {len(active)} candidates; judged tasks {T}" + (f" (dropped: {', '.join(exp['drop'])})" if exp["drop"] else "") + f"; generalization {exp.get('gen_unit', 'tasks')} {G}",
          f"- recovery: {exp['rec']}", "",
-         "| candidate | no unrecovered instance | % | 1 − profile risk | solved (judged) | % | solved (gen) | % |", "|---|---:|---:|---:|---:|---:|---:|---:|"]
-    di, dig, dp, dpg, sj = [], [], [], [], []
-    for c in sorted(active, key=lambda c: -sum(GG[c].values())):
-        clean = round((1 - inc[c]) * T); sol_j = sum(GJ[c][t] for t in tasks); sol_g = sum(GG[c].values())
-        L.append(f"| {label.get(c, c)} | {clean} / {T} | {clean/T:.0%} | {1-pr[c]:.0%} | {sol_j:.0f} / {T} | {sol_j/T:.0%} | {sol_g:.0f} / {G} | {sol_g/G:.0%} |")
-        di.append(1 - inc[c] - sol_j/T); dig.append(1 - inc[c] - sol_g/G); dp.append(1 - pr[c] - sol_j/T); dpg.append(1 - pr[c] - sol_g/G); sj.append(sol_j/T - sol_g/G)
+         "| candidate | no instance at all | % | no unrecovered instance | % | 1 − profile risk | solved (judged) | % | solved (gen) | % |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    d0, d0g, di, dig, dp, dpg, sj = [], [], [], [], [], [], []
+    for c in sorted(active, key=lambda c: -sum(GG[c].values()) / len(GG[c])):
+        clean0 = round((1 - inc0[c]) * T); clean = round((1 - inc[c]) * T); sol_j = sum(GJ[c][t] for t in tasks); sol_g = sum(GG[c].values()); Gc = len(GG[c])
+        L.append(f"| {label.get(c, c)} | {clean0} / {T} | {clean0/T:.0%} | {clean} / {T} | {clean/T:.0%} | {1-pr[c]:.0%} | {sol_j:.0f} / {T} | {sol_j/T:.0%} | {sol_g:.0f} / {Gc} | {sol_g/Gc:.0%} |")
+        d0.append(1 - inc0[c] - sol_j/T); d0g.append(1 - inc0[c] - sol_g/Gc)
+        di.append(1 - inc[c] - sol_j/T); dig.append(1 - inc[c] - sol_g/Gc); dp.append(1 - pr[c] - sol_j/T); dpg.append(1 - pr[c] - sol_g/Gc); sj.append(sol_j/T - sol_g/Gc)
     ap = lambda xs: f"{100*sum(map(abs, xs))/n:.1f}"
     L += ["", "Average absolute distance over candidates, in percentage points:", "",
           "| read as a solve rate | vs judged gold | vs gen gold |", "|---|---:|---:|",
+          f"| 1 − incidence (no recovery) | {ap(d0)} | {ap(d0g)} |",
           f"| 1 − unrecovered incidence | {ap(di)} | {ap(dig)} |", f"| 1 − profile risk | {ap(dp)} | {ap(dpg)} |",
           f"| **gold on the judged tasks (reference)** | — | {ap(sj)} |"]
     return "\n".join(L)
@@ -41,11 +45,15 @@ def main():
              "`results.md` asks whether a formula *orders* the candidates like the generalization set. This asks a stronger question of the two",
              "formulas that are on the scale of a solve rate: is the number itself the share of tasks the candidate solves?", "",
              "- **1 − unrecovered incidence** — the share of judged tasks whose trace has no failure instance the recovery reader left unrecovered: the tasks the trace says were solved.",
-             "- **1 − profile risk** — one minus the mean task risk, where a task's risk is the highest non-recovery share among the modes that fired on it (the candidate's own shares).", "",
+             "- **1 − profile risk** — one minus the mean task risk, where a task's risk is the highest non-recovery share among the modes that fired on it (the candidate's own shares).",
+             "- **1 − incidence (no recovery)** — the share of judged tasks whose trace has no failure instance at all: the same reading without the recovery pass.", "",
              "Both are compared with the tasks actually solved on the judged set (same tasks) and on the generalization set (disjoint, never read by any model).",
              "The reference row is the distance between those two gold columns themselves: how much of the gap to the generalization set is the task draw.",
-             "Unrecovered instances, every kept instance counted. Generated by `scripts/compared_scoring.py`.", ""]
-    for exp in EXPERIMENTS: parts += [render(exp), ""]
+             "Every kept instance counted (an instance no code fit counts too). On τ²-bench the generalization column counts runs (up to 4 trials per task).",
+             "Generated by `scripts/compared_scoring.py`.", ""]
+    for exp in MAIN: parts += [render(exp), ""]
+    parts += ["", "## Supplementary", "", "The same judge and recovery runs on all 150 judged LiveCodeBench tasks. The main LiveCodeBench section uses the", "50-task judged split; this one is reported for comparison and enters no mean and no choice of a best method.", ""]
+    for exp in SUPPLEMENTARY: parts += [render(exp).replace("## ", "### ", 1), ""]
     a.out.write_text("\n".join(parts)); print(f"-> {a.out}")
 
 

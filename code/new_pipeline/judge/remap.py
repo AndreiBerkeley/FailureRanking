@@ -33,7 +33,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
 from new_pipeline.judge import judge                          # noqa: E402
-from new_pipeline.llm import gemini_call, log       # noqa: E402, llm_call
+from new_pipeline.llm import gemini_call, llm_call, log       # noqa: E402
 
 
 def remap_one(path: Path, tax_text, valid_ids, call, model, threshold):

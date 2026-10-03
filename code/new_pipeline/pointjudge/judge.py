@@ -226,21 +226,54 @@ def assign_modes(call, model, points, taxonomy_text, valid_ids, program_text="")
             continue
         if not 0 <= i < len(points):
             continue
-        codes = []
-        for c in e.get("codes") or []:
-            if not isinstance(c, dict) or c.get("code") not in valid_ids:
-                continue
-            try:
-                fit = max(0, min(100, int(c.get("fitness"))))
-            except (TypeError, ValueError):
-                continue
-            codes.append({"code": c["code"], "fitness": fit})
-        good = [c for c in codes if c["fitness"] >= FIT_GOOD]
-        none_fits = bool(e.get("none_fits")) or not good
-        out[i] = {"codes": codes, "none_fits": none_fits,
-                  "missing": (str(e.get("missing")).strip()
-                              if e.get("missing") else None)}
+        out[i] = _mode_entry(e, valid_ids)
     return out
+
+
+def _mode_entry(e: dict, valid_ids) -> dict:
+    """One point's mode assignment from a model answer: valid codes with clamped
+    fitness; none_fits when nothing clears FIT_GOOD. Shared by pass 2 and the
+    one-pass reader so both apply the same threshold."""
+    codes = []
+    for c in e.get("codes") or []:
+        if not isinstance(c, dict) or c.get("code") not in valid_ids:
+            continue
+        try:
+            fit = max(0, min(100, int(c.get("fitness"))))
+        except (TypeError, ValueError):
+            continue
+        codes.append({"code": c["code"], "fitness": fit})
+    good = [c for c in codes if c["fitness"] >= FIT_GOOD]
+    return {"codes": codes, "none_fits": bool(e.get("none_fits")) or not good,
+            "missing": (str(e.get("missing")).strip() if e.get("missing") else None)}
+
+
+def read_points_one_pass(call, model, trace_text, expected, taxonomy_text, valid_ids, program_text=""):
+    """Points and modes in one call, taxonomy in view (the one-pass channel).
+    Returns (points, checked, modes) with `modes` aligned to `points` in the
+    shape assign_modes returns, or None."""
+    prompt = prompts.READER_ONE_PASS.format(
+        layout=prompts.TURN_LAYOUT, point_rule=prompts.POINT_RULE,
+        every_turn=prompts.EVERY_TURN, program=program_text, taxonomy=taxonomy_text, trace=trace_text)
+    d = _ask(call, model, prompt, lambda x: _points_ok(x, expected))
+    if d is None:
+        return None
+    points, checked = _flatten(d, expected)
+    # _flatten keeps trace order and drops evidence-less entries; walk the answer the same way
+    by_turn = {}
+    for e in d.get("turns") or []:
+        if isinstance(e, dict):
+            try:
+                by_turn[int(e.get("turn"))] = e
+            except (TypeError, ValueError):
+                pass
+    modes = []
+    for t in expected:
+        for p in (by_turn.get(t["turn"], {}).get("points") or []):
+            if isinstance(p, dict) and str(p.get("evidence") or "").strip():
+                modes.append(_mode_entry(p, valid_ids))
+    assert len(modes) == len(points)
+    return points, checked, modes
 
 
 def with_modes(points, modes):

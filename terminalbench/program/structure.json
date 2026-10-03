@@ -1,0 +1,23 @@
+{
+  "benchmark": "terminalbench",
+  "trace_format": {
+    "description": "Terminus 2 (the Terminal-Bench reference agent) trajectory in ATIF form, converted by data/terminalbench/scripts/convert_tb2.py. One ENVIRONMENT block carries the task description and the agent's verbatim instructions; every agent step is a turn: the terminal output it received (input), its analysis/plan text, hidden reasoning where recorded, and its command batch (output). The terminal output after the last batch closes the trace, with a note if the harness stopped the run (timeout). The verifier's tests and reward never appear in a trace.",
+    "turn_markers": "===== TURN k · agent: NAME ===== ... ===== end of turn k =====",
+    "environment_markers": "===== ENVIRONMENT · not an agent turn ====="
+  },
+  "architecture": {
+    "topology": "single_agent_loop",
+    "topology_details": "One LLM agent in a loop: each step it reads the terminal output of its previous command batch, writes an analysis and a plan, and emits a batch of keystrokes (with wait durations) that the harness types into a bash session in a Docker container; the loop ends when the agent marks the task complete or the harness stops it (agent timeout, usually 900 s). After the loop a hidden test suite (the verifier) checks the container's final state and yields reward 0 or 1. The harness parses the agent's JSON; malformed output is tolerated with a warning shown to the agent on the next step. Manually specified from the Terminus 2 source and the recorded trajectories; not inferred.",
+    "verification_pattern": "self_check_only",
+    "verification_details": "No second agent. The agent can test its own work by running commands (e.g. running the program, listing files) and reads the results as terminal output; nothing else checks it before the verifier.",
+    "termination_owner": "agent (task_complete) or harness (timeout, step cap)",
+    "critical_handoffs": [
+      {"from_agent": "environment", "to_agent": "terminus (step 1)", "what_is_passed": "the task description and the initial terminal screen"},
+      {"from_agent": "terminus (step k)", "to_agent": "terminus (step k+1)", "what_is_passed": "the terminal output produced by step k's command batch, plus any parser warnings; the agent also keeps its own prior messages in context"},
+      {"from_agent": "terminus (last step)", "to_agent": "verifier (harness)", "what_is_passed": "the container's final state: files written, packages installed, services running"}
+    ]
+  },
+  "discovered_agents": {"agents": ["terminus"], "note": "every turn is the same agent; turn numbers carry the step order"},
+  "capabilities": {"interaction_style": "tool_use_via_terminal", "tool_names_seen": ["bash_command", "mark_task_complete"]},
+  "success_rule": "The task is solved only if the verifier's hidden tests pass on the container's final state after the agent stops. What the tests check is stated only by the task description; the agent never sees them. A run stopped by the harness (timeout) is scored on whatever state the container was in. So the cost of a failure is judged by what the final state lacks or has wrong relative to the task description — a file not written, a program that does not produce the required behaviour, a requirement in the description left unmet — as evidenced by the terminal output the agent itself saw; the agent's own claims of completion are not evidence."
+}

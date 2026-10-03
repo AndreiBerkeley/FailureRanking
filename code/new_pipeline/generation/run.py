@@ -374,6 +374,9 @@ def main():
     ap.add_argument("--thinking", choices=["MINIMAL", "LOW", "MEDIUM", "HIGH"],
                     default=None, help="Gemini thinking level; unset = model default")
     ap.add_argument("--max-output", type=int, default=32768)
+    ap.add_argument("--abstraction-chunk", type=int, default=0,
+                    help="stage 3 over chunks of at most N observations (whole traces per chunk) when the corpus has more; "
+                         "0 (default) is the single call every earlier run used")
     ap.add_argument("--timeout", type=int, default=900,
                     help="per-call read timeout; a 250k-char prompt takes far "
                          "longer than the default")
@@ -515,54 +518,97 @@ def main():
             f"checked; the work pass may have skimmed them (e.g. {thin[:3]})")
 
     # --- abstraction: the framework applies here ---
-    p3 = prompts.build("stage3", observations=json.dumps(obs, indent=2),
-                       domain=json.dumps(dom, indent=2), contracts=ctext_all)
-    modes = call_stage("stage3_abstraction", p3, a.out, call, a.model)
+    def modes_ok_for(nf):
+        def modes_ok(d):
+            ms = d.get("modes")
+            if not isinstance(ms, list) or not ms:
+                return "expected a non-empty 'modes' list"
+            bad = [m for m in ms if not isinstance(m, dict) or not m.get("name")
+                   or m.get("column") not in ("general", "domain")]
+            if bad:
+                return (f"{len(bad)} of {len(ms)} modes lack a 'name' or a 'column' "
+                        "of exactly 'general' or 'domain'")
+            # Accounting is part of the contract, not a request. Asking for it held
+            # at 24 traces and silently failed at 72: observations vanished without
+            # appearing in "unplaced", which is indistinguishable from never having
+            # been observed. A dropped observation is a lost mechanism.
+            placed = sum(len(m.get("incidents") or []) for m in ms)
+            skipped = len(d.get("unplaced") or [])
+            lost = nf - placed - skipped
+            # Tolerance, because the check exists to catch SYSTEMATIC loss, not to
+            # demand perfection. Refusing a response that accounted for 74 of 75
+            # discards a good taxonomy over one observation; refusing one that
+            # accounted for 51 of 75 is the whole point. Whatever slips through is
+            # recorded rather than forgiven silently.
+            if lost > max(2, int(0.05 * nf)):
+                return (f"{nf} observations were given; {placed} appear as "
+                        f"incidents and {skipped} in 'unplaced', leaving {lost} "
+                        "unaccounted for. Every observation must appear in exactly "
+                        "one of the two, even if several share a mode and even if "
+                        "the reason is that it is not a mechanism.")
+            return None
+        return modes_ok
 
-    def modes_ok(d):
-        ms = d.get("modes")
-        if not isinstance(ms, list) or not ms:
-            return "expected a non-empty 'modes' list"
-        bad = [m for m in ms if not isinstance(m, dict) or not m.get("name")
-               or m.get("column") not in ("general", "domain")]
-        if bad:
-            return (f"{len(bad)} of {len(ms)} modes lack a 'name' or a 'column' "
-                    "of exactly 'general' or 'domain'")
-        # Accounting is part of the contract, not a request. Asking for it held
-        # at 24 traces and silently failed at 72: observations vanished without
-        # appearing in "unplaced", which is indistinguishable from never having
-        # been observed. A dropped observation is a lost mechanism.
-        placed = sum(len(m.get("incidents") or []) for m in ms)
-        skipped = len(d.get("unplaced") or [])
-        lost = n_find - placed - skipped
-        # Tolerance, because the check exists to catch SYSTEMATIC loss, not to
-        # demand perfection. Refusing a response that accounted for 74 of 75
-        # discards a good taxonomy over one observation; refusing one that
-        # accounted for 51 of 75 is the whole point. Whatever slips through is
-        # recorded rather than forgiven silently.
-        if lost > max(2, int(0.05 * n_find)):
-            return (f"{n_find} observations were given; {placed} appear as "
-                    f"incidents and {skipped} in 'unplaced', leaving {lost} "
-                    "unaccounted for. Every observation must appear in exactly "
-                    "one of the two, even if several share a mode and even if "
-                    "the reason is that it is not a mechanism.")
-        return None
-    modes = require(modes, "stage3_abstraction", modes_ok, a.out, p3, call, a.model,
-                    retries=3)
-    ms = modes["modes"]
-    unplaced = modes.get("unplaced") or []
-    _placed = sum(len(m.get("incidents") or []) for m in ms)
-    _lost = n_find - _placed - len(modes.get("unplaced") or [])
-    if _lost > 0:
-        log(f"  [!] {_lost} of {n_find} observations unaccounted for "
-            "(within tolerance; recorded in the artifact)")
+    # Chunked abstraction (--abstraction-chunk N): one answer cannot place every observation
+    # of a large corpus -- on tau2bench (490 observations) four attempts each placed 116 and
+    # the stage kept that, so the draft rested on a quarter of what was observed. With N set
+    # and more than N observations, whole traces are dealt into chunks of at most N
+    # observations, each chunk is abstracted by the same prompt under the same accounting
+    # check, and the chunks' modes go on together to applicability and consolidation, whose
+    # job is already to merge modes naming the same mechanism. Later stages' cache names
+    # carry the chunking so a resume never reuses output built on a different abstraction.
+    chunked = bool(a.abstraction_chunk) and n_find > a.abstraction_chunk
+    sfx = f"_ch{a.abstraction_chunk}" if chunked else ""
+    if chunked:
+        chunks, cur, cur_n = [], [], 0
+        for x in seen_traces:
+            k_n = len(x.get("findings") or [])
+            if cur and cur_n + k_n > a.abstraction_chunk:
+                chunks.append(cur); cur, cur_n = [], 0
+            cur.append(x); cur_n += k_n
+        if cur: chunks.append(cur)
+        log(f"  abstraction in {len(chunks)} chunks of at most {a.abstraction_chunk} observations: "
+            + ", ".join(str(sum(len(x.get('findings') or []) for x in c)) for c in chunks))
+        ms, unplaced, _lost = [], [], 0
+        for ci, ctr in enumerate(chunks, 1):
+            nf = sum(len(x.get("findings") or []) for x in ctr)
+            nm = f"stage3_abstraction_c{ci}of{len(chunks)}_max{a.abstraction_chunk}"
+            p3 = prompts.build("stage3", observations=json.dumps({"traces": ctr}, indent=2),
+                               domain=json.dumps(dom, indent=2), contracts=ctext_all)
+            mk = call_stage(nm, p3, a.out, call, a.model, log_prefix=f"  [chunk {ci}/{len(chunks)}, {nf} observations]")
+            mk = require(mk, nm, modes_ok_for(nf), a.out, p3, call, a.model, retries=3)
+            mk_ms = mk["modes"]
+            for m in mk_ms: m["abstraction_chunk"] = ci
+            lost_k = nf - sum(len(m.get("incidents") or []) for m in mk_ms) - len(mk.get("unplaced") or [])
+            if lost_k > 0:
+                log(f"  [!] chunk {ci}: {lost_k} of {nf} observations unaccounted for (recorded in the artifact)")
+            ms += mk_ms; unplaced += mk.get("unplaced") or []; _lost += max(0, lost_k)
+    else:
+        p3 = prompts.build("stage3", observations=json.dumps(obs, indent=2),
+                           domain=json.dumps(dom, indent=2), contracts=ctext_all)
+        modes = call_stage("stage3_abstraction", p3, a.out, call, a.model)
+        modes = require(modes, "stage3_abstraction", modes_ok_for(n_find), a.out, p3, call, a.model,
+                        retries=3)
+        ms = modes["modes"]
+        unplaced = modes.get("unplaced") or []
+        _placed = sum(len(m.get("incidents") or []) for m in ms)
+        _lost = n_find - _placed - len(modes.get("unplaced") or [])
+        if _lost > 0:
+            log(f"  [!] {_lost} of {n_find} observations unaccounted for "
+                "(recorded in the artifact)")
+    if _lost > 0.2 * n_find:
+        # the tolerance above is per response; this is the stage's floor. A draft induced from
+        # a fraction of what was observed is not a draft of the corpus, and every later stage
+        # would inherit the gap -- stop rather than continue (--abstraction-chunk is the remedy).
+        raise SystemExit(f"stage3: {_lost} of {n_find} observations unaccounted for after re-asks "
+                         f"({_lost / n_find:.0%}); rerun with a smaller --abstraction-chunk")
     log(f"  abstracted: {len(ms)} modes "
         f"({sum(1 for m in ms if m['column']=='general')} general, "
         f"{sum(1 for m in ms if m['column']=='domain')} domain), "
         f"{len(unplaced)} observations unplaced")
 
     allm = {"modes": ms}
-    app = call_stage("stage4_applicability",
+    app = call_stage("stage4_applicability" + sfx,
                      prompts.build("stage4", modes=json.dumps(allm, indent=2),
                                    contracts=ctext_all, traces=traces),
                      a.out, call, a.model)
@@ -571,7 +617,7 @@ def main():
     flags = [x for x in (app.get("applicability") or []) if x.get("verdict") == "flag"]
     log(f"  applicability: {len(spec)} specialised, {len(flags)} flagged")
 
-    cons = call_stage("stage5_consolidation",
+    cons = call_stage("stage5_consolidation" + sfx,
                       prompts.build("stage5", codes=json.dumps(
                           {**allm, "specialised": spec}, indent=2)),
                       a.out, call, a.model)
@@ -604,8 +650,8 @@ def main():
           + json.dumps(cons.get("provenance", []), indent=2)
           + "\n\n## THE MODES BEFORE CONSOLIDATION\n"
           + json.dumps(ms, indent=2))
-    val = call_stage("stage6_validation", p6, a.out, call, a.model)
-    val = require(val, "stage6_validation", val_ok, a.out, p6, call, a.model,
+    val = call_stage("stage6_validation" + sfx, p6, a.out, call, a.model)
+    val = require(val, "stage6_validation" + sfx, val_ok, a.out, p6, call, a.model,
                   retries=3)
     corrected = val.get("taxonomy") or tax
     ncorr = len(val.get("corrections") or [])
@@ -623,6 +669,7 @@ def main():
              "modes_before_consolidation": len(ms),
              "unplaced_observations": unplaced,
              "observations_unaccounted": _lost,
+             "abstraction_chunk": a.abstraction_chunk if chunked else None,
              "codes": tax,
              "validation": val,
              "applicability": app.get("applicability", []),

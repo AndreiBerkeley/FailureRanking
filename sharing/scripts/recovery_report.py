@@ -25,26 +25,32 @@ MEANING = {
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--recovery", required=True); ap.add_argument("--taxonomy", required=True); ap.add_argument("--pool", required=True)
+    ap.add_argument("--recovery", required=True); ap.add_argument("--taxonomy", required=True); ap.add_argument("--pool", default=None)
+    ap.add_argument("--index", default=None, help="instead of --pool: a traces/view-1/index.jsonl (view trace id -> candidate)")
     ap.add_argument("--title", required=True); ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--names", default=None, help="candidate set json with solver_models, to label candidates by model")
     ap.add_argument("--note", action="append", default=[], help="a line for the header (repeatable)")
     a = ap.parse_args()
     rs = json.load(open(f"{a.recovery}/summary.json"))
-    tax = {c["id"]: c["name"] for c in json.load(open(a.taxonomy))["codes"]}
-    inv = {v: k for k, v in json.load(open(f"{a.pool}/pool_manifest.json"))["candidate_index"].items()}
+    tx = json.load(open(a.taxonomy)); tax = {c["id"]: c["name"] for c in (tx if isinstance(tx, list) else tx["codes"])}
+    if a.index:
+        cand = {r["view_trace_id"]: r["candidate_id"] for r in map(json.loads, open(a.index))}
+        who = lambda r: cand[r["trace_id"]]
+    else:
+        inv = {v: k for k, v in json.load(open(f"{a.pool}/pool_manifest.json"))["candidate_index"].items()}
+        who = lambda r: inv[r["candidate_index"]]
     label = {}
     if a.names:
         cs = json.load(open(a.names)); sm = cs.get("solver_models") or {}
         label = {c: (sm[c] if isinstance(sm, dict) else sm[i]) for i, c in enumerate(cs["candidate_ids"])} if sm else {}
     recs = [json.load(open(f)) for f in sorted(glob.glob(f"{a.recovery}/traces/*.json"))]
     judged = [r for r in recs if r.get("status") == "judged"]
-    tasks = sorted({r["task_id"] for r in judged}); cands = sorted({inv[r["candidate_index"]] for r in judged})
+    tasks = sorted({r["task_id"] for r in judged}); cands = sorted({who(r) for r in judged})
 
     V = collections.Counter(); per_c = collections.defaultdict(collections.Counter); per_m = collections.defaultdict(collections.Counter)
     tr = collections.defaultdict(dict)   # candidate -> trace -> (points, unrec, modes, unrec modes)
     for r in judged:
-        c = inv[r["candidate_index"]]; pts = r.get("points") or []
+        c = who(r); pts = r.get("points") or []
         modes = {m for p in pts for m in (p.get("codes") or ["(uncoded)"])}
         umodes = set(); u = 0
         for p in pts:

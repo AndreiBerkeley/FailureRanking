@@ -32,10 +32,10 @@ EXPERIMENTS = [
          judge="readers gpt-5.6-luna ×2, decider gpt-5.6-sol; success rule in view", rec="claude-sonnet-5; success rule in view",
          taxonomy="GEPA_Candidates_HoVer_taxonomy.json (15 codes, 2 hand-authored)"),
     dict(key="models_hover", title="Models · HoVer (judged set b)", candidates="9 models behind the same program",
-         recovery="runs/new_pipeline/hover-models/recovery-1", pool="runs/new_pipeline/hover-models/pool_judging",
+         recovery="runs/new_pipeline/hover-models/recovery-2", pool="runs/new_pipeline/hover-models/pool_judging",
          gold_judged=("jsonl", "data/hover/outcomes/cap-7.jsonl"), gold_gen=("jsonl", "data/hover/outcomes/cap-8.jsonl"),
          gen_name="models-1 generalization, 500 tasks", names="data/hover/candidates/sets/models-1.json", drop=(),
-         judge="readers gemini-3.6-flash ×2, decider claude-sonnet-5; before the success rule", rec="claude-sonnet-5; before the success rule",
+         judge="readers gemini-3.6-flash ×2, decider claude-sonnet-5; before the success rule", rec="claude-sonnet-5 (via Arena); success rule in view (recovery-2; recovery-1 predates the rule and is superseded)",
          taxonomy="Models_HoVer_taxonomy.json (15 codes, 1 hand-authored)"),
     dict(key="models_tb", title="Models · Terminal-Bench 2.0", candidates="7 models behind the Terminus 2 agent",
          recovery="runs/new_pipeline/terminalbench/recovery-1", pool="runs/new_pipeline/terminalbench/pool_judged20_frontier7",
@@ -43,7 +43,86 @@ EXPERIMENTS = [
          gen_name="pools-1 eval, 69 tasks", names="data/terminalbench/candidates/sets/terminus2-1.json", drop=("vulnerable-secret",),
          judge="readers gpt-5.6-luna ×2, decider gpt-5.6-sol; success rule in view", rec="claude-sonnet-5; success rule in view",
          taxonomy="Models_TerminalBench_taxonomy.json (10 codes)"),
+    dict(key="models_lcb", title="Models · LiveCodeBench", candidates="9 models behind the same program",
+         recovery="runs/new_pipeline/lcb-models/recovery-1", pool="runs/new_pipeline/lcb-models/pool_judging150",
+         gold_judged=("pool", "runs/new_pipeline/lcb-models/pool_judging150"), gold_gen=("pool", "runs/new_pipeline/lcb-models/pool_generalization"),
+         gen_name="pool_generalization, 755 tasks", names="data/livecodebench/candidates/sets/models-1.json", drop=(),
+         tasks=("data/livecodebench/splits/judging-50-1/split.json", "judging"),   # the 50-task judged split (of the 150 judged)
+         judge="readers gemini-3.6-flash ×2, decider claude-sonnet-5; before the success rule",
+         rec="claude-sonnet-5 (via Arena); success rule in view; single-turn programs, so almost nothing can be recovered",
+         taxonomy="Models_LiveCodeBench_taxonomy.json (10 codes)"),
+    # supplementary: the same judge and recovery runs on all 150 judged tasks; reported in its own section, never in a
+    # mean or in the choice of a best method
+    dict(key="models_lcb150", supplementary=True, title="Models · LiveCodeBench, all 150 judged tasks (supplementary)",
+         candidates="9 models behind the same program",
+         recovery="runs/new_pipeline/lcb-models/recovery-1", pool="runs/new_pipeline/lcb-models/pool_judging150",
+         gold_judged=("pool", "runs/new_pipeline/lcb-models/pool_judging150"), gold_gen=("pool", "runs/new_pipeline/lcb-models/pool_generalization"),
+         gen_name="pool_generalization, 755 tasks", names="data/livecodebench/candidates/sets/models-1.json", drop=(),
+         judge="readers gemini-3.6-flash ×2, decider claude-sonnet-5; before the success rule",
+         rec="claude-sonnet-5 (via Arena); success rule in view; single-turn programs, so almost nothing can be recovered",
+         taxonomy="Models_LiveCodeBench_taxonomy.json (10 codes)"),
 ]
+MAIN = [e for e in EXPERIMENTS if not e.get("supplementary")]
+SUPPLEMENTARY = [e for e in EXPERIMENTS if e.get("supplementary")]
+
+# Not published yet (their analysis is not done): RedoAdamast's taxonomy and judge runs on our SWE-bench,
+# tau2-bench and BFCL captures and the recovery pass over them. load() handles them; no generator lists them.
+PENDING_EXPERIMENTS = [
+    # candidates and gold join through data/<bench>/traces/view-1/index.jsonl and outcomes/cap-1-complete.jsonl
+    dict(key="models_swe", kind="redo", bench="swebench", title="Models · SWE-bench Verified", candidates="12 models behind mini-SWE-agent 2.0.0",
+         recovery="runs/new_pipeline/swebench/recovery-2-patch", drop=(), names=None,
+         gen_name="pools-4 eval, 405 tasks", gen_unit="tasks",
+         judge="gemini-3.8-flash, one pass per trace (RedoAdamast); success rule not in view",
+         rec="gemini-3.8-flash (via Arena); success rule in view; output claims checked against the submitted patch",
+         taxonomy="Models_SWEbench_taxonomy.json (29 codes)"),
+    dict(key="models_tau2", kind="redo", bench="tau2bench", title="Models · τ²-bench banking", candidates="12 models behind the tau2-bench agent",
+         recovery="runs/new_pipeline/tau2bench/recovery-2", drop=("task_068", "task_086"), names=None,
+         gen_name="pools-4 eval, 17 tasks × up to 4 trials (runs)", gen_unit="runs",
+         judge="gemini-3.8-flash, one pass per trace (RedoAdamast); success rule not in view",
+         rec="gemini-3.8-flash (via Arena); success rule in view",
+         taxonomy="Models_Tau2bench_taxonomy.json (28 codes)"),
+    dict(key="models_bfcl", kind="redo", bench="bfcl", title="Models · BFCL v4 multi-turn", candidates="17 models, native function calling",
+         recovery="runs/new_pipeline/bfcl/recovery-2", drop=(), names=None,
+         gen_name="pools-4 eval, 469 tasks (120 scenarios)", gen_unit="tasks",
+         judge="gemini-3.8-flash, one pass per trace (RedoAdamast); success rule not in view",
+         rec="gemini-3.8-flash (via Arena); success rule in view",
+         taxonomy="Models_BFCL_taxonomy.json (35 codes)"),
+]
+
+
+def load_redo(exp):
+    """The RedoAdamast experiments: recovery records keyed by view trace id. A judged trace whose recovery call
+    failed keeps the judge's instances, every one counted unrecovered (missing evidence is not recovery)."""
+    b = exp["bench"]
+    idx = {r["view_trace_id"]: r for r in map(json.loads, open(f"data/{b}/traces/view-1/index.jsonl"))}
+    sc = {r["trace_id"]: r["score"] for r in map(json.loads, open(f"data/{b}/outcomes/cap-1-complete.jsonl"))}
+    rec = {}
+    for f in glob.glob(f"{exp['recovery']}/traces/*.json"):
+        d = json.load(open(f)); rec[d["trace_id"]] = d
+    pts = defaultdict(dict); last = defaultdict(dict); GJ = defaultdict(dict); fallback = 0
+    for m in map(json.loads, open(f"data/{b}/mappings/map-1/mapping.jsonl")):
+        if m["status"] != "judged" or m["task_id"] in exp["drop"]: continue
+        c, t = m["candidate_id"], m["task_id"]
+        r = rec.get(m["trace_id"])
+        if r is not None and r.get("status") == "judged":
+            ps = r.get("points") or []
+            pts[c][t] = [(q["turn"], list(q.get("codes") or [UNC]), (coarse(q.get("recovery")) in RECOVERED)) for q in ps]
+        else:
+            fallback += 1
+            pts[c][t] = [(q["turn"], list(q.get("codes") or [UNC]), False) for q in m["instances"]]
+        last[c][t] = m["turns"]
+        GJ[c][t] = sc[m["cap1_trace_id"]]
+    exp["fallback"] = fallback
+    active = sorted(pts)
+    tasks = sorted(pts[active[0]])
+    assert all(sorted(pts[c]) == tasks for c in active), "candidates judged on different tasks"
+    ev = set(json.load(open(f"data/{b}/splits/pools-4/split.json"))["portions"]["eval"])
+    GG = defaultdict(dict)
+    for line in open(f"data/{b}/outcomes/cap-1-complete.jsonl"):
+        r = json.loads(line)
+        if r["task_id"] in ev and r["candidate_id"] in pts:
+            GG[r["candidate_id"]][(r["task_id"], r["repeat"])] = r["score"]   # every eval run counts once
+    return active, tasks, pts, last, GJ, GG, {}
 
 
 def gold_from(spec, active):
@@ -62,15 +141,21 @@ def gold_from(spec, active):
 
 
 def load(exp):
-    inv = {v: k for k, v in json.load(open(f"{exp['pool']}/pool_manifest.json"))["candidate_index"].items()}
+    if exp.get("kind") == "redo":
+        return load_redo(exp)
+    inv ={v: k for k, v in json.load(open(f"{exp['pool']}/pool_manifest.json"))["candidate_index"].items()}
     label = {}
     if exp["names"]:
         cs = json.load(open(exp["names"])); sm = cs.get("solver_models") or {}
         label = {c: (sm[c] if isinstance(sm, dict) else sm[i]) for i, c in enumerate(cs["candidate_ids"])} if sm else {}
+    keep = None
+    if exp.get("tasks"):                         # restrict to a judged split: (split.json, portion)
+        path, portion = exp["tasks"]; keep = set(json.load(open(path))["portions"][portion])
     recs = []
     for f in glob.glob(f"{exp['recovery']}/traces/*.json"):
         d = json.load(open(f))
         if d.get("status") != "judged" or d["task_id"] in exp["drop"]: continue
+        if keep is not None and d["task_id"] not in keep: continue
         recs.append(d)
     active = sorted({inv[r["candidate_index"]] for r in recs})
     # per candidate per task: points as (turn, codes, recovered?) ; last turn
@@ -205,7 +290,8 @@ def render(exp):
     L = [f"## {exp['title']}", "",
          f"- candidates: {exp['candidates']} ({len(active)}); judged tasks: **{len(tasks)}**" + (f" (dropped: {', '.join(exp['drop'])})" if exp["drop"] else "") + f"; traces: {len(active) * len(tasks)}",
          f"- taxonomy: `{exp['taxonomy']}`; judge: {exp['judge']}; recovery: {exp['rec']}",
-         f"- failure instances: {npts} kept by the judge ({n_unc} of them fit no code), {nunrec} left unrecovered",
+         f"- failure instances: {npts} kept by the judge ({n_unc} of them fit no code), {nunrec} left unrecovered"
+         + (f"; {exp['fallback']} traces whose recovery call failed count every instance unrecovered" if exp.get("fallback") else ""),
          f"- generalization set: {exp['gen_name']}, disjoint from the judged tasks; {pairs} candidate pairs in all",
          "", f"### Table 1 — every failure instance the judge kept", "", *HEAD]
     gold_neg = {c: -gj[c] for c in active}
@@ -231,7 +317,9 @@ def main():
              "candidate pairs the tau rests on. top-3 = how many of the formula's best three are among the generalization set's best three.",
              "Lower is better for every formula except gold. An instance the judge kept but no code fit is reported both ways: *every kept instance*",
              "counts it as a failure of its own; *coded instances only* drops it. Generated by `scripts/results_tables.py` from the recorded judge and recovery runs.", ""]
-    for exp in EXPERIMENTS: parts += [render(exp), ""]
+    for exp in MAIN: parts += [render(exp), ""]
+    parts += ["", "## Supplementary", "", "The same judge and recovery runs on all 150 judged LiveCodeBench tasks. The main LiveCodeBench section uses the", "50-task judged split; this one is reported for comparison and enters no mean and no choice of a best method.", ""]
+    for exp in SUPPLEMENTARY: parts += [render(exp).replace("## ", "### ", 1), ""]
     a.out.write_text("\n".join(parts)); print(f"-> {a.out}")
 
 

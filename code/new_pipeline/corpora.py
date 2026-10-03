@@ -94,7 +94,12 @@ def _index(pool: Path, scores: dict | None = None):
 
 
 def plan(pool: Path, n_generation: int, seed: int = 0,
-         outcomes: Path | None = None, n_gap_tasks: int = 50, rounds: int = 1) -> Split:
+         outcomes: Path | None = None, n_gap_tasks: int = 50, rounds: int = 1,
+         ref_tasks: int | None = None, ref_per_task: int = REFINE_PER_TASK,
+         gate_tasks: int = GATE_MIN_TASKS) -> Split:
+    """ref_tasks: refinement tasks per round (default: derived from n_generation, below);
+    ref_per_task: traces per refinement task; gate_tasks: 0 plans no gate corpus at all
+    (a run without gates). The defaults reproduce every run made before these existed."""
     scores = load_outcomes(outcomes)
     by_task = _index(pool, scores)
     tasks = sorted(by_task)
@@ -110,14 +115,14 @@ def plan(pool: Path, n_generation: int, seed: int = 0,
     # Refinement wants N/2 traces AND 2 traces per task, so it needs N/4 tasks.
     # It also wants at least twice the generation task count for diversity.
     # Whichever is larger governs; satisfying only one starves the other.
-    ref_tasks_needed = max(gen_tasks_needed * REFINE_TASK_MULTIPLE,
-                           -(-(n_generation // 2) // REFINE_PER_TASK))
-    need = gen_tasks_needed + rounds * ref_tasks_needed + GATE_MIN_TASKS
+    ref_tasks_needed = ref_tasks if ref_tasks is not None else \
+        max(gen_tasks_needed * REFINE_TASK_MULTIPLE, -(-(n_generation // 2) // REFINE_PER_TASK))
+    need = gen_tasks_needed + rounds * ref_tasks_needed + gate_tasks
     if len(tasks) < need:
         raise SystemExit(
             f"pool has {len(tasks)} tasks; the pipeline needs at least {need} "
-            f"({gen_tasks_needed} generation + {ref_tasks_needed} refinement + "
-            f"{GATE_MIN_TASKS} gate) so no task is shared between corpora. "
+            f"({gen_tasks_needed} generation + {rounds} x {ref_tasks_needed} refinement + "
+            f"{gate_tasks} gate) so no task is shared between corpora. "
             f"Capture more tasks, or lower --n-generation.")
 
     # Four corpora consume failures: generation, refinement, the gate, and the
@@ -135,8 +140,8 @@ def plan(pool: Path, n_generation: int, seed: int = 0,
     # A round refining on traces an earlier round already used sees no new evidence, so each
     # round gets its own slice. The gate keeps one fixed corpus: baseline and every round must be
     # measured with the same ruler, and the refiner never sees it.
-    quota = {"generation": gen_tasks_needed, "gate": GATE_MIN_TASKS,
-             "gap": min(n_gap_tasks, max(0, len(tasks) - need))}
+    quota = {"generation": gen_tasks_needed, "gap": min(n_gap_tasks, max(0, len(tasks) - need))}
+    if gate_tasks > 0: quota["gate"] = gate_tasks
     for r in range(1, rounds + 1): quota[f"refinement_{r}"] = ref_tasks_needed
     dealt = {k: [] for k in quota}; spare = []
     bearing = [t for t in tasks if by_task[t]["fail"]]
@@ -147,9 +152,9 @@ def plan(pool: Path, n_generation: int, seed: int = 0,
             spare.append(t); continue
         k = min(open_, key=lambda k: (len(dealt[k]) / quota[k], k))
         dealt[k].append(t)
-    gen_t, gate_t, gap_t = dealt["generation"], dealt["gate"], dealt["gap"]
+    gen_t, gate_t, gap_t = dealt["generation"], dealt.get("gate", []), dealt["gap"]
     ref_by_round = {r: dealt[f"refinement_{r}"] for r in range(1, rounds + 1)}
-    ref_t = ref_by_round[1]
+    ref_t = ref_by_round.get(1, [])   # --rounds 0: generation only, no refinement slice
 
     s = Split()
     # generation: GEN_PER_TASK per task, failures first so the corpus carries
@@ -192,10 +197,10 @@ def plan(pool: Path, n_generation: int, seed: int = 0,
             if b["fail"]: chosen.append(rng.choice(b["fail"]))
             if b["pass"]: chosen.append(rng.choice(b["pass"]))
             pool_t = b["fail"] + b["pass"]
-            while len(chosen) < REFINE_PER_TASK and len(chosen) < len(pool_t):
+            while len(chosen) < ref_per_task and len(chosen) < len(pool_t):
                 extra = rng.choice(pool_t)
                 if extra not in chosen: chosen.append(extra)
-            picked.extend(chosen[:REFINE_PER_TASK])
+            picked.extend(chosen[:ref_per_task])
         s.refinement_by_round[r] = picked
     s.refinement = s.refinement_by_round.get(1, [])
 
@@ -218,6 +223,7 @@ def plan(pool: Path, n_generation: int, seed: int = 0,
 
     s.manifest = {
         "seed": seed, "n_generation_requested": n_generation,
+        "refinement_tasks_per_round": ref_tasks_needed, "refinement_traces_per_task": ref_per_task, "gate_tasks_planned": gate_tasks,
         "outcomes_source": str(outcomes) if outcomes else "trace metadata",
         "pool_tasks": len(tasks), "pool_traces": sum(
             len(v["pass"]) + len(v["fail"]) for v in by_task.values()),

@@ -114,6 +114,58 @@ checked against what>", "points": [{{"evidence": "<verbatim span, or a statement
 of what is missing and where it was owed>", "problem": "<one sentence: what is
 wrong with it>"}}]}}]}}"""
 
+# ------------------------------------------------ one-pass reader (points + modes)
+READER_ONE_PASS = """You are reading one execution trace of a candidate program, step by step, to
+find where it went wrong and to name each failure with the vocabulary below.
+
+{layout}
+
+{point_rule}
+
+{every_turn}
+
+{program}
+
+## A VOCABULARY OF KNOWN FAILURES
+
+Below is a taxonomy of failure modes seen in this program before. Read it as a
+description of what failures tend to look like here, NOT as a checklist and NOT
+as the set of things that can be wrong. A real failure that no entry describes
+is still a failure point and must be reported; a code that matches nothing in
+this trace must not be made to fit.
+
+{taxonomy}
+
+## NAMING EACH POINT
+
+For every point you report, name the mode or modes that describe it. A mode fits
+when its definition names what happened at that point. Judge the mechanism, not
+the wording. Give each assignment a fitness from 0 to 100:
+
+  90-100  the definition names exactly what happened here
+  70-89   the definition covers it, with detail it does not mention
+  40-69   related, and broader or narrower than what happened
+  0-39    the nearest thing available, and not a description of this point
+
+A point usually carries one mode; it may carry more when it genuinely exhibits
+more than one mechanism. If no mode describes a point, set `"none_fits": true`,
+leave `codes` empty, and say in `missing` what mechanism the vocabulary lacks.
+Do not reach for the closest available label: a point nothing describes is
+recorded, not scored, and forcing a code onto it corrupts the count.
+
+## THE TRACE
+
+{trace}
+
+## ANSWER
+
+Return ONLY JSON:
+{{"turns": [{{"turn": 1, "agent": "<name>", "checked": "<one line, what you
+checked against what>", "points": [{{"evidence": "<verbatim span, or a statement
+of what is missing and where it was owed>", "problem": "<one sentence: what is
+wrong with it>", "none_fits": false, "codes": [{{"code": "<id>", "fitness": <0-100>}}],
+"missing": null}}]}}]}}"""
+
 # ------------------------------------------------------------- reader B, pass 1
 READER_B_POINTS = """You are reading one execution trace of a candidate program, step by step, to
 find where it went wrong.

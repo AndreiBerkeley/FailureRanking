@@ -54,6 +54,37 @@ def _base_result(path: Path, clean, removed):
             "gold_stripped": removed}
 
 
+def _single_reader_result(points_in, checked, modes, which, expected) -> dict:
+    """Shape a single reader's points exactly like decider output so every downstream
+    reader -- counts_from_points, the summary, recovery, the analysis scripts -- works
+    unchanged. assign_modes returns {"code", "fitness"}; downstream wants plain ids,
+    normally the decider's doing, so the same FIT_GOOD threshold is applied here and
+    `codes` and `none_fits` cannot disagree. from_a/from_b record provenance honestly."""
+    points = []
+    for i, (pt, m) in enumerate(zip(points_in, modes or [])):
+        q = dict(pt)
+        q["modes"] = m["codes"]
+        q["codes"] = [c["code"] for c in m["codes"] if c["fitness"] >= judge.FIT_GOOD]
+        q["none_fits"] = m["none_fits"]
+        q["missing"] = m["missing"]
+        q["from_a"], q["from_b"] = (i, None) if which in ("a", "one") else (None, i)
+        points.append(q)
+    n = len(points)
+    return {
+        "status": "judged",
+        "codes": judge.counts_from_points(points),
+        "points": points,
+        "rejected": [],
+        "readers": {which: {"points": points_in, "modes": modes, "checked": checked}},
+        "single_reader": which,
+        "agreement": {"points": n, "found_by_both": 0, "only_a": n if which in ("a", "one") else 0,
+                      "only_b": n if which == "b" else 0, "decider_only": 0, "rejected": 0,
+                      "uncovered": sum(1 for q in points if q["none_fits"])},
+        "mode_agreement": {"shared_points": 0, "same_modes": 0, "different_modes": 0},
+        "turns": expected,
+    }
+
+
 def judge_one(path: Path, tax_text, valid_ids, calls, cfg) -> dict:
     """The five calls, in order, for one trace."""
     raw = json.loads(path.read_text())
@@ -86,47 +117,28 @@ def judge_one(path: Path, tax_text, valid_ids, calls, cfg) -> dict:
             return None, None, "failed to assign modes"
         return (points, checked), modes, None
 
-    # --readers a: only the taxonomy-holding reader runs, and its modes stand as the verdict.
-    # There is no second opinion to reconcile, so the decider is skipped too. This buys a rate
-    # for a code on the same footing as a full pass at a fifth of the calls, at the cost of the
-    # blind-reader corroboration share -- so it measures prevalence, not reliability.
-    if cfg.get("readers") == "a":
-        (a_got, a_modes, a_err) = chain(True)
-        if a_err:
-            res["error"] = f"reader A {a_err}"
-            return res
-        a_points, a_checked = a_got
-        # Shape these exactly like decider output so every downstream reader --
-        # counts_from_points, the summary, the analysis scripts -- works unchanged.
-        # from_a/from_b record provenance honestly: reader A found all of them, and
-        # there was no reader B.
-        points = []
-        for i, (pt, m) in enumerate(zip(a_points, a_modes or [])):
-            q = dict(pt)
-            # assign_modes returns {"code": id, "fitness": int}; every downstream reader
-            # wants plain ids, which is normally the decider's doing. Apply the same
-            # FIT_GOOD threshold assign_modes uses to set none_fits, so `codes` and
-            # `none_fits` cannot disagree. The scored fitnesses are kept under "modes".
-            q["modes"] = m["codes"]
-            q["codes"] = [c["code"] for c in m["codes"]
-                          if c["fitness"] >= judge.FIT_GOOD]
-            q["none_fits"] = m["none_fits"]
-            q["missing"] = m["missing"]
-            q["from_a"], q["from_b"] = i, None
-            points.append(q)
-        res.update({
-            "status": "judged",
-            "codes": judge.counts_from_points(points),
-            "points": points,
-            "rejected": [],
-            "readers": {"a": {"points": a_points, "modes": a_modes, "checked": a_checked}},
-            "single_reader": "a",
-            "agreement": {"points": len(points), "found_by_both": 0, "only_a": len(points),
-                          "only_b": 0, "decider_only": 0, "rejected": 0,
-                          "uncovered": sum(1 for q in points if q["none_fits"])},
-            "mode_agreement": {"shared_points": 0, "same_modes": 0, "different_modes": 0},
-            "turns": expected,
-        })
+    # Single-reader channels: no second opinion to reconcile, so the decider is skipped and
+    # the reader's modes stand as the verdict. Each buys a rate for a code on the same footing
+    # as a full pass at a fraction of the calls, at the cost of the corroboration share.
+    #   a    taxonomy in view for the points, then a mode pass         (2 calls)
+    #   b    blind: no taxonomy for the points, then a mode pass       (2 calls)
+    #   one  taxonomy in view, points and modes in the same call       (1 call)
+    which = cfg.get("readers")
+    if which in ("a", "b", "one"):
+        if which == "one":
+            got = judge.read_points_one_pass(rcall, rmodel, trace_text, expected, tax_text, valid_ids,
+                                             program_text=cfg.get("program", ""))
+            if got is None:
+                res["error"] = "one-pass reader failed to report points"
+                return res
+            pts, checked, modes = got
+        else:
+            got, modes, err = chain(which == "a")
+            if err:
+                res["error"] = f"reader {which.upper()} {err}"
+                return res
+            pts, checked = got
+        res.update(_single_reader_result(pts, checked, modes, which, expected))
         return res
 
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="reader") as ex:
@@ -196,9 +208,10 @@ def main():
     ap.add_argument("--limit", type=int, default=None, help="first N traces, for a sample")
     ap.add_argument("--no-retry-failed", action="store_true")
     ap.add_argument("--max-attempts", type=int, default=3)
-    ap.add_argument("--readers", choices=["both", "a"], default="both",
-                    help="'a' runs only the taxonomy-holding reader and skips the decider "
-                         "(1/5 the calls; gives prevalence, not agreement)")
+    ap.add_argument("--readers", choices=["both", "a", "b", "one"], default="both",
+                    help="'a': taxonomy reader + mode pass, no decider (2 calls); 'b': blind reader "
+                         "+ mode pass, no decider (2 calls); 'one': taxonomy in view, points and modes "
+                         "in one call (1 call). Single readers give prevalence, not agreement.")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the exact prompts and spend nothing; writes no files")
     a = ap.parse_args()
@@ -256,11 +269,11 @@ def main():
     if a.dry_run:
         clean, removed = goldfree.strip(json.loads(files[0].read_text()))
         tt, turns = judge.render_turns(clean, agents)
-        per = 2 if a.readers == "a" else 5
+        per = {"a": 2, "b": 2, "one": 1}.get(a.readers, 5)
         print(f"traces: {len(files)}   codes: {len(valid_ids)}   turns in first trace: "
               f"{len(turns)}   calls per trace: {per}   total: {len(files) * per}")
         print(f"reader: {a.reader_model or a.model}   decider: "
-              f"{'(none: --readers a)' if a.readers == 'a' else a.decider_model or a.model}"
+              f"{'(none: --readers ' + a.readers + ')' if a.readers != 'both' else a.decider_model or a.model}"
               f"   thinking: {a.thinking}")
         print(f"gold stripped from this trace: {removed}\n")
         shown = [
@@ -282,6 +295,12 @@ def main():
         ]
         if a.readers == "a":
             shown = [x for x in shown if "READER B" not in x[0] and "DECIDER" not in x[0]]
+        elif a.readers == "b":
+            shown = [x for x in shown if "READER A" not in x[0] and "DECIDER" not in x[0]]
+        elif a.readers == "one":
+            shown = [("ONE PASS (taxonomy in view, points + modes)", prompts.READER_ONE_PASS.format(
+                layout=prompts.TURN_LAYOUT, point_rule=prompts.POINT_RULE,
+                every_turn=prompts.EVERY_TURN, program=program, taxonomy=tax_text, trace=tt))]
         for title, body in shown:
             print("=" * 78 + f"\n{title}\n" + "=" * 78)
             print(body)
@@ -321,8 +340,8 @@ def main():
             f"(--no-retry-failed to skip, --max-attempts {a.max_attempts})")
     log(f"pointjudge: {len(files)} traces, {len(pending)} to do, "
         f"{len(files) - len(pending)} already done")
-    shape = ("1 reader x 2 passes, no decider" if a.readers == "a"
-             else "2 readers x 2 passes + decider")
+    shape = {"a": "taxonomy reader x 2 passes, no decider", "b": "blind reader x 2 passes, no decider",
+             "one": "one-pass reader (points + modes), no decider"}.get(a.readers, "2 readers x 2 passes + decider")
     log(f"  {len(valid_ids)} codes | {shape} | {a.workers} workers")
 
     kw = dict(temperature=a.temperature, retries=5, max_output=a.max_output,
@@ -390,9 +409,10 @@ def main():
 
     summary = {
         "taxonomy": str(a.taxonomy), "traces": str(a.traces),
-        "judge": ("pointjudge: taxonomy reader only, two passes, no decider"
-                  if a.readers == "a" else
-                  "pointjudge: two readers, two passes each, one decider"),
+        "judge": {"a": "pointjudge: taxonomy reader only, two passes, no decider",
+                  "b": "pointjudge: blind reader only, two passes, no decider",
+                  "one": "pointjudge: one-pass reader, points and modes together, no decider"
+                  }.get(a.readers, "pointjudge: two readers, two passes each, one decider"),
         "settings": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(a).items()},
         "success_rule_in_view": bool(cfg.get("program")),
         "counts": {"total": len(results), "judged": len(judged), "failed": len(failed)},

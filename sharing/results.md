@@ -71,8 +71,8 @@ Whether these two scores also read as solve rates (not only as an order) is in `
 ## Models · HoVer (judged set b)
 
 - candidates: 9 models behind the same program (9); judged tasks: **50**; traces: 450
-- taxonomy: `Models_HoVer_taxonomy.json (15 codes, 1 hand-authored)`; judge: readers gemini-3.6-flash ×2, decider claude-sonnet-5; before the success rule; recovery: claude-sonnet-5; before the success rule
-- failure instances: 1560 kept by the judge (13 of them fit no code), 260 left unrecovered
+- taxonomy: `Models_HoVer_taxonomy.json (15 codes, 1 hand-authored)`; judge: readers gemini-3.6-flash ×2, decider claude-sonnet-5; before the success rule; recovery: claude-sonnet-5 (via Arena); success rule in view (recovery-2; recovery-1 predates the rule and is superseded)
+- failure instances: 1560 kept by the judge (13 of them fit no code), 402 left unrecovered
 - generalization set: models-1 generalization, 500 tasks, disjoint from the judged tasks; 36 candidate pairs in all
 
 ### Table 1 — every failure instance the judge kept
@@ -101,31 +101,31 @@ Whether these two scores also read as solve rates (not only as an order) is in `
 | formula | tau vs judged gold | top-1 judged | tau vs gen gold | top-1 gen | top-3 gen | resolved pairs |
 |---|---:|---|---:|---|---:|---:|
 | **gold on the judged tasks (reference)** | +1.000 | yes | +0.444 | yes | 2/3 | 36 |
-| incidence · every kept instance | +0.394 | no | +0.818 | no | 2/3 | 33 |
-| incidence · coded instances only | +0.312 | no | +0.750 | no | 2/3 | 32 |
-| last-turn incidence · every kept instance | +0.333 | no | +0.758 | no | 2/3 | 33 |
-| last-turn incidence · coded instances only | +0.333 | no | +0.758 | no | 2/3 | 33 |
-| amplitude · every kept instance | +0.389 | no | +0.722 | no | 2/3 | 36 |
-| amplitude · coded instances only | +0.389 | no | +0.722 | no | 2/3 | 36 |
-| step-amplitude · every kept instance | +0.257 | no | +0.714 | no | 2/3 | 35 |
-| step-amplitude · coded instances only | +0.257 | no | +0.714 | no | 2/3 | 35 |
-| damped PIE, β=0.5 · every kept instance | +0.371 | no | +0.771 | no | 2/3 | 35 |
-| damped PIE, β=0.5 · coded instances only | +0.389 | no | +0.722 | no | 2/3 | 36 |
-| containment · every kept instance | +0.200 | no | +0.771 | no | 2/3 | 35 |
-| containment · coded instances only | +0.200 | no | +0.771 | no | 2/3 | 35 |
-| breadth | -0.097 | no | +0.355 | no | 1/3 | 31 |
-| worst mode | +0.257 | no | +0.829 | no | 3/3 | 35 |
-| patterns | +0.212 | no | +0.515 | no | 1/3 | 33 |
-| recovery-weighted amplitude, γ=1 · every kept instance | +0.333 | no | +0.778 | no | 2/3 | 36 |
-| recovery-weighted amplitude, γ=1 · coded instances only | +0.333 | no | +0.778 | no | 2/3 | 36 |
-| recovery-weighted amplitude, γ=2 · every kept instance | +0.389 | no | +0.833 | no | 2/3 | 36 |
-| recovery-weighted amplitude, γ=2 · coded instances only | +0.389 | no | +0.833 | no | 2/3 | 36 |
-| recovery-weighted amplitude, γ=3 · every kept instance | +0.389 | no | +0.833 | no | 2/3 | 36 |
-| recovery-weighted amplitude, γ=3 · coded instances only | +0.444 | no | +0.889 | no | 3/3 | 36 |
-| profile risk (own consequence, max) · every kept instance | +0.278 | no | +0.722 | no | 2/3 | 36 |
-| profile risk (own consequence, max) · coded instances only | +0.278 | no | +0.722 | no | 2/3 | 36 |
-| gold-discounted incidence, w=0.5 · every kept instance | +0.486 | no | +0.771 | no | 2/3 | 35 |
-| gold-discounted incidence, w=0.5 · coded instances only | +0.486 | no | +0.771 | no | 2/3 | 35 |
+| incidence · every kept instance | +0.714 | no | +0.543 | no | 2/3 | 35 |
+| incidence · coded instances only | +0.697 | no | +0.576 | no | 2/3 | 33 |
+| last-turn incidence · every kept instance | +0.576 | no | +0.697 | no | 2/3 | 33 |
+| last-turn incidence · coded instances only | +0.576 | no | +0.697 | no | 2/3 | 33 |
+| amplitude · every kept instance | +0.529 | no | +0.765 | no | 2/3 | 34 |
+| amplitude · coded instances only | +0.444 | no | +0.667 | no | 2/3 | 36 |
+| step-amplitude · every kept instance | +0.429 | no | +0.771 | no | 3/3 | 35 |
+| step-amplitude · coded instances only | +0.455 | no | +0.758 | no | 3/3 | 33 |
+| damped PIE, β=0.5 · every kept instance | +0.667 | no | +0.667 | no | 2/3 | 36 |
+| damped PIE, β=0.5 · coded instances only | +0.667 | no | +0.667 | no | 2/3 | 36 |
+| containment · every kept instance | +0.371 | no | +0.657 | no | 2/3 | 35 |
+| containment · coded instances only | +0.389 | no | +0.611 | no | 2/3 | 36 |
+| breadth | +0.481 | no | +0.481 | no | 1/3 | 27 |
+| worst mode | +0.706 | no | +0.588 | no | 2/3 | 34 |
+| patterns | +0.412 | no | +0.588 | no | 2/3 | 34 |
+| recovery-weighted amplitude, γ=1 · every kept instance | +0.444 | no | +0.778 | no | 3/3 | 36 |
+| recovery-weighted amplitude, γ=1 · coded instances only | +0.444 | no | +0.778 | no | 3/3 | 36 |
+| recovery-weighted amplitude, γ=2 · every kept instance | +0.500 | no | +0.833 | no | 3/3 | 36 |
+| recovery-weighted amplitude, γ=2 · coded instances only | +0.444 | no | +0.778 | no | 3/3 | 36 |
+| recovery-weighted amplitude, γ=3 · every kept instance | +0.444 | no | +0.889 | no | 3/3 | 36 |
+| recovery-weighted amplitude, γ=3 · coded instances only | +0.389 | no | +0.722 | no | 3/3 | 36 |
+| profile risk (own consequence, max) · every kept instance | +0.500 | no | +0.722 | no | 2/3 | 36 |
+| profile risk (own consequence, max) · coded instances only | +0.500 | no | +0.722 | no | 2/3 | 36 |
+| gold-discounted incidence, w=0.5 · every kept instance | +0.714 | no | +0.543 | no | 2/3 | 35 |
+| gold-discounted incidence, w=0.5 · coded instances only | +0.600 | no | +0.543 | no | 2/3 | 35 |
 
 Whether these two scores also read as solve rates (not only as an order) is in `compared_scoring.md`.
 
@@ -187,5 +187,133 @@ Whether these two scores also read as solve rates (not only as an order) is in `
 | profile risk (own consequence, max) · coded instances only | +0.579 | yes | +0.524 | yes | 2/3 | 21 |
 | gold-discounted incidence, w=0.5 · every kept instance | +0.778 | yes | +0.900 | yes | 3/3 | 20 |
 | gold-discounted incidence, w=0.5 · coded instances only | +0.882 | yes | +0.684 | yes | 3/3 | 19 |
+
+Whether these two scores also read as solve rates (not only as an order) is in `compared_scoring.md`.
+
+## Models · LiveCodeBench
+
+- candidates: 9 models behind the same program (9); judged tasks: **50**; traces: 450
+- taxonomy: `Models_LiveCodeBench_taxonomy.json (10 codes)`; judge: readers gemini-3.6-flash ×2, decider claude-sonnet-5; before the success rule; recovery: claude-sonnet-5 (via Arena); success rule in view; single-turn programs, so almost nothing can be recovered
+- failure instances: 175 kept by the judge (0 of them fit no code), 173 left unrecovered
+- generalization set: pool_generalization, 755 tasks, disjoint from the judged tasks; 36 candidate pairs in all
+
+### Table 1 — every failure instance the judge kept
+
+| formula | tau vs judged gold | top-1 judged | tau vs gen gold | top-1 gen | top-3 gen | resolved pairs |
+|---|---:|---|---:|---|---:|---:|
+| **gold on the judged tasks (reference)** | +1.000 | yes | +0.765 | yes | 2/3 | 34 |
+| incidence · every kept instance | +0.882 | no | +0.771 | no | 3/3 | 35 |
+| incidence · coded instances only | +0.882 | no | +0.771 | no | 3/3 | 35 |
+| last-turn incidence · every kept instance | +0.882 | no | +0.771 | no | 3/3 | 35 |
+| last-turn incidence · coded instances only | +0.882 | no | +0.771 | no | 3/3 | 35 |
+| amplitude · every kept instance | +0.750 | no | +0.882 | no | 2/3 | 34 |
+| amplitude · coded instances only | +0.750 | no | +0.882 | no | 2/3 | 34 |
+| step-amplitude · every kept instance | +0.750 | no | +0.882 | no | 2/3 | 34 |
+| step-amplitude · coded instances only | +0.750 | no | +0.882 | no | 2/3 | 34 |
+| damped PIE, β=0.5 · every kept instance | +0.765 | no | +0.833 | no | 3/3 | 36 |
+| damped PIE, β=0.5 · coded instances only | +0.765 | no | +0.833 | no | 3/3 | 36 |
+| containment · every kept instance | +0.750 | no | +0.882 | no | 2/3 | 34 |
+| containment · coded instances only | +0.750 | no | +0.882 | no | 2/3 | 34 |
+| breadth | +0.579 | yes | +1.000 | yes | 2/3 | 20 |
+| worst mode | +0.806 | no | +0.576 | no | 2/3 | 33 |
+| patterns | +0.500 | yes | +0.793 | yes | 2/3 | 29 |
+
+### Table 2 — unrecovered instances only, and the recovery-dependent formulas
+
+| formula | tau vs judged gold | top-1 judged | tau vs gen gold | top-1 gen | top-3 gen | resolved pairs |
+|---|---:|---|---:|---|---:|---:|
+| **gold on the judged tasks (reference)** | +1.000 | yes | +0.765 | yes | 2/3 | 34 |
+| incidence · every kept instance | +0.882 | no | +0.771 | no | 3/3 | 35 |
+| incidence · coded instances only | +0.882 | no | +0.771 | no | 3/3 | 35 |
+| last-turn incidence · every kept instance | +0.882 | no | +0.771 | no | 3/3 | 35 |
+| last-turn incidence · coded instances only | +0.882 | no | +0.771 | no | 3/3 | 35 |
+| amplitude · every kept instance | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| amplitude · coded instances only | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| step-amplitude · every kept instance | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| step-amplitude · coded instances only | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| damped PIE, β=0.5 · every kept instance | +0.824 | no | +0.778 | no | 3/3 | 36 |
+| damped PIE, β=0.5 · coded instances only | +0.824 | no | +0.778 | no | 3/3 | 36 |
+| containment · every kept instance | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| containment · coded instances only | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| breadth | +0.579 | yes | +1.000 | yes | 2/3 | 20 |
+| worst mode | +0.806 | no | +0.576 | no | 2/3 | 33 |
+| patterns | +0.556 | yes | +0.857 | yes | 2/3 | 28 |
+| recovery-weighted amplitude, γ=1 · every kept instance | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| recovery-weighted amplitude, γ=1 · coded instances only | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| recovery-weighted amplitude, γ=2 · every kept instance | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| recovery-weighted amplitude, γ=2 · coded instances only | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| recovery-weighted amplitude, γ=3 · every kept instance | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| recovery-weighted amplitude, γ=3 · coded instances only | +0.758 | no | +0.829 | no | 2/3 | 35 |
+| profile risk (own consequence, max) · every kept instance | +0.882 | no | +0.771 | no | 3/3 | 35 |
+| profile risk (own consequence, max) · coded instances only | +0.882 | no | +0.771 | no | 3/3 | 35 |
+| gold-discounted incidence, w=0.5 · every kept instance | +0.882 | no | +0.722 | no | 3/3 | 36 |
+| gold-discounted incidence, w=0.5 · coded instances only | +0.882 | no | +0.722 | no | 3/3 | 36 |
+
+Whether these two scores also read as solve rates (not only as an order) is in `compared_scoring.md`.
+
+
+## Supplementary
+
+The same judge and recovery runs on all 150 judged LiveCodeBench tasks. The main LiveCodeBench section uses the
+50-task judged split; this one is reported for comparison and enters no mean and no choice of a best method.
+
+### Models · LiveCodeBench, all 150 judged tasks (supplementary)
+
+- candidates: 9 models behind the same program (9); judged tasks: **150**; traces: 1350
+- taxonomy: `Models_LiveCodeBench_taxonomy.json (10 codes)`; judge: readers gemini-3.6-flash ×2, decider claude-sonnet-5; before the success rule; recovery: claude-sonnet-5 (via Arena); success rule in view; single-turn programs, so almost nothing can be recovered
+- failure instances: 627 kept by the judge (3 of them fit no code), 621 left unrecovered
+- generalization set: pool_generalization, 755 tasks, disjoint from the judged tasks; 36 candidate pairs in all
+
+### Table 1 — every failure instance the judge kept
+
+| formula | tau vs judged gold | top-1 judged | tau vs gen gold | top-1 gen | top-3 gen | resolved pairs |
+|---|---:|---|---:|---|---:|---:|
+| **gold on the judged tasks (reference)** | +1.000 | yes | +0.941 | yes | 3/3 | 34 |
+| incidence · every kept instance | +1.000 | yes | +0.889 | yes | 3/3 | 36 |
+| incidence · coded instances only | +1.000 | yes | +0.889 | yes | 3/3 | 36 |
+| last-turn incidence · every kept instance | +1.000 | yes | +0.889 | yes | 3/3 | 36 |
+| last-turn incidence · coded instances only | +1.000 | yes | +0.889 | yes | 3/3 | 36 |
+| amplitude · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| amplitude · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| step-amplitude · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| step-amplitude · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| damped PIE, β=0.5 · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| damped PIE, β=0.5 · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| containment · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| containment · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| breadth | +0.727 | yes | +0.565 | yes | 2/3 | 23 |
+| worst mode | +0.588 | no | +0.611 | no | 3/3 | 36 |
+| patterns | +0.750 | no | +0.706 | no | 2/3 | 34 |
+
+### Table 2 — unrecovered instances only, and the recovery-dependent formulas
+
+| formula | tau vs judged gold | top-1 judged | tau vs gen gold | top-1 gen | top-3 gen | resolved pairs |
+|---|---:|---|---:|---|---:|---:|
+| **gold on the judged tasks (reference)** | +1.000 | yes | +0.941 | yes | 3/3 | 34 |
+| incidence · every kept instance | +1.000 | yes | +0.886 | yes | 3/3 | 35 |
+| incidence · coded instances only | +1.000 | yes | +0.886 | yes | 3/3 | 35 |
+| last-turn incidence · every kept instance | +1.000 | yes | +0.886 | yes | 3/3 | 35 |
+| last-turn incidence · coded instances only | +1.000 | yes | +0.886 | yes | 3/3 | 35 |
+| amplitude · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| amplitude · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| step-amplitude · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| step-amplitude · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| damped PIE, β=0.5 · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| damped PIE, β=0.5 · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| containment · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| containment · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| breadth | +0.727 | yes | +0.565 | yes | 2/3 | 23 |
+| worst mode | +0.588 | no | +0.611 | no | 3/3 | 36 |
+| patterns | +0.697 | no | +0.657 | no | 2/3 | 35 |
+| recovery-weighted amplitude, γ=1 · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| recovery-weighted amplitude, γ=1 · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| recovery-weighted amplitude, γ=2 · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| recovery-weighted amplitude, γ=2 · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| recovery-weighted amplitude, γ=3 · every kept instance | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| recovery-weighted amplitude, γ=3 · coded instances only | +0.941 | no | +0.889 | no | 3/3 | 36 |
+| profile risk (own consequence, max) · every kept instance | +1.000 | yes | +0.889 | yes | 3/3 | 36 |
+| profile risk (own consequence, max) · coded instances only | +1.000 | yes | +0.889 | yes | 3/3 | 36 |
+| gold-discounted incidence, w=0.5 · every kept instance | +1.000 | yes | +0.889 | yes | 3/3 | 36 |
+| gold-discounted incidence, w=0.5 · coded instances only | +1.000 | yes | +0.889 | yes | 3/3 | 36 |
 
 Whether these two scores also read as solve rates (not only as an order) is in `compared_scoring.md`.

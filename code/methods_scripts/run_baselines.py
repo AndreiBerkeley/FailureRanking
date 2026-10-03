@@ -5,6 +5,11 @@
 hover reads gold from data/hover/outcomes/cap-7 (judged) and cap-8 (generalization);
 livecodebench reads it from the pools' outcomes.json sidecars. The formulas are the
 same code path for both benchmarks.
+
+swebench | tau2bench | bfcl read RedoAdamast's judge run as copied to data/<bench>/mappings/map-1
+(data/scripts/import_redo_adamast.py): judged = splits/pools-4 judged traces, gen = its eval
+portion, gold from outcomes/cap-1-complete.jsonl by cap-1 trace id. gen is the pass rate over
+every eval run (tau2bench has up to 4 trials per task).
 """
 import json, glob, itertools, sys
 from pathlib import Path
@@ -22,6 +27,12 @@ if "--pool" in args:        # the judged pool the run read (default per benchmar
 if "--tasks" in args:       # a split.json; only its portions.judged / portions.judging tasks are scored
     i = args.index("--tasks"); TASKS_ARG = args[i + 1]; del args[i:i + 2]
 if "--vs-gold50" in args: args.remove("--vs-gold50")   # adds a column against the judged tasks' own outcomes
+DROP = set()
+if "--drop-tasks" in args:  # judged tasks left out for EVERY candidate (e.g. a task some candidates' traces could not be judged on)
+    i = args.index("--drop-tasks"); DROP = set(args[i + 1].split(",")); del args[i:i + 2]
+GEN_ARG = None
+if "--gen" in args:         # the generalization pool (terminalbench: the eval portion)
+    i = args.index("--gen"); GEN_ARG = args[i + 1]; del args[i:i + 2]
 SUPPORT_MIN = 5
 
 RUNS = args or None      # one or more judge run dirs (disjoint task sets are pooled)
@@ -53,6 +64,20 @@ elif BENCH == "hover-pool3":
                 elif sm.get("mapping") and Path(sm["mapping"], "summary.json").exists():   # a filtered derivation names its source
                     TAX = json.load(open(Path(sm["mapping"], "summary.json"))).get("taxonomy", TAX)
                 GOLD50[m] = pmf["captures"][0]
+elif BENCH in ("swebench", "tau2bench", "bfcl"):
+    RUN   = args[0] if args else f"data/{BENCH}/mappings/map-1"
+    SPLIT = f"data/{BENCH}/splits/pools-4/split.json"
+    TAX   = f"data/{BENCH}/taxonomies/tax-1/taxonomy.json"
+    ROWS  = [json.loads(l) for l in open(f"{RUN}/mapping.jsonl")]
+elif BENCH == "terminalbench":
+    # the Terminus 2 models: judged = pools-1/judged repeat 0, gen = pools-1/eval repeat 0; both pools
+    # carry their outcomes.json sidecar; the candidates are those in the judged pool's manifest
+    RUN  = " + ".join(args) if args else "runs/new_pipeline/terminalbench/pointjudge-1"
+    POOL = POOL_ARG or "runs/new_pipeline/terminalbench/pool_judged20_frontier7"
+    GEN  = GEN_ARG or "runs/new_pipeline/terminalbench/pool_eval69_frontier7"
+    CSET = 'data/terminalbench/candidates/sets/terminus2-1.json'
+    _sm = json.load(open(f"{(args or [RUN])[0]}/summary.json"))
+    TAX  = _sm.get("taxonomy") or json.load(open(f"{_sm['mapping']}/summary.json"))["taxonomy"]   # a filtered derivation names its source mapping
 else:
     RUN  = " + ".join(args) if args else "runs/new_pipeline/lcb-models/pointjudge-1-tax2"
     POOL = POOL_ARG or "runs/new_pipeline/lcb-models/pool_judging50"
@@ -60,16 +85,20 @@ else:
     CSET = 'data/livecodebench/candidates/sets/models-1.json'
     TAX  = json.load(open(f"{(args or [RUN])[0]}/summary.json"))["taxonomy"]
 
-cs = json.load(open(CSET))
+REDO = BENCH in ("swebench", "tau2bench", "bfcl")
+cs = json.load(open(CSET)) if not REDO else None
 if BENCH == "hover-pool3":
     active = sorted(cs["candidate_ids"])                # no active list: all 12 are the set
+elif REDO:
+    active = sorted({r["candidate_id"] for r in ROWS})
 else:
     sm, ids = cs["solver_models"], cs["candidate_ids"]
     mo = {c: (sm[c] if isinstance(sm, dict) else sm[i]) for i, c in enumerate(ids)}
-    active = sorted(cs["active_candidate_ids"])
     pm = json.load(open(f'{POOL}/pool_manifest.json'))
     inv = {v: k for k, v in pm["candidate_index"].items()}
-CODES = [c["id"] for c in json.load(open(TAX))["codes"]]
+    active = sorted(set(cs["active_candidate_ids"]) & set(pm["candidate_index"])) if BENCH == "terminalbench" else sorted(cs["active_candidate_ids"])
+_tax = json.load(open(TAX))
+CODES = [c["id"] for c in (_tax if isinstance(_tax, list) else _tax["codes"])]   # RedoAdamast taxonomies are a list
 
 # gold
 def gold_hover(cap):
@@ -95,6 +124,14 @@ elif BENCH == "hover-pool3":
         if key is None: raise SystemExit(f"cannot tell which judged set {m} is (expected map-5 or map-6 in its path)")
         for c, d in gold_hover(GOLD50[key]).items(): GJ[c].update(d)
     GG = gold_hover('cap-3')                            # eval-1 domain, 500 tasks, disjoint from every judged set
+elif REDO:
+    _oc = [json.loads(l) for l in open(f"data/{BENCH}/outcomes/cap-1-complete.jsonl")]
+    _by_id = {r["trace_id"]: r["score"] for r in _oc}
+    _eval = set(json.load(open(SPLIT))["portions"]["eval"])
+    GJ, GG = defaultdict(dict), defaultdict(dict)
+    for r in ROWS: GJ[r["candidate_id"]][r["task_id"]] = _by_id[r["cap1_trace_id"]]   # the judged run's own outcome
+    for r in _oc:
+        if r["task_id"] in _eval: GG[r["candidate_id"]][(r["task_id"], r["repeat"])] = r["score"]
 else:
     GJ, GG = gold_pool(POOL), gold_pool(GEN)
 
@@ -144,9 +181,17 @@ elif BENCH == "hover-pool3":
                     steps[c][t] = fired
                     turn_max[c][t] = [x["turn"] for x in r["turns"]]
     T = {c: len(ev[c]) for c in active}
+elif REDO:
+    # turns run 1..turns (RedoAdamast judge.py turn_map); an instance's turn is where the judge placed it
+    for r in ROWS:
+        if r["status"] != "judged": continue
+        c, t = r["candidate_id"], r["task_id"]
+        ev[c][t] = {x for q in r["instances"] for x in (q.get("codes") or [])}
+        steps[c][t] = {(q["turn"], x) for q in r["instances"] for x in (q.get("codes") or [])}
+        turn_max[c][t] = list(range(1, r["turns"] + 1))
 RUN_DIRS = RUNS or [RUN]
 # recovery verdicts per (trace_id, point index), from a recovery run (new_pipeline/recovery)
-RECOVERED = ("corrected", "contained", "made_irrelevant")
+RECOVERED = ("corrected", "contained", "made_irrelevant")   # old runs' finer vocabulary; made_irrelevant is "contained" since 2026-09-22
 rec_of = {}
 if REC_ARG:
     for p in glob.glob(f"{REC_ARG}/traces/*.json"):
@@ -154,7 +199,16 @@ if REC_ARG:
         if d.get("status") == "judged":
             rec_of[d["trace_id"]] = [q.get("recovery") for q in d.get("points") or []]
 unrec = defaultdict(dict)          # candidate -> task -> set of codes on UNRECOVERED points
-for p in ([f for r in RUN_DIRS for f in glob.glob(f"{r}/traces/*.json")] if BENCH != "hover-pool3" else []):
+if REDO and REC_ARG:
+    # the recovery run keeps the mapping's points in order, keyed by the same (view) trace id
+    for r in ROWS:
+        if r["status"] != "judged": continue
+        c, t, vs = r["candidate_id"], r["task_id"], rec_of.get(r["trace_id"])
+        if vs is None or len(vs) != len(r["instances"]):
+            unrec[c][t] = set(ev[c][t])                              # no recovery record: every point stands
+        else:
+            unrec[c][t] = {m for q, v in zip(r["instances"], vs) if v not in RECOVERED for m in (q.get("codes") or [])}
+for p in ([f for r in RUN_DIRS for f in glob.glob(f"{r}/traces/*.json")] if BENCH != "hover-pool3" and not REDO else []):
     d = json.load(open(p))
     if d.get("status") != "judged": continue
     c = inv[d["candidate_index"]]
@@ -177,6 +231,10 @@ if TASKS_ARG:
         turn_max[c] = {t: v for t, v in turn_max[c].items() if t in keep}
     missing = keep - set(ev[active[0]])
     assert not missing, f"--tasks names {len(missing)} task(s) the run did not judge, e.g. {sorted(missing)[:3]}"
+if DROP:
+    for c in active:
+        for dct in (ev[c], steps[c], turn_max[c], unrec[c]): 
+            for t in DROP: dct.pop(t, None)
 T = {c: len(ev[c]) for c in active}
 tasks50 = sorted(ev[active[0]])
 assert all(sorted(ev[c]) == tasks50 for c in active), "candidates judged on different tasks"
@@ -255,7 +313,7 @@ ggn = {c: sum(GG[c].values())/len(GG[c]) for c in active}
 r50 = sorted(active, key=lambda c: -g50[c]); rgn = sorted(active, key=lambda c: -ggn[c])
 C3 = taub(r50, g50, rgn, ggn)
 
-print(f"{BENCH}  run={RUN}  taxonomy={TAX}  judged tasks={len(tasks50)}{'  (' + TASKS_ARG + ')' if TASKS_ARG else ''}  gen tasks={len(GG[active[0]])}\n")
+print(f"{BENCH}  run={RUN}  taxonomy={TAX}  judged tasks={len(tasks50)}{'  (' + TASKS_ARG + ')' if TASKS_ARG else ''}{'  dropped ' + ','.join(sorted(DROP)) if DROP else ''}  gen tasks={len({k[0] if isinstance(k, tuple) else k for k in GG[active[0]]})}{'  gen runs=' + str(len(GG[active[0]])) if REDO else ''}\n")
 # three columns: the gold row's "vs gold-gen" IS gold-50 vs gold-gen, so that constant
 # is not repeated as a column of its own
 # the gold row's value is gold-50 vs gold-gen, the bar every trace method is read against

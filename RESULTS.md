@@ -1,5 +1,8 @@
 # Results
 
+Per-run tables from 2026-09-16 to 09-18, kept as recorded. The current results for all four experiments, with
+and without the recovery pass, are in `sharing/best_methods.md` and `sharing/results.md`.
+
 Every number: candidates ranked by a method from the judge's mapping of the judged tasks;
 Kendall tau-b (tied pairs dropped) against the candidates' pass rate on the generalization
 tasks (*gold-gen*), which were never judged. The **gold** row is the same comparison for the
