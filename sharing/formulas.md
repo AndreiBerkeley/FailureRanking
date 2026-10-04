@@ -188,18 +188,27 @@ are in `compared_scoring.md`.
 
 `best_methods.md` names one formula per input by a rule fixed before the table was read:
 
-1. For each formula and each of the four main experiments, compute tau against the generalization set.
-2. Average the four taus.
+1. For each formula and each of the five main experiments, compute tau against the generalization set.
+2. Average the five taus.
 3. In each input (every instance / unrecovered instances plus the recovery-dependent formulas), the formula
    with the highest average is the best. Gold-discounted incidence is excluded because it reads gold.
 
 The choice is made on the same experiments it is reported on, so the winning mean is optimistic by roughly
-its gap to the next row. LiveCodeBench's 150-task run is shown beside the four and enters neither the mean nor
+its gap to the next row. LiveCodeBench's 150-task run is shown beside the five and enters neither the mean nor
 the choice.
+
+## SWE-bench conventions
+
+- **Instrument.** RedoAdamast's single-pass judge (one call per trace, taxonomy fixed) and its recovery reader, both
+  on Gemini 3.8 Flash; the other four experiments use a two-reader-plus-decider judge and a Claude Sonnet 5 reader.
+- **The output is the submitted patch.** The reader's quotes about the output are checked against the patch that
+  follows the last turn (`code/recheck_recovery_output.py`, run on the reader's stored answers, no new model call).
+- **One trace read with medium reasoning.** Its answer ran past the output limit twice at the default high setting.
+- **One run per model per task** in every set, as everywhere else.
 
 ## Studies beyond the baselines
 
-- `first_last_study.md`: scores that read only each trace's first and last failure instance, fixed mode
+- `first_last_study.md` (the first four experiments): scores that read only each trace's first and last failure instance, fixed mode
   filters (pooled across candidates or per candidate), a 75-cell grid of data-estimated weights with a
   leave-one-experiment-out check, and one entropy-weighted setup without recovery.
 - `results_ablation.md`: how the agreement moves with which and how many judged tasks are read, and with the

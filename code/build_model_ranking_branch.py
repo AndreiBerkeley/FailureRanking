@@ -330,10 +330,12 @@ def section_redo(b, cset, traces=True):
         print(f"  {J}/source_keys.txt  <- git HEAD data/{b}/traces/cap-1/source_keys.txt (traces not republished)")
     copy_file(f"data/{b}/traces/view-1/index.jsonl", f"{J}/view_index.jsonl")
     copy_tree(f"data/{b}/mappings/map-1", f"{J}/judge/map-1", exclude=("calls",))
-    recs = ["recovery-2"] + (["recovery-2-patch"] if b == "swebench" else [])
+    recs = ["recovery-2"] + (["recovery-2-patch", "fill-input-1", "recovery-fill-1", "recovery-fill-1-patch"] if b == "swebench" else [])
     for r in recs:
         copy_tree(f"runs/new_pipeline/{b}/{r}", f"{J}/judge/{r}")
     copy_file(f"runs/new_pipeline/{b}/recovery-2.log", f"{J}/judge/recovery-2.log")
+    if b == "swebench":
+        copy_file("runs/new_pipeline/swebench/fill-1.log", f"{J}/judge/recovery-fill-1.log")
 
 
 def section_code_redo():
@@ -343,7 +345,7 @@ def section_code_redo():
     copy_file("data/redo_adamast/README.md", "code/redo_adamast/README.md")
     for f in ("import_redo_adamast.py", "recheck_recovery_output.py"):
         copy_file(f"data/scripts/{f}", f"code/{f}")
-    for b in ("terminalbench", "swebench", "tau2bench", "bfcl"):
+    for b in ("terminalbench", "swebench"):              # tau2bench and bfcl are not published yet
         copy_tree(f"data/{b}/scripts", f"code/{b}_scripts")
 
 

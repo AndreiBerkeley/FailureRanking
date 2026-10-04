@@ -31,7 +31,7 @@ def main():
     ap.add_argument("--names", default=None, help="candidate set json with solver_models, to label candidates by model")
     ap.add_argument("--note", action="append", default=[], help="a line for the header (repeatable)")
     a = ap.parse_args()
-    rs = json.load(open(f"{a.recovery}/summary.json"))
+    rs = json.load(open(f"{a.recovery.split(',')[0]}/summary.json"))
     tx = json.load(open(a.taxonomy)); tax = {c["id"]: c["name"] for c in (tx if isinstance(tx, list) else tx["codes"])}
     if a.index:
         cand = {r["view_trace_id"]: r["candidate_id"] for r in map(json.loads, open(a.index))}
@@ -43,7 +43,13 @@ def main():
     if a.names:
         cs = json.load(open(a.names)); sm = cs.get("solver_models") or {}
         label = {c: (sm[c] if isinstance(sm, dict) else sm[i]) for i, c in enumerate(cs["candidate_ids"])} if sm else {}
-    recs = [json.load(open(f)) for f in sorted(glob.glob(f"{a.recovery}/traces/*.json"))]
+    byid = {}
+    for run in a.recovery.split(","):            # several runs: a later one fills traces an earlier one failed on
+        for f in sorted(glob.glob(f"{run}/traces/*.json")):
+            d = json.load(open(f))
+            if d.get("status") == "judged" or d["trace_id"] not in byid:
+                byid[d["trace_id"]] = d
+    recs = [byid[k] for k in sorted(byid)]
     judged = [r for r in recs if r.get("status") == "judged"]
     tasks = sorted({r["task_id"] for r in judged}); cands = sorted({who(r) for r in judged})
 

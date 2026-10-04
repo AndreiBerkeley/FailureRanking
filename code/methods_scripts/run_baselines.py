@@ -194,10 +194,11 @@ RUN_DIRS = RUNS or [RUN]
 RECOVERED = ("corrected", "contained", "made_irrelevant")   # old runs' finer vocabulary; made_irrelevant is "contained" since 2026-09-22
 rec_of = {}
 if REC_ARG:
-    for p in glob.glob(f"{REC_ARG}/traces/*.json"):
-        d = json.load(open(p))
-        if d.get("status") == "judged":
-            rec_of[d["trace_id"]] = [q.get("recovery") for q in d.get("points") or []]
+    for run in REC_ARG.split(","):          # several runs: a later one fills traces an earlier one failed on
+        for p in glob.glob(f"{run}/traces/*.json"):
+            d = json.load(open(p))
+            if d.get("status") == "judged":
+                rec_of[d["trace_id"]] = [q.get("recovery") for q in d.get("points") or []]
 unrec = defaultdict(dict)          # candidate -> task -> set of codes on UNRECOVERED points
 if REDO and REC_ARG:
     # the recovery run keeps the mapping's points in order, keyed by the same (view) trace id

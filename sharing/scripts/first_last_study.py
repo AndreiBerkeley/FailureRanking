@@ -393,7 +393,7 @@ def table_header(E, extra=""):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, default=Path("sharing/first_last_study.md")); a = ap.parse_args()
-    E = [Exp(e) for e in MAIN]
+    E = [Exp(e) for e in MAIN if e["key"] in FMT]          # the study's four; a new experiment needs its formatting codes chosen first
     import json
     names = {}
     for x in E:

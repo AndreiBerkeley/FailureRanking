@@ -117,6 +117,35 @@ Average absolute distance over candidates, in percentage points:
 | 1 − profile risk | 1.5 | 5.4 |
 | **gold on the judged tasks (reference)** | — | 4.5 |
 
+## Models · SWE-bench Verified
+
+- 12 candidates; judged tasks 50; generalization tasks 405
+- recovery: gemini-3.8-flash (via Arena); success rule in view; output claims checked against the submitted patch
+
+| candidate | no instance at all | % | no unrecovered instance | % | 1 − profile risk | solved (judged) | % | solved (gen) | % |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| swe-gemini-3-flash-high | 0 / 50 | 0% | 47 / 50 | 94% | 96% | 32 / 50 | 64% | 321 / 405 | 79% |
+| swe-claude-4-5-opus-high | 1 / 50 | 2% | 49 / 50 | 98% | 95% | 36 / 50 | 72% | 320 / 405 | 79% |
+| swe-minimax-2-5-high | 0 / 50 | 0% | 39 / 50 | 78% | 69% | 33 / 50 | 66% | 319 / 405 | 79% |
+| swe-claude-4-6-opus | 0 / 50 | 0% | 43 / 50 | 86% | 73% | 37 / 50 | 74% | 312 / 405 | 77% |
+| swe-gemini-3-pro-high | 1 / 50 | 2% | 40 / 50 | 80% | 81% | 30 / 50 | 60% | 301 / 405 | 74% |
+| swe-glm-5-high | 0 / 50 | 0% | 43 / 50 | 86% | 88% | 33 / 50 | 66% | 301 / 405 | 74% |
+| swe-gpt-5-2-high | 0 / 50 | 0% | 41 / 50 | 82% | 70% | 35 / 50 | 70% | 299 / 405 | 74% |
+| swe-kimi-k2-5-high | 0 / 50 | 0% | 39 / 50 | 78% | 56% | 31 / 50 | 62% | 296 / 405 | 73% |
+| swe-claude-4-5-sonnet-high | 0 / 50 | 0% | 37 / 50 | 74% | 71% | 32 / 50 | 64% | 295 / 405 | 73% |
+| swe-deepseek-3-2-high | 0 / 50 | 0% | 37 / 50 | 74% | 67% | 32 / 50 | 64% | 289 / 405 | 71% |
+| swe-claude-4-5-haiku-high | 0 / 50 | 0% | 36 / 50 | 72% | 75% | 31 / 50 | 62% | 274 / 405 | 68% |
+| swe-gpt-5-mini | 0 / 50 | 0% | 24 / 50 | 48% | 22% | 21 / 50 | 42% | 240 / 405 | 59% |
+
+Average absolute distance over candidates, in percentage points:
+
+| read as a solve rate | vs judged gold | vs gen gold |
+|---|---:|---:|
+| 1 − incidence (no recovery) | 63.5 | 73.1 |
+| 1 − unrecovered incidence | 15.3 | 7.8 |
+| 1 − profile risk | 12.7 | 11.7 |
+| **gold on the judged tasks (reference)** | — | 9.6 |
+
 
 ## Supplementary
 

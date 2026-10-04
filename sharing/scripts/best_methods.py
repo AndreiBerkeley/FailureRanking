@@ -67,7 +67,7 @@ def main():
          "score is on the scale of a solve rate, how far the number itself is from the solve rate. Formulas, the measure and the",
          "solve-rate reading are defined in `formulas.md`; per-experiment detail is in `results.md` and `compared_scoring.md`.", "",
          "**How \"best\" is chosen** (fixed before the table was read): in each arm, the formula with the highest *mean* tau-b against",
-         "the generalization set over the four main experiments below. Formulas that read the judged tasks' gold are not candidates. Every",
+         "the generalization set over the main experiments below. Formulas that read the judged tasks' gold are not candidates. Every",
          "kept failure instance counts (an instance no code fit is its own pseudo-code). The selection is still made on the same",
          "experiments it is reported on, so the best row's mean is optimistic by the size of the gaps between rows.", "",
          "| experiment | candidates | judged tasks | generalization set |", "|---|---:|---:|---|"]

@@ -51,6 +51,14 @@ EXPERIMENTS = [
          judge="readers gemini-3.6-flash ×2, decider claude-sonnet-5; before the success rule",
          rec="claude-sonnet-5 (via Arena); success rule in view; single-turn programs, so almost nothing can be recovered",
          taxonomy="Models_LiveCodeBench_taxonomy.json (10 codes)"),
+    # SWE-bench Verified: RedoAdamast's taxonomy and judge run on our capture (data/swebench/mappings/map-1), the recovery
+    # pass over it with its one filled trace, both re-checked against the submitted patch
+    dict(key="models_swe", kind="redo", bench="swebench", title="Models · SWE-bench Verified", candidates="12 models behind mini-SWE-agent 2.0.0",
+         recovery=["runs/new_pipeline/swebench/recovery-2-patch", "runs/new_pipeline/swebench/recovery-fill-1-patch"], drop=(), names=None,
+         gen_name="pools-4 eval, 405 tasks", gen_unit="tasks",
+         judge="gemini-3.8-flash, one pass per trace (RedoAdamast pipeline); success rule not in view",
+         rec="gemini-3.8-flash (via Arena); success rule in view; output claims checked against the submitted patch",
+         taxonomy="Models_SWEbench_taxonomy.json (29 codes)"),
     # supplementary: the same judge and recovery runs on all 150 judged tasks; reported in its own section, never in a
     # mean or in the choice of a best method
     dict(key="models_lcb150", supplementary=True, title="Models · LiveCodeBench, all 150 judged tasks (supplementary)",
@@ -65,19 +73,13 @@ EXPERIMENTS = [
 MAIN = [e for e in EXPERIMENTS if not e.get("supplementary")]
 SUPPLEMENTARY = [e for e in EXPERIMENTS if e.get("supplementary")]
 
-# Not published yet (their analysis is not done): RedoAdamast's taxonomy and judge runs on our SWE-bench,
-# tau2-bench and BFCL captures and the recovery pass over them. load() handles them; no generator lists them.
+# Not published yet (their analysis is not done): RedoAdamast's taxonomy and judge runs on our tau2-bench and BFCL
+# captures and the recovery pass over them. load() handles them; no generator lists them.
 PENDING_EXPERIMENTS = [
     # candidates and gold join through data/<bench>/traces/view-1/index.jsonl and outcomes/cap-1-complete.jsonl
-    dict(key="models_swe", kind="redo", bench="swebench", title="Models · SWE-bench Verified", candidates="12 models behind mini-SWE-agent 2.0.0",
-         recovery="runs/new_pipeline/swebench/recovery-2-patch", drop=(), names=None,
-         gen_name="pools-4 eval, 405 tasks", gen_unit="tasks",
-         judge="gemini-3.8-flash, one pass per trace (RedoAdamast); success rule not in view",
-         rec="gemini-3.8-flash (via Arena); success rule in view; output claims checked against the submitted patch",
-         taxonomy="Models_SWEbench_taxonomy.json (29 codes)"),
     dict(key="models_tau2", kind="redo", bench="tau2bench", title="Models · τ²-bench banking", candidates="12 models behind the tau2-bench agent",
-         recovery="runs/new_pipeline/tau2bench/recovery-2", drop=("task_068", "task_086"), names=None,
-         gen_name="pools-4 eval, 17 tasks × up to 4 trials (runs)", gen_unit="runs",
+         recovery="runs/new_pipeline/tau2bench/recovery-2", split="pools-6", drop=(), names=None,
+         gen_name="pools-6 eval, 67 tasks, one run per model per task", gen_unit="tasks",
          judge="gemini-3.8-flash, one pass per trace (RedoAdamast); success rule not in view",
          rec="gemini-3.8-flash (via Arena); success rule in view",
          taxonomy="Models_Tau2bench_taxonomy.json (28 codes)"),
@@ -97,11 +99,16 @@ def load_redo(exp):
     idx = {r["view_trace_id"]: r for r in map(json.loads, open(f"data/{b}/traces/view-1/index.jsonl"))}
     sc = {r["trace_id"]: r["score"] for r in map(json.loads, open(f"data/{b}/outcomes/cap-1-complete.jsonl"))}
     rec = {}
-    for f in glob.glob(f"{exp['recovery']}/traces/*.json"):
-        d = json.load(open(f)); rec[d["trace_id"]] = d
+    for run in ([exp["recovery"]] if isinstance(exp["recovery"], str) else exp["recovery"]):   # later runs fill earlier failures
+        for f in glob.glob(f"{run}/traces/*.json"):
+            d = json.load(open(f))
+            if d.get("status") == "judged" or d["trace_id"] not in rec:
+                rec[d["trace_id"]] = d
     pts = defaultdict(dict); last = defaultdict(dict); GJ = defaultdict(dict); fallback = 0
-    for m in map(json.loads, open(f"data/{b}/mappings/map-1/mapping.jsonl")):
-        if m["status"] != "judged" or m["task_id"] in exp["drop"]: continue
+    split = json.load(open(f"data/{b}/splits/{exp.get('split', 'pools-4')}/split.json"))
+    keep = set(split["portions"]["judged"])
+    for m in map(json.loads, open(f"data/{b}/mappings/{exp.get('mapping', 'map-1')}/mapping.jsonl")):
+        if m["status"] != "judged" or m["task_id"] in exp["drop"] or m["task_id"] not in keep: continue
         c, t = m["candidate_id"], m["task_id"]
         r = rec.get(m["trace_id"])
         if r is not None and r.get("status") == "judged":
@@ -116,11 +123,13 @@ def load_redo(exp):
     active = sorted(pts)
     tasks = sorted(pts[active[0]])
     assert all(sorted(pts[c]) == tasks for c in active), "candidates judged on different tasks"
-    ev = set(json.load(open(f"data/{b}/splits/pools-4/split.json"))["portions"]["eval"])
+    ev = set(split["portions"]["eval"])
     GG = defaultdict(dict)
+    one = {(x["candidate_id"], x["task_id"]): x["cap1_trace_id"] for x in split.get("eval_trials", [])}   # a split may fix one trial
     for line in open(f"data/{b}/outcomes/cap-1-complete.jsonl"):
         r = json.loads(line)
         if r["task_id"] in ev and r["candidate_id"] in pts:
+            if one and one.get((r["candidate_id"], r["task_id"])) != r["trace_id"]: continue
             GG[r["candidate_id"]][(r["task_id"], r["repeat"])] = r["score"]   # every eval run counts once
     return active, tasks, pts, last, GJ, GG, {}
 

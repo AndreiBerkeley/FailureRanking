@@ -6,25 +6,27 @@ task set? This branch holds everything behind that question: the tasks, the cand
 trace, the taxonomies, the judge's mappings, the formulas, and the results. Nothing here is
 summarised from elsewhere; every number in `results/` recomputes from the files beside it.
 
-| | livecodebench | hover / models | hover / GEPA_candidates | terminalbench |
-|---|---|---|---|---|
-| program | one model call writes a Python program | 4-module multi-hop retrieval (DSPy) | same | Terminus 2 agent in a terminal (Terminal-Bench 2.0 leaderboard) |
-| candidates | 9 models, one fixed prompt | 9 models, one fixed instruction set | 12 instruction sets, one model | 7 models |
-| judged tasks | 150; the main results read the 50-task split | 50 + 50 | 50 (current instrument) · 50 + 50 (superseded panel judge) | 20, 19 usable |
-| generalization tasks | 755 | 500 | 500 | 69 |
-| taxonomy | tax-1 → tax-2 (7 + 3 codes) | tax-15 (15 codes) | tax-13 generated → tax-15-pool3 (13 + 2 hand codes) | tax-1 (10 codes) |
-| judge | two readers + decider, failure points | same | same, with the program's success rule in view | same, with the success rule in view |
-| recovery pass | all 150 (`recovery-1`) | set b (`recovery-2`) | yes | yes |
-| unrecovered incidence vs gold-gen (bar: gold on the judged tasks) | +0.771 (+0.765) | +0.543 (+0.444) | +0.828 (+0.785) | +1.000 (+0.579) |
+| | livecodebench | hover / models | hover / GEPA_candidates | terminalbench | swebench |
+|---|---|---|---|---|---|
+| program | one model call writes a Python program | 4-module multi-hop retrieval (DSPy) | same | Terminus 2 agent in a terminal (Terminal-Bench 2.0 leaderboard) | mini-SWE-agent 2.0.0 fixing a repository issue (SWE-bench Verified leaderboard) |
+| candidates | 9 models, one fixed prompt | 9 models, one fixed instruction set | 12 instruction sets, one model | 7 models | 12 models |
+| judged tasks | 150; the main results read the 50-task split | 50 + 50 | 50 (current instrument) · 50 + 50 (superseded panel judge) | 20, 19 usable | 50 |
+| generalization tasks | 755 | 500 | 500 | 69 | 405 |
+| taxonomy | tax-1 → tax-2 (7 + 3 codes) | tax-15 (15 codes) | tax-13 generated → tax-15-pool3 (13 + 2 hand codes) | tax-1 (10 codes) | tax-1 (29 codes, RedoAdamast pipeline, 30 other tasks) |
+| judge | two readers + decider, failure points | same | same, with the program's success rule in view | same, with the success rule in view | one pass per trace, gemini-3.8-flash (RedoAdamast) |
+| recovery pass | all 150 (`recovery-1`) | set b (`recovery-2`) | yes | yes | yes, gemini-3.8-flash; output claims checked against the submitted patch |
+| unrecovered incidence vs gold-gen (bar: gold on the judged tasks) | +0.771 (+0.765) | +0.543 (+0.444) | +0.828 (+0.785) | +1.000 (+0.579) | +0.806 (+0.467) |
 
-**Status 2026-10-03.** Four experiments, each with a recovery pass. The share of judged tasks whose trace
+**Status 2026-10-03.** Five experiments, each with a recovery pass. The share of judged tasks whose trace
 has a failure the program never recovered from (unrecovered incidence) ranks the candidates at least as well
-as the judged tasks' own outcomes on all four: mean tau +0.785 against the bar's +0.643. Without the recovery
-pass the best formula, last-turn incidence, averages +0.445. Read as a solve rate, 1 − unrecovered incidence is
-on average 8.5 points from each candidate's generalization solve rate; the judged tasks' own solve rate is 6.8
-points away. `sharing/best_methods.md` has every formula on all four, `sharing/formulas.md` defines each one
-step by step, and `sharing/first_last_study.md` covers the scores built from each trace's first and last
-failure instance.
+as the judged tasks' own outcomes on all five: mean tau +0.790 against the bar's +0.608. Without the recovery
+pass the best formula, incidence, averages +0.384. Read as a solve rate, 1 − unrecovered incidence is on average
+8.4 points from each candidate's generalization solve rate; the judged tasks' own solve rate is 7.4 points away.
+`sharing/best_methods.md` has every formula on all five, `sharing/formulas.md` defines each one step by step,
+and `sharing/first_last_study.md` covers the scores built from each trace's first and last failure instance on
+the first four. SWE-bench was judged with a different instrument (Gemini 3.8 Flash, RedoAdamast pipeline); its
+trajectories carry no licence, so its directory holds the judge and recovery records and the source keys that
+rebuild the traces, not the traces themselves.
 
 ## Layout
 
@@ -38,7 +40,8 @@ hover/GEPA_candidates/         the 12 optimizer candidates: taxonomy, traces, ju
 hover/models/                  the 9 models on hover: taxonomies, traces, judge runs, outcomes, results
 terminalbench/                 program, task registry
 terminalbench/models/          the 7 models on terminal-bench: taxonomy, its generation run, judged traces, judge and recovery runs, outcomes
-sharing/                       the four experiments side by side: taxonomies, recovery reports, formulas, results, studies
+swebench/models/               the 12 models on SWE-bench Verified: taxonomy and its generation run, splits, outcomes, judge and recovery records (traces as source keys)
+sharing/                       the five experiments side by side: taxonomies, recovery reports, formulas, results, studies
 analysis/                      traces worth reading closely, with their judge records, per benchmark and candidate set
 code/                          the pipeline, judge, capture and scoring code, as run
 ```
