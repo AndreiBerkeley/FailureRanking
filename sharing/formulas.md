@@ -141,6 +141,129 @@ candidates whose traces carry many codes.
 It sits within noise of the plain flag on every set tried, and spends gold to get there. It is never a
 candidate for the best method.
 
+## Formulas that read the first and last failure instance
+
+These come from the first-and-last study (`first_last_study.md`); `mode_methods.md` compares them with the baselines
+above. They read only each trace's first and last failure instance and ignore the instances in between.
+
+### Preparation
+
+1. **Delete the formatting codes.** `F` is the experiment's set of codes about output format:
+
+   | experiment | F |
+   |---|---|
+   | GEPA · HoVer | SP_09, SP_10, SP_13 |
+   | Models · HoVer | SP_04, SP_08, SP_09, SP_10, SP_11 |
+   | Models · Terminal-Bench 2.0 | SP_01, SP_02, SP_03 |
+   | Models · LiveCodeBench | none |
+
+   For every instance keep `M_i' = M_i \ F`, and drop the instance if `M_i'` is empty. An instance no code fit keeps
+   `(uncoded)`, which is never in F. The result is `P'(c,t)`. The codes' names are in `first_last_study.md`.
+2. **Choose which instances to read.** *Every instance*: all of `P'(c,t)`. *Unrecovered instances only*: the
+   instances of `P'(c,t)` with `r_i = 0`. *Recovery checked on the endpoints* (mode filters only): the endpoints of
+   `P'(c,t)`, where an endpoint then counts only if it is unrecovered.
+3. **Take the endpoints.** Order the chosen instances by step, then by the judge's listing order. `first(c,t)` is the
+   first and `last(c,t)` the last. A trace with one instance has `first = last`; a trace with none has no endpoints and
+   contributes 0. `M(p)` is the code set of endpoint `p ∈ {first, last}`.
+
+### Incidence after removing formatting codes
+
+1. Flag the task if anything is left after step 1: `f(c,t) = 1[P'(c,t) ≠ ∅]`. This is also "the trace has endpoints".
+2. `I_F(c) = (1/T) Σ_t f(c,t)`.
+
+On unrecovered instances only, this is unrecovered incidence with the formatting codes deleted.
+
+### Endpoint codes counted
+
+1. Take the endpoints (steps 1 to 3).
+2. Count the task's endpoint codes, in one of two ways:
+   *per endpoint*: `V(c,t) = |M(first)| + |M(last)|`, a one-instance trace counted once;
+   *per code*: `V(c,t) = |M(first) ∪ M(last)|`, a code on both endpoints counted once.
+3. `S(c) = (1/T) Σ_t V(c,t)`.
+
+In `mode_methods.md`, *endpoint codes counted* (no recovery) adds per endpoint, and *unrecovered endpoint codes
+counted* adds per code on the unrecovered instances.
+
+### Weighted endpoint codes: the grid
+
+The general form of the two formulas above. Each (endpoint, code) pair of a task gets a value `v = w · q`, and a
+combiner turns the task's values into `V(c,t)`; `S(c) = (1/T) Σ_t V(c,t)`. Five recovery weights × five mode weights
+× three combiners give 75 formulas, all run.
+
+**Counts.** On candidate *c*'s endpoints: `o_c(m,p)` = the number of tasks with code *m* at endpoint *p*;
+`u_c(m,p)` = how many of those endpoints are unrecovered; `N_c(p) = Σ_m o_c(m,p)`.
+
+**Recovery weight `q`.** An unrecovered endpoint has `q = 1`. A recovered endpoint has:
+
+| recovery weight | a recovered endpoint's q |
+|---|---|
+| no recovery | 1 (verdicts not read) |
+| recovery-weighted, own | `u_c(m,p) / o_c(m,p)`, shrunk across *c*'s codes at that position |
+| recovery-weighted, pooled | `Σ_c u_c(m,p) / Σ_c o_c(m,p)`, one rate for every candidate |
+| recovery-weighted, combined | *c*'s own rate shrunk toward the pooled rate across candidates |
+| unrecovered instances only | none: endpoints are taken from the unrecovered instances, so every endpoint has q = 1 |
+
+The first four take endpoints from every instance.
+
+**Mode weight `w`.**
+
+| mode weight | `w_c(m,p)` |
+|---|---|
+| no weight | 1 |
+| own rarity | `−ln( o_c(m,p) / N_c(p) )`: a code common in this candidate's endpoints weighs little, a rare one a lot |
+| pooled rarity | `−ln( Σ_c o_c(m,p) / Σ_c N_c(p) )` |
+| combined rarity | `−ln` of *c*'s share shrunk toward the pooled share across candidates |
+| spread | `σ/μ` over candidates of the per-task rate `o_c(m,p)/T`; the same for every candidate |
+
+**Combiner.**
+
+| combiner | `V(c,t)` |
+|---|---|
+| max | the largest `v` on the task |
+| sum over modes | `Σ_m max_p v(m,p)`: a code on both endpoints counts once |
+| sum over endpoints | `Σ v` over every (endpoint, code) pair; a one-instance trace counted once |
+
+With `w = 1` and `q = 1`, *max* is incidence after removing formatting codes, and the two sums are endpoint codes
+counted, per code and per endpoint.
+
+**Shrinkage** (empirical Bayes, beta-binomial method of moments). Given groups *g* with counts `(k_g, n_g)`:
+
+1. pooled rate `p₀ = Σ_g k_g / Σ_g n_g`, with `N = Σ_g n_g` and *G* groups;
+2. observed spread `v = Σ_g (n_g/N) · (k_g/n_g − p₀)²`;
+3. spread beyond binomial noise `τ² = v − p₀(1−p₀) · G/N`;
+4. if `τ² ≤ 0` every group gets `p₀`; otherwise `α = max(0, p₀(1−p₀)/τ² − 1)`;
+5. shrunk rate `(k_g + α·p₀) / (n_g + α)`.
+
+No constant is set by hand; α comes from the data.
+
+**Endpoints weighted by the recovery rate** is the cell *recovery-weighted, own · no weight · max*:
+`V(c,t) = max` over the task's endpoint codes of 1 (unrecovered) or `q_c(m,p)` (recovered).
+
+### Setup 1: entropy of the endpoint codes
+
+1. Take the endpoints of every instance of `P'(c,t)` (no recovery) and their codes `E(c,t) = M(first) ∪ M(last)`.
+2. Code counts `n_c(m) = Σ_t 1[m ∈ E(c,t)]`, total `N_c = Σ_m n_c(m)`, shares `π_c(m) = n_c(m) / N_c`.
+3. Weight `w_c(m) = −ln π_c(m)`.
+4. `V(c,t) = Σ_{m ∈ E(c,t)} w_c(m)`; `S(c) = (1/T) Σ_t V(c,t)`.
+
+Summing step 4 over tasks gives `S(c) = (N_c/T) · H(π_c)`, with `H(π) = −Σ_m π(m) ln π(m)`: endpoint codes per task
+times the entropy of their distribution. It differs from the own-rarity cell of the grid in pooling both positions
+into one share and counting a code on both endpoints once.
+
+### Mode filters
+
+1. Take the endpoints from one of the three inputs of step 2.
+2. For each position `p ∈ {first, last}`, count `n_p(m)` = the number of tasks with code *m* at that endpoint: over the
+   candidate's own tasks (*per candidate*) or over every candidate's tasks (*across candidates*).
+3. Choose the codes to ignore at that position, `D_p`:
+   *top k* (k = 1, 2, 3): the k codes with the largest `n_p(m)`;
+   *mean + k SD* (k = 1, 1.5): every code with `n_p(m) > μ_p + k·σ_p`, where `μ_p` and `σ_p` are the mean and population
+   standard deviation of the counts over the codes seen at that position.
+4. `S(c) = (1/T) Σ_t 1[ ∃ p: M(p) \ D_p ≠ ∅ ]`; with *recovery checked on the endpoints*, the endpoint *p* must also be
+   unrecovered.
+
+A filter ignores whole codes, so it discards evidence. The rules were chosen by looking at Models·HoVer.
+
 ## From scores to a measure
 
 Every formula gives one number per candidate. Candidates are ranked by it (ascending: lower is better; gold
@@ -208,6 +331,8 @@ the choice.
 
 ## Studies beyond the baselines
 
+- `mode_methods.md` (Models·HoVer, Terminal-Bench, LiveCodeBench): every formula that reads failure modes, one row per
+  family with its best member, without and with recovery, plus every grid cell and every mode filter.
 - `first_last_study.md` (the first four experiments): scores that read only each trace's first and last failure instance, fixed mode
   filters (pooled across candidates or per candidate), a 75-cell grid of data-estimated weights with a
   leave-one-experiment-out check, and one entropy-weighted setup without recovery.

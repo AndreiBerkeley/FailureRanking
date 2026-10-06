@@ -42,15 +42,16 @@ records; the traces as source keys). Strings that look like credentials in publi
 | file | what |
 |---|---|
 | `best_methods.md` | the best formula without recovery and with it (highest mean tau over the five experiments), every formula's tau beside it, and how far each solve-rate-scaled score is from the actual solve rate |
-| `formulas.md` | every formula as numbered steps from the judge's records to the score; the measure (tau-b with ties dropped, resolved pairs, top-1, top-3); the solve-rate distance; how the best method is chosen |
+| `formulas.md` | every formula as numbered steps from the judge's records to the score; the formulas that read the first and last failure instance (endpoint counts, the 75-cell grid, Setup 1, mode filters); the measure (tau-b with ties dropped, resolved pairs, top-1, top-3); the solve-rate distance; how the best method is chosen |
 | `results.md` | per experiment: Table 1 on every instance, Table 2 on unrecovered instances plus the recovery-dependent formulas; each formula in both conventions for instances no code fit |
 | `compared_scoring.md` | per candidate: 1 − incidence, 1 − unrecovered incidence and 1 − profile risk beside the tasks actually solved (judged and generalization), and the mean absolute distance, with gold-judged vs gold-gen as the reference |
+| `mode_methods.md` | every formula that reads failure modes (which codes fired, or how many distinct ones) on Models·HoVer, Terminal-Bench and LiveCodeBench: one row per family (a formula and the variants that change one setting), without and with recovery, with how each works; appendices list every grid cell and every mode filter |
 | `first_last_study.md` | the study of scores that read only each trace's first and last failure instance, on the first four experiments: mode filters pooled across candidates or per candidate, a 75-cell grid of data-estimated weights, a leave-one-experiment-out check, and an entropy-weighted setup |
 | `results_ablation.md` | how the numbers move with the tasks: judged-side sweep (k = 10…150, 10 draws), generalization-side resampling (m = 100, 300, full), disjoint judged sets; GEPA·HoVer, Models·HoVer, LiveCodeBench |
 | `*_taxonomy.json` | the taxonomy each judge read: codes with definition, when to use / not, consequence, at most 3 evidence quotes; hand-authored codes flagged |
 | `*_recovery.md` | what the recovery reader did with the judge's failure instances: verdict counts (unrecovered / corrected / contained), per candidate, per failure mode, instances per trace before and after |
 | `pipeline.md` | how a taxonomy is generated; the split rule (floors for judging (20) and generation (15), sizes from N = min(dataset, 1000), when the two share tasks) with the first four experiments measured against it; how the recovery pass works |
-| `scripts/` | the generators: `trim_taxonomy.py`, `recovery_report.py`, `results_tables.py`, `compared_scoring.py`, `best_methods.py`, `first_last_study.py`, `sampling_tables.py`; every table above is their output over the recorded runs, no model call |
+| `scripts/` | the generators: `trim_taxonomy.py`, `recovery_report.py`, `results_tables.py`, `compared_scoring.py`, `best_methods.py`, `first_last_study.py`, `mode_methods.py`, `sampling_tables.py`; every table above is their output over the recorded runs, no model call |
 
 Read `best_methods.md` for the answer and `formulas.md` for what each number means, then `results.md` for the
 per-experiment detail. `results_ablation.md` says how much to trust a given number; the recovery reports say
